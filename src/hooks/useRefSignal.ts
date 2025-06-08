@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from "react";
-import { createRefSignal, listenersMap, RefSignal } from "../refsignal";
+import { useEffect, useMemo } from 'react';
+import { createRefSignal, listenersMap, RefSignal } from '../refsignal';
 
 /**
  * React hook for creating a mutable signal-like ref with subscription support.
@@ -24,7 +24,9 @@ import { createRefSignal, listenersMap, RefSignal } from "../refsignal";
 export function useRefSignal<T>(value: T): RefSignal<T>;
 export function useRefSignal<T>(value: T | null): RefSignal<T | null>;
 export function useRefSignal<T>(value: T | undefined): RefSignal<T | undefined>;
-export function useRefSignal<T>(value: T | null | undefined): RefSignal<T | null | undefined> {
+export function useRefSignal<T>(
+    value: T | null | undefined,
+): RefSignal<T | null | undefined> {
     const refSignal = useMemo(() => createRefSignal(value), []);
 
     useEffect(() => {

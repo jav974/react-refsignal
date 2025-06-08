@@ -2,10 +2,10 @@
  * @jest-environment jsdom
  */
 
-import { renderHook } from "@testing-library/react";
-import { useRefSignal } from "./useRefSignal";
-import { useRefSignalMemo } from "./useRefSignalMemo";
-import { act } from "react";
+import { renderHook } from '@testing-library/react';
+import { useRefSignal } from './useRefSignal';
+import { useRefSignalMemo } from './useRefSignalMemo';
+import { act } from 'react';
 
 describe('useRefSignalMemo', () => {
     it('should initialize with value on initial mount', () => {
@@ -23,7 +23,7 @@ describe('useRefSignalMemo', () => {
     it('should update value when signal value changes', () => {
         const factory = jest.fn(() => 2);
 
-        const {result} = renderHook(() => {
+        const { result } = renderHook(() => {
             const signal = useRefSignal(1);
             useRefSignalMemo(factory, [signal]);
             return signal;

@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from "react";
-import { isUseRefSignalReturn } from "../refsignal";
+import { useEffect } from 'react';
+import { isUseRefSignalReturn } from '../refsignal';
 
 /**
  * React hook for running an effect when one or more RefSignal values change.
@@ -20,7 +20,10 @@ import { isUseRefSignalReturn } from "../refsignal";
  *   console.log('Count changed:', current);
  * }, [count]);
  */
-export function useRefSignalEffect(callback: React.EffectCallback, deps: React.DependencyList) {
+export function useRefSignalEffect(
+    callback: React.EffectCallback,
+    deps: React.DependencyList,
+) {
     useEffect(() => {
         deps.forEach((dep) => {
             if (isUseRefSignalReturn(dep)) dep.subscribe(callback);
@@ -32,7 +35,7 @@ export function useRefSignalEffect(callback: React.EffectCallback, deps: React.D
             deps.forEach((dep) => {
                 if (isUseRefSignalReturn(dep)) dep.unsubscribe(callback);
             });
-            if (typeof destructor === "function") {
+            if (typeof destructor === 'function') {
                 destructor();
             }
         };
