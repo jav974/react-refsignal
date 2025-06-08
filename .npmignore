@@ -1,0 +1,11 @@
+src/
+test/
+__tests__/
+*.test.*
+*.spec.*
+*.log
+node_modules/
+coverage/
+jest.config.js
+tsconfig.json
+*.md
