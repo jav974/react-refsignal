@@ -1,6 +1,6 @@
-import { useCallback, useReducer, useRef } from "react";
-import { RefSignal } from "../refsignal";
-import { useRefSignalEffect } from "./useRefSignalEffect";
+import { useCallback, useReducer, useRef } from 'react';
+import { RefSignal } from '../refsignal';
+import { useRefSignalEffect } from './useRefSignalEffect';
 
 /**
  * React hook that forces a component to re-render whenever one or more {@link RefSignal} dependencies update.
@@ -19,6 +19,7 @@ import { useRefSignalEffect } from "./useRefSignalEffect";
  * useRefSignalRender([count]);
  * // The component will re-render whenever count.update(newValue) is called.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useRefSignalRender(dependencies: RefSignal<any>[]): void {
     const renders = useRef<number>(0);
     const [, forceUpdate] = useReducer((x) => x + 1, 0);

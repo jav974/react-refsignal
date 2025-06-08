@@ -1,8 +1,4 @@
-import {
-    createRefSignal,
-    isUseRefSignalReturn,
-    batch
-} from './refsignal';
+import { createRefSignal, isUseRefSignalReturn, batch } from './refsignal';
 
 describe('createRefSignal', () => {
     it('should create a RefSignal with initial value', () => {

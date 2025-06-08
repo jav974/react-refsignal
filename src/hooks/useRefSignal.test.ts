@@ -2,8 +2,8 @@
  * @jest-environment jsdom
  */
 
-import { renderHook, act } from "@testing-library/react";
-import { useRefSignal } from "./useRefSignal";
+import { renderHook, act } from '@testing-library/react';
+import { useRefSignal } from './useRefSignal';
 
 describe('useRefSignal', () => {
     it('should initialize with value', () => {

@@ -1,7 +1,7 @@
-import { useMemo } from "react";
-import { useRefSignal } from "./useRefSignal";
-import { useRefSignalEffect } from "./useRefSignalEffect";
-import { RefSignal } from "../refsignal";
+import { useMemo } from 'react';
+import { useRefSignal } from './useRefSignal';
+import { useRefSignalEffect } from './useRefSignalEffect';
+import { RefSignal } from '../refsignal';
 
 /**
  * React hook for creating a memoized {@link RefSignal} whose value is derived from a factory function and dependencies.
@@ -22,10 +22,22 @@ import { RefSignal } from "../refsignal";
  * double.subscribe(val => console.log('Double changed:', val));
  * // When count.update(2) is called, double will update to 4 and notify listeners.
  */
-export function useRefSignalMemo<T>(factory: () => T, deps: React.DependencyList): RefSignal<T>;
-export function useRefSignalMemo<T>(factory: () => T | null, deps: React.DependencyList): RefSignal<T | null>;
-export function useRefSignalMemo<T>(factory: () => T | undefined, deps: React.DependencyList): RefSignal<T | undefined>;
-export function useRefSignalMemo<T>(factory: () => T | null | undefined, deps: React.DependencyList): RefSignal<T | null | undefined> {
+export function useRefSignalMemo<T>(
+    factory: () => T,
+    deps: React.DependencyList,
+): RefSignal<T>;
+export function useRefSignalMemo<T>(
+    factory: () => T | null,
+    deps: React.DependencyList,
+): RefSignal<T | null>;
+export function useRefSignalMemo<T>(
+    factory: () => T | undefined,
+    deps: React.DependencyList,
+): RefSignal<T | undefined>;
+export function useRefSignalMemo<T>(
+    factory: () => T | null | undefined,
+    deps: React.DependencyList,
+): RefSignal<T | null | undefined> {
     const memo = useMemo<T | null | undefined>(factory, deps);
     const value = useRefSignal<T | null | undefined>(memo);
 

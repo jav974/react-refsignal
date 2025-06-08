@@ -2,16 +2,16 @@
  * @jest-environment jsdom
  */
 
-import { renderHook } from "@testing-library/react";
-import { useRefSignal } from "./useRefSignal";
-import { useRefSignalEffect } from "./useRefSignalEffect";
-import { act } from "react";
+import { renderHook } from '@testing-library/react';
+import { useRefSignal } from './useRefSignal';
+import { useRefSignalEffect } from './useRefSignalEffect';
+import { act } from 'react';
 
 describe('useRefSignalEffect', () => {
     it('should run effect on initial mount', () => {
         const effect = jest.fn();
 
-        const { result } = renderHook(() => {
+        renderHook(() => {
             const signal = useRefSignal(1);
             useRefSignalEffect(effect, [signal]);
             return signal;
@@ -23,7 +23,7 @@ describe('useRefSignalEffect', () => {
     it('should run effect when signal value changes', () => {
         const effect = jest.fn();
 
-        const {result} = renderHook(() => {
+        const { result } = renderHook(() => {
             const signal = useRefSignal(1);
             useRefSignalEffect(effect, [signal]);
             return signal;
@@ -39,7 +39,7 @@ describe('useRefSignalEffect', () => {
     it('should call destructor on unmount', () => {
         const destructor = jest.fn();
 
-        const {unmount} = renderHook(() => {
+        const { unmount } = renderHook(() => {
             const signal = useRefSignal(1);
             useRefSignalEffect(() => {
                 return destructor;

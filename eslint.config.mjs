@@ -25,6 +25,10 @@ export default defineConfig([{
         "plugin:prettier/recommended",
     ),
 
+    rules: {
+        indent: ["error", 4]
+    },
+
     plugins: {
         react,
         "@typescript-eslint": typescriptEslint,

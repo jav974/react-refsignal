@@ -1,8 +1,8 @@
-import React, { createRef } from "react";
-import Stack from "./utils/Stack";
+import React, { createRef } from 'react';
+import Stack from './utils/Stack';
 
-export type Listener<T> = (value: T) => void;
-export const listenersMap = new WeakMap<object, Set<Listener<any>>>();
+export type Listener<T = unknown> = (value: T) => void;
+export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
 export const batchStack = new Stack<React.RefObject<unknown>[]>();
 
 export interface RefSignal<T = unknown> {
@@ -15,29 +15,36 @@ export interface RefSignal<T = unknown> {
     readonly notifyUpdate: () => void;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isUseRefSignalReturn<T>(obj: any): obj is RefSignal<T> {
     return (
         obj &&
-        typeof obj.ref === "object" &&
-        typeof obj.lastUpdated === "object" &&
-        typeof obj.subscribe === "function" &&
-        typeof obj.unsubscribe === "function" &&
-        typeof obj.update === "function" &&
-        typeof obj.notify === "function" &&
-        typeof obj.notifyUpdate === "function"
+        typeof obj.ref === 'object' &&
+        typeof obj.lastUpdated === 'object' &&
+        typeof obj.subscribe === 'function' &&
+        typeof obj.unsubscribe === 'function' &&
+        typeof obj.update === 'function' &&
+        typeof obj.notify === 'function' &&
+        typeof obj.notifyUpdate === 'function'
     );
 }
 
-export function subscribe(ref: React.RefObject<unknown>, listener: Listener<any>): void{
+export function subscribe(
+    ref: React.RefObject<unknown>,
+    listener: Listener<unknown>,
+): void {
     if (!listenersMap.has(ref)) {
         listenersMap.set(ref, new Set());
     }
     listenersMap.get(ref)?.add(listener);
 }
 
-export function unsubscribe(ref: React.RefObject<unknown>, listener: Listener<any>): void {
+export function unsubscribe(
+    ref: React.RefObject<unknown>,
+    listener: Listener<unknown>,
+): void {
     const listeners = listenersMap.get(ref);
-        
+
     if (listeners) {
         listeners.delete(listener);
 
@@ -53,12 +60,19 @@ export function notify(ref: React.RefObject<unknown>): void {
     }
 }
 
-export function notifyUpdate(ref: React.RefObject<unknown>, lastUpdated: React.RefObject<number>): void {
+export function notifyUpdate(
+    ref: React.RefObject<unknown>,
+    lastUpdated: React.RefObject<number>,
+): void {
     lastUpdated.current = Date.now();
     notify(ref);
 }
 
-export function update(ref: React.RefObject<unknown>, value: unknown, lastUpdated: React.RefObject<number>) {
+export function update(
+    ref: React.RefObject<unknown>,
+    value: unknown,
+    lastUpdated: React.RefObject<number>,
+) {
     if (ref.current !== value) {
         ref.current = value;
         notifyUpdate(ref, lastUpdated);
@@ -75,19 +89,25 @@ export function createRefSignal<T = unknown>(initialValue: T): RefSignal<T> {
     return {
         ref,
         lastUpdated,
-        subscribe: (listener: Listener<any>) => subscribe(ref, listener),
-        unsubscribe: (listener: Listener<any>) => unsubscribe(ref, listener),
+        subscribe: (listener: Listener<T>) =>
+            subscribe(ref, listener as Listener<unknown>),
+        unsubscribe: (listener: Listener<T>) =>
+            unsubscribe(ref, listener as Listener<unknown>),
         notify: () => notify(ref),
         notifyUpdate: () => notifyUpdate(ref, lastUpdated),
-        update: (value: T) => update(ref, value, lastUpdated)
+        update: (value: T) => update(ref, value, lastUpdated),
     };
 }
 
 /**
  * Defer notifications of refSignals update to the end of callback function
- * @param dependencies 
+ * @param dependencies
  */
-export function batch(callback: React.EffectCallback, dependencies: RefSignal<any>[]): void {
+export function batch(
+    callback: React.EffectCallback,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    dependencies: RefSignal<any>[],
+): void {
     batchStack.push(dependencies.map((dep) => dep.ref));
     callback();
     batchStack.pop();
