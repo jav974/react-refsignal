@@ -2,7 +2,8 @@
   "name": "react-refsignal",
   "version": "0.1.0",
   "description": "A lightweight React hook library for managing and subscribing to signals within refs, enabling efficient updates and notifications without unnecessary renders.",
-  "main": "index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "test": "jest",
@@ -35,6 +36,10 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "react": "^19.1.0"
-  }
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "files": [
+    "dist"
+  ]
 }
