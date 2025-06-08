@@ -8,16 +8,15 @@ import { isUseRefSignalReturn } from '../refsignal';
  * of each provided RefSignal dependency and runs the effect whenever any of them updates.
  *
  * - The effect runs once on mount and again whenever any signal in the dependencies array changes value.
- * - The effect receives the current value(s) of the signal(s) as arguments.
  * - Cleanup functions are supported, just like in {@link useEffect}.
  *
- * @param effect A function to run when any dependency signal changes. Receives the current value(s) as arguments.
+ * @param effect A function to run when any dependency signal changes.
  * @param dependencies An array of RefSignal objects to watch for changes.
  *
  * @example
  * const count = useRefSignal(0);
- * useRefSignalEffect((current) => {
- *   console.log('Count changed:', current);
+ * useRefSignalEffect(() => {
+ *   console.log('Count changed:', count.ref.current);
  * }, [count]);
  */
 export function useRefSignalEffect(
