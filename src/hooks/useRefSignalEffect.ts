@@ -34,6 +34,7 @@ export function useRefSignalEffect(
             deps.forEach((dep) => {
                 if (isUseRefSignalReturn(dep)) dep.unsubscribe(callback);
             });
+
             if (typeof destructor === 'function') {
                 destructor();
             }

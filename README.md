@@ -49,7 +49,7 @@ function MyComponent() {
 
 ### 2. `useRefSignalEffect`
 
-Run an effect when one or more signals change.
+Run an effect when one or more signals or dependencies change.
 
 ```typescript
 import { useRefSignal, useRefSignalEffect } from "react-refsignal";
@@ -57,8 +57,8 @@ import { useRefSignal, useRefSignalEffect } from "react-refsignal";
 function MyComponent() {
   const count = useRefSignal(0);
 
-  useRefSignalEffect((current) => {
-    console.log("Count changed to", current);
+  useRefSignalEffect(() => {
+    console.log("Count changed to", count.ref.current);
   }, [count]);
 
   // ...
@@ -122,7 +122,7 @@ Creates a signal-like ref with subscription and update methods.
 
 ### `useRefSignalEffect(effect, dependencies)`
 
-Runs an effect when any of the provided signals change.
+Runs an effect when any of the provided signals or dependencies change.
 
 ### `useRefSignalMemo(factory, dependencies)`
 
