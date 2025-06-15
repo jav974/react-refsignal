@@ -2,10 +2,10 @@
  * @jest-environment jsdom
  */
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalEffect } from './useRefSignalEffect';
-import { act, useState } from 'react';
+import { useState } from 'react';
 
 describe('useRefSignalEffect', () => {
     it('should run effect on initial mount', () => {

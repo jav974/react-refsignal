@@ -2,10 +2,9 @@
  * @jest-environment jsdom
  */
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalMemo } from './useRefSignalMemo';
-import { act } from 'react';
 
 describe('useRefSignalMemo', () => {
     it('should initialize with value on initial mount', () => {

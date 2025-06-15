@@ -1,12 +1,14 @@
 import React, { createRef } from 'react';
 import Stack from './utils/Stack';
 
-type RefType = React.RefObject<RefSignal<unknown>>;
+type RefType = { current: RefSignal<unknown> };
+// type RefType = React.RefObject<RefSignal<unknown>>; // React 19+ only
 export type Listener<T = unknown> = (value: T) => void;
 export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
 export const batchStack = new Stack<RefSignal<unknown>[]>();
 
-export interface RefSignal<T = unknown> extends React.RefObject<T> {
+export interface RefSignal<T = unknown> {
+    current: T;
     lastUpdated: number;
     readonly subscribe: (listener: Listener<T>) => void;
     readonly unsubscribe: (listener: Listener<T>) => void;
@@ -70,7 +72,7 @@ export function update(ref: RefType, value: unknown) {
 }
 
 export function createRefSignal<T = unknown>(initialValue: T): RefSignal<T> {
-    const ref = createRef<RefSignal<T>>() as React.RefObject<RefSignal<T>>;
+    const ref = createRef<RefSignal<T>>() as React.RefObject<RefSignal<T>> & { current: RefSignal<T> };
 
     ref.current = {
         current: initialValue,
