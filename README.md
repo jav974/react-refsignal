@@ -236,7 +236,6 @@ Batches updates to multiple signals and defers notifications until the callback 
 
 ## Changes from v0.1.* to v1.0.0
 ⚠️ Breaking Change in v1.0.0
-Version 1.0.0 introduces breaking changes compared to v0.1.*. Please review the migration notes below before upgrading.
 
 What’s Changed
 - Structure of RefSignal:
