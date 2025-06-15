@@ -18,7 +18,7 @@ import { RefSignal } from '../refsignal';
  *
  * @example
  * const count = useRefSignal(1);
- * const double = useRefSignalMemo(() => count.ref.current * 2, [count]);
+ * const double = useRefSignalMemo(() => count.current * 2, [count]);
  * double.subscribe(val => console.log('Double changed:', val));
  * // When count.update(2) is called, double will update to 4 and notify listeners.
  */

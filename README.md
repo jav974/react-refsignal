@@ -40,8 +40,8 @@ function MyComponent() {
   }, [count]);
 
   return (
-    <button onClick={() => count.update(count.ref.current + 1)}>
-      Increment ({count.ref.current})
+    <button onClick={() => count.update(count.current + 1)}>
+      Increment ({count.current})
     </button>
   );
 }
@@ -58,7 +58,7 @@ function MyComponent() {
   const count = useRefSignal(0);
 
   useRefSignalEffect(() => {
-    console.log("Count changed to", count.ref.current);
+    console.log("Count changed to", count.current);
   }, [count]);
 
   // ...
@@ -74,7 +74,7 @@ import { useRefSignal, useRefSignalMemo } from "react-refsignal";
 
 function MyComponent() {
   const count = useRefSignal(1);
-  const double = useRefSignalMemo(() => count.ref.current * 2, [count]);
+  const double = useRefSignalMemo(() => count.current * 2, [count]);
 
   useEffect(() => {
     double.subscribe(val => console.log("Double changed:", val));
@@ -94,10 +94,14 @@ import { useRefSignal, useRefSignalRender } from "react-refsignal";
 function MyComponent() {
   const count = useRefSignal(0);
 
-  // This will re-render the component when count updates
+  // This will re-render the component when count updates or gets notified
   useRefSignalRender([count]);
 
-  return <div>Count: {count.ref.current}</div>;
+  // count.update(1); => Triggers re-render
+  // count.notifyUpdate(); => Trigger re-render
+  // count.notify(); => Triggers re-render
+
+  return <div>Count: {count.current}</div>;
 }
 ```
 
