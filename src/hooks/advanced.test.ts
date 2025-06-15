@@ -17,7 +17,7 @@ describe('advanced', () => {
             const signalA = useRefSignal(1);
             const signalB = useRefSignal(1);
             const memo = useRefSignalMemo(
-                () => signalA.ref.current + signalB.ref.current,
+                () => signalA.current + signalB.current,
                 [signalA, signalB],
             );
             useRefSignalRender([memo]);
@@ -25,13 +25,13 @@ describe('advanced', () => {
         });
 
         expect(renderCount).toBe(1);
-        expect(result.current.memo.ref.current).toBe(2);
+        expect(result.current.memo.current).toBe(2);
 
         act(() => {
             result.current.signalA.update(41);
         });
 
-        expect(result.current.memo.ref.current).toBe(42);
+        expect(result.current.memo.current).toBe(42);
         expect(renderCount).toBe(2);
     });
 });
