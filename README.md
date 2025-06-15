@@ -182,13 +182,13 @@ function ProductListComponent({ products }: { products: RefSignal<RefSignal<Prod
   return (
     <>
       {products.current.map((product: RefSignal<Product>) => (
-        <Product key={product.current.id} product={product} />
+        <ProductComponent key={product.current.id} product={product} />
       ))}
     </>
   );
 }
 
-function Product({ product }: { product: RefSignal<Product> }) {
+function ProductComponent({ product }: { product: RefSignal<Product> }) {
   // Re-render only when this product changes or is notified
   useRefSignalRender([product]);
 
