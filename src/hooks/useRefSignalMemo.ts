@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMemo } from 'react';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalEffect } from './useRefSignalEffect';
