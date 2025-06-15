@@ -58,9 +58,9 @@ describe('useRefSignalEffect', () => {
 
     it('should not trigger error when listening on non RefSignal object', () => {
         const listener = jest.fn();
-        
+
         renderHook(() => {
-            const notASignal = useState<string>("test");
+            const notASignal = useState<string>('test');
             useRefSignalEffect(listener, [notASignal]);
         });
 
