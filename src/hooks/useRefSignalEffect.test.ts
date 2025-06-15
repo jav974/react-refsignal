@@ -5,7 +5,7 @@
 import { renderHook } from '@testing-library/react';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalEffect } from './useRefSignalEffect';
-import { act } from 'react';
+import { act, useState } from 'react';
 
 describe('useRefSignalEffect', () => {
     it('should run effect on initial mount', () => {
@@ -54,5 +54,16 @@ describe('useRefSignalEffect', () => {
 
         // Now destructor should have been called
         expect(destructor).toHaveBeenCalled();
+    });
+
+    it('should not trigger error when listening on non RefSignal object', () => {
+        const listener = jest.fn();
+        
+        renderHook(() => {
+            const notASignal = useState<string>("test");
+            useRefSignalEffect(listener, [notASignal]);
+        });
+
+        expect(listener).toHaveBeenCalled();
     });
 });
