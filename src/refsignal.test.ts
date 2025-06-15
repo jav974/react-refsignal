@@ -3,7 +3,7 @@ import { createRefSignal, isUseRefSignalReturn, batch } from './refsignal';
 describe('createRefSignal', () => {
     it('should create a RefSignal with initial value', () => {
         const signal = createRefSignal(42);
-        expect(signal.ref.current).toBe(42);
+        expect(signal.current).toBe(42);
         expect(typeof signal.subscribe).toBe('function');
         expect(typeof signal.unsubscribe).toBe('function');
         expect(typeof signal.update).toBe('function');
@@ -14,6 +14,11 @@ describe('createRefSignal', () => {
     it('should satisfy isUseRefSignalReturn', () => {
         const signal = createRefSignal('test');
         expect(isUseRefSignalReturn(signal)).toBe(true);
+    });
+
+    it('should not satisfy isUseRefSignalReturn', () => {
+        const signal = { current: 'test' };
+        expect(isUseRefSignalReturn(signal)).toBe(false);
     });
 });
 
@@ -53,18 +58,18 @@ describe('subscribe/unsubscribe/notify', () => {
 describe('notify/notifyUpdate', () => {
     it('should update lastUpdated timestamp when notifyUpdate is called', () => {
         const signal = createRefSignal(1);
-        expect(signal.lastUpdated.current).toBe(0);
+        expect(signal.lastUpdated).toBe(0);
 
         signal.notifyUpdate();
-        expect(signal.lastUpdated.current).not.toBe(0);
+        expect(signal.lastUpdated).not.toBe(0);
     });
 
     it('should not update lastUpdated timestamp when notify is called', () => {
         const signal = createRefSignal(1);
-        expect(signal.lastUpdated.current).toBe(0);
+        expect(signal.lastUpdated).toBe(0);
 
         signal.notify();
-        expect(signal.lastUpdated.current).toBe(0);
+        expect(signal.lastUpdated).toBe(0);
     });
 });
 
@@ -75,7 +80,7 @@ describe('update', () => {
         signal.subscribe(listener);
 
         signal.update(2);
-        expect(signal.ref.current).toBe(2);
+        expect(signal.current).toBe(2);
         expect(listener).toHaveBeenCalledWith(2);
     });
 
@@ -90,7 +95,7 @@ describe('update', () => {
 
     it('should update lastUpdated property when updated', () => {
         const signal = createRefSignal(5);
-        const currentTimestamp = signal.lastUpdated.current;
+        const currentTimestamp = signal.lastUpdated;
 
         expect(currentTimestamp).toBe(0);
 
@@ -98,7 +103,7 @@ describe('update', () => {
         signal.subscribe(listener);
 
         signal.update(1);
-        expect(signal.lastUpdated.current).not.toBe(currentTimestamp);
+        expect(signal.lastUpdated).not.toBe(currentTimestamp);
     });
 });
 

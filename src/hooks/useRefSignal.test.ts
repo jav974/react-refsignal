@@ -8,7 +8,7 @@ import { useRefSignal } from './useRefSignal';
 describe('useRefSignal', () => {
     it('should initialize with value', () => {
         const { result } = renderHook(() => useRefSignal('test'));
-        expect(result.current.ref.current).toBe('test');
+        expect(result.current.current).toBe('test');
     });
 
     it('should update value when update is called', () => {
@@ -16,7 +16,7 @@ describe('useRefSignal', () => {
         act(() => {
             result.current.update('newtest');
         });
-        expect(result.current.ref.current).toBe('newtest');
+        expect(result.current.current).toBe('newtest');
     });
 
     it('should not trigger re-rendering when update is called', () => {

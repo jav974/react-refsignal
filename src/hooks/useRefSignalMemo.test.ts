@@ -17,7 +17,7 @@ describe('useRefSignalMemo', () => {
         });
 
         expect(factory).toHaveBeenCalledTimes(2); // 1 during hook instanciation, and 1 after useEffect()
-        expect(result.current.ref.current).toBe(2);
+        expect(result.current.current).toBe(2);
     });
 
     it('should update value when signal value changes', () => {
