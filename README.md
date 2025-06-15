@@ -119,6 +119,99 @@ batch(() => {
 }, [signalA, signalB]);
 ```
 
+## Usage with Context Providers
+
+This project truly shines when combined with React Context, allowing RefSignals to be passed down through your component hierarchy. Updating a RefSignal will not trigger a re-render unless you explicitly want it.
+
+This pattern is especially powerful for collections: each item in a collection can be a RefSignal. Modifying an individual item's signal will only trigger updates or re-renders in the corresponding child component.
+
+Here's an example in TypeScript:
+
+```typescript
+
+function Provider({ children }) {
+  // The product collection is a RefSignal containing RefSignal<Product> items
+  const products = useRefSignal<RefSignal<Product>[]>([]);
+
+  // You can create product signals outside of hooks using createRefSignal<Product>(productData)
+  const addProduct = useCallback((product: Product) => {
+    products.current.push(createRefSignal(product));
+    products.notifyUpdate(); // Updates lastUpdated and triggers listeners
+  }, []);
+
+  const removeProduct = useCallback((product: Product) => {
+    products.update(
+      products.current.filter(
+        (productSignal: RefSignal<Product>) => productSignal.current.id !== product.id
+      )
+    );
+  }, []);
+
+  // Optional: add an update method for a product
+  const updateProduct = useCallback((product: Product) => {
+    const productSignal = products.current.find(
+      (signal) => signal.current.id === product.id
+    );
+    productSignal?.update(product);
+  }, []);
+
+  // Batch updates to avoid triggering listeners multiple times
+  useEffect(() => {
+    batch(() => {
+      // Example: load multiple products at once
+      // products.current.push(...);
+      // products.notifyUpdate(); // Not needed if using batch
+
+      // Example: update another RefSignal, e.g., user
+      // user.current = ...;
+    }, [products /*, user */]);
+    // Listeners for products (and user) will be invoked once
+  }, []);
+
+  return (
+    <Provider value={{ products, addProduct, removeProduct, updateProduct }}>
+      {children}
+    </Provider>
+  );
+}
+
+function ProductListComponent({ products }: { products: RefSignal<RefSignal<Product>[]> }) {
+  // Re-render when the products array changes (add/remove/replace)
+  useRefSignalRender([products]);
+
+  return (
+    <>
+      {products.current.map((product: RefSignal<Product>) => (
+        <Product key={product.current.id} product={product} />
+      ))}
+    </>
+  );
+}
+
+function Product({ product }: { product: RefSignal<Product> }) {
+  // Re-render only when this product changes or is notified
+  useRefSignalRender([product]);
+
+  const { updateProduct } = useProvider();
+
+  // These methods will trigger a re-render:
+  // product.update({...});
+  // product.notify();
+  // product.notifyUpdate();
+  // updateProduct({...});
+
+  return (
+    // ...your product UI...
+  );
+}
+
+// Pattern: wrapper for RefSignal items in a collection
+function RefSignalWrapper({ refSignal, componentFactory }) {
+  useRefSignalRender([refSignal]);
+  return componentFactory(refSignal.current);
+}
+```
+
 ## API Reference
 
 ### `useRefSignal<T>(initialValue: T): RefSignal<T>`
