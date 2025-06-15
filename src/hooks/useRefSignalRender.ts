@@ -9,10 +9,10 @@ import { useRefSignalEffect } from './useRefSignalEffect';
  * This is useful when you want your component to reflect the latest signal values in its render output.
  *
  * - The hook subscribes to all given RefSignal dependencies.
- * - The component will re-render whenever any of the signals are updated via `.update()`, or `.notify()`, or `.notifyUpdate()`.
+ * - The component will re-render whenever any of the signals are updated or notified via `.update()`, or `.notify()`, or `.notifyUpdate()`.
  * - No re-render occurs on the initial mount; only subsequent updates trigger re-renders.
  *
- * @param dependencies Array of RefSignal objects to watch for changes.
+ * @param deps Array of RefSignal objects to watch for changes.
  *
  * @example
  * const count = useRefSignal(0);
@@ -20,7 +20,7 @@ import { useRefSignalEffect } from './useRefSignalEffect';
  * // The component will re-render whenever count.update(newValue) is called.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function useRefSignalRender(dependencies: RefSignal<any>[]): void {
+export function useRefSignalRender(deps: RefSignal<any>[]): void {
     const renders = useRef<number>(0);
     const [, forceUpdate] = useReducer((x) => x + 1, 0);
     const effect = useCallback(() => {
@@ -30,5 +30,5 @@ export function useRefSignalRender(dependencies: RefSignal<any>[]): void {
         renders.current++;
     }, []);
 
-    useRefSignalEffect(effect, dependencies);
+    useRefSignalEffect(effect, deps);
 }

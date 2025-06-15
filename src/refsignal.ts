@@ -1,13 +1,13 @@
 import React, { createRef } from 'react';
 import Stack from './utils/Stack';
 
+type RefType = React.RefObject<RefSignal<unknown>>;
 export type Listener<T = unknown> = (value: T) => void;
 export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
-export const batchStack = new Stack<React.RefObject<unknown>[]>();
+export const batchStack = new Stack<RefSignal<unknown>[]>();
 
-export interface RefSignal<T = unknown> {
-    readonly ref: React.RefObject<T>;
-    readonly lastUpdated: React.RefObject<number>;
+export interface RefSignal<T = unknown> extends React.RefObject<T> {
+    lastUpdated: number;
     readonly subscribe: (listener: Listener<T>) => void;
     readonly unsubscribe: (listener: Listener<T>) => void;
     readonly update: (value: T) => void;
@@ -19,8 +19,8 @@ export interface RefSignal<T = unknown> {
 export function isUseRefSignalReturn<T>(obj: any): obj is RefSignal<T> {
     return (
         obj &&
-        typeof obj.ref === 'object' &&
-        typeof obj.lastUpdated === 'object' &&
+        'current' in obj &&
+        typeof obj.lastUpdated === 'number' &&
         typeof obj.subscribe === 'function' &&
         typeof obj.unsubscribe === 'function' &&
         typeof obj.update === 'function' &&
@@ -29,20 +29,14 @@ export function isUseRefSignalReturn<T>(obj: any): obj is RefSignal<T> {
     );
 }
 
-export function subscribe(
-    ref: React.RefObject<unknown>,
-    listener: Listener<unknown>,
-): void {
+export function subscribe(ref: RefType, listener: Listener<unknown>): void {
     if (!listenersMap.has(ref)) {
         listenersMap.set(ref, new Set());
     }
     listenersMap.get(ref)?.add(listener);
 }
 
-export function unsubscribe(
-    ref: React.RefObject<unknown>,
-    listener: Listener<unknown>,
-): void {
+export function unsubscribe(ref: RefType, listener: Listener<unknown>): void {
     const listeners = listenersMap.get(ref);
 
     if (listeners) {
@@ -54,68 +48,61 @@ export function unsubscribe(
     }
 }
 
-export function notify(ref: React.RefObject<unknown>): void {
-    if (!batchStack.peek()?.some((r) => r === ref)) {
-        listenersMap.get(ref)?.forEach((listener) => listener(ref.current));
+export function notify(ref: RefType): void {
+    if (!batchStack.peek()?.some((signal) => signal === ref.current)) {
+        listenersMap
+            .get(ref)
+            ?.forEach((listener) => listener(ref.current.current));
     }
 }
 
-export function notifyUpdate(
-    ref: React.RefObject<unknown>,
-    lastUpdated: React.RefObject<number>,
-): void {
-    lastUpdated.current = Date.now();
+export function notifyUpdate(ref: RefType): void {
+    ref.current.lastUpdated = Date.now();
     notify(ref);
 }
 
-export function update(
-    ref: React.RefObject<unknown>,
-    value: unknown,
-    lastUpdated: React.RefObject<number>,
-) {
-    if (ref.current !== value) {
-        ref.current = value;
-        notifyUpdate(ref, lastUpdated);
+export function update(ref: RefType, value: unknown) {
+    if (ref.current.current !== value) {
+        ref.current.current = value;
+        notifyUpdate(ref);
     }
 }
 
 export function createRefSignal<T = unknown>(initialValue: T): RefSignal<T> {
-    const ref = createRef<T>() as React.RefObject<T>;
-    const lastUpdated = createRef<number>() as React.RefObject<number>;
+    const ref = createRef<RefSignal<T>>() as React.RefObject<RefSignal<T>>;
 
-    ref.current = initialValue;
-    lastUpdated.current = 0;
-
-    return {
-        ref,
-        lastUpdated,
+    ref.current = {
+        current: initialValue,
+        lastUpdated: 0,
         subscribe: (listener: Listener<T>) =>
-            subscribe(ref, listener as Listener<unknown>),
+            subscribe(ref as RefType, listener as Listener<unknown>),
         unsubscribe: (listener: Listener<T>) =>
-            unsubscribe(ref, listener as Listener<unknown>),
-        notify: () => notify(ref),
-        notifyUpdate: () => notifyUpdate(ref, lastUpdated),
-        update: (value: T) => update(ref, value, lastUpdated),
+            unsubscribe(ref as RefType, listener as Listener<unknown>),
+        notify: () => notify(ref as RefType),
+        notifyUpdate: () => notifyUpdate(ref as RefType),
+        update: (value: T) => update(ref as RefType, value),
     };
+
+    return ref.current;
 }
 
 /**
  * Defer notifications of refSignals update to the end of callback function
- * @param dependencies
+ * @param deps
  */
 export function batch(
     callback: React.EffectCallback,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    dependencies: RefSignal<any>[],
+    deps: RefSignal<any>[],
 ): void {
-    batchStack.push(dependencies.map((dep) => dep.ref));
+    batchStack.push(deps);
     callback();
     batchStack.pop();
 
     const lastUpdated = Date.now();
 
-    dependencies.forEach((dep) => {
-        dep.lastUpdated.current = lastUpdated;
+    deps.forEach((dep) => {
+        dep.lastUpdated = lastUpdated;
         dep.notify();
     });
 }
