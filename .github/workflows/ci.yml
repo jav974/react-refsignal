@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        react-version: [16.8.0, 19.1.0]
+        react-version: [18.0.0, latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -26,11 +26,11 @@ jobs:
 
       - name: Install React ${{ matrix.react-version }} and matching Testing Library
         run: |
-          npm install react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }}
-          if [[ "${{ matrix.react-version }}" == "16.8.0" ]]; then
-            npm install @testing-library/react@^9.0.0 --save-dev
+          npm install --no-save react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }}
+          if [[ "${{ matrix.react-version }}" == "18.0.0" ]]; then
+            npm install --no-save @types/react@18.0.0 @testing-library/react@14.0.0
           else
-            npm install @testing-library/react@latest --save-dev
+            npm install --no-save @types/react@latest @testing-library/react@latest
           fi
 
       - name: Run ESLint

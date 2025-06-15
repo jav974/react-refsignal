@@ -2,10 +2,9 @@
  * @jest-environment jsdom
  */
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalRender } from './useRefSignalRender';
-import { act } from 'react';
 
 describe('useRefSignalRender', () => {
     it('should not re-render on initial mount', () => {
