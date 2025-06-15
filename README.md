@@ -234,6 +234,20 @@ Forces a component to re-render when any of the provided signals update.
 
 Batches updates to multiple signals and defers notifications until the callback completes.
 
+## Changes from v0.1.* to v1.0.0
+⚠️ Breaking Change in v1.0.0
+Version 1.0.0 introduces breaking changes compared to v0.1.*. Please review the migration notes below before upgrading.
+
+What’s Changed
+- Structure of RefSignal:
+  - Access data directly from `.current` instead of `.ref.current`
+  - Access lastUpdated directly from `.lastUpdated` instead of `.lastUpdated.current`
+
+RefSignal now extends React.RefObject instead of containing it internally.
+This change improves developer experience by simplifying data access paths.
+
+No other changes: All functionalities remain the same.
+
 ## License
 
 MIT
