@@ -72,7 +72,9 @@ export function update(ref: RefType, value: unknown) {
 }
 
 export function createRefSignal<T = unknown>(initialValue: T): RefSignal<T> {
-    const ref = createRef<RefSignal<T>>() as React.RefObject<RefSignal<T>> & { current: RefSignal<T> };
+    const ref = createRef<RefSignal<T>>() as React.RefObject<RefSignal<T>> & {
+        current: RefSignal<T>;
+    };
 
     ref.current = {
         current: initialValue,
