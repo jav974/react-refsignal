@@ -3,6 +3,7 @@
 [![CI](https://github.com/jav974/react-refsignal/actions/workflows/ci.yml/badge.svg)](https://github.com/jav974/react-refsignal/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/jav974/react-refsignal/graph/badge.svg?token=32TYI353M2)](https://codecov.io/gh/jav974/react-refsignal)
 [![npm version](https://img.shields.io/npm/v/react-refsignal.svg)](https://www.npmjs.com/package/react-refsignal)
+[![npm downloads](https://img.shields.io/npm/dt/react-refsignal.svg)](https://www.npmjs.com/package/react-refsignal)
 [![MIT License](https://img.shields.io/github/license/jav974/react-refsignal.svg)](LICENSE)
 
 A lightweight React hook library for managing and subscribing to signals within refs, enabling efficient updates and notifications without unnecessary renders.
