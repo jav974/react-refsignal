@@ -19,6 +19,7 @@ export interface RefSignal<T = unknown> extends React.RefObject<T> {
 export function isUseRefSignalReturn<T>(obj: any): obj is RefSignal<T> {
     return (
         obj &&
+        typeof obj === 'object' &&
         'current' in obj &&
         typeof obj.lastUpdated === 'number' &&
         typeof obj.subscribe === 'function' &&
