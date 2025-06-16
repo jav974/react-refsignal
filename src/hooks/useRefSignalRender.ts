@@ -1,4 +1,4 @@
-import React, { useCallback, useReducer, useRef } from 'react';
+import { useCallback, useReducer, useRef } from 'react';
 import { RefSignal } from '../refsignal';
 import { useRefSignalEffect } from './useRefSignalEffect';
 
@@ -27,7 +27,7 @@ export function useRefSignalRender(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     deps: RefSignal<any>[],
     callback?: () => boolean,
-): React.ActionDispatch<[]> {
+): () => void {
     const initialRender = useRef<boolean>(true);
     const [, forceUpdate] = useReducer((x) => x + 1, 0);
     const effect = useCallback(() => {
