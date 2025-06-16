@@ -1,4 +1,4 @@
-import { createRefSignal, isUseRefSignalReturn, batch } from './refsignal';
+import { createRefSignal, isRefSignal, batch } from './refsignal';
 
 describe('createRefSignal', () => {
     it('should create a RefSignal with initial value', () => {
@@ -11,14 +11,14 @@ describe('createRefSignal', () => {
         expect(typeof signal.notifyUpdate).toBe('function');
     });
 
-    it('should satisfy isUseRefSignalReturn', () => {
+    it('should satisfy isRefSignal', () => {
         const signal = createRefSignal('test');
-        expect(isUseRefSignalReturn(signal)).toBe(true);
+        expect(isRefSignal(signal)).toBe(true);
     });
 
-    it('should not satisfy isUseRefSignalReturn', () => {
+    it('should not satisfy isRefSignal', () => {
         const signal = { current: 'test' };
-        expect(isUseRefSignalReturn(signal)).toBe(false);
+        expect(isRefSignal(signal)).toBe(false);
     });
 });
 

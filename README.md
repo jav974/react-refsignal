@@ -5,6 +5,7 @@
 ![React >=18.0.0](https://img.shields.io/badge/react-%3E%3D18.0.0-blue)
 [![npm version](https://img.shields.io/npm/v/react-refsignal.svg)](https://www.npmjs.com/package/react-refsignal)
 [![npm downloads](https://img.shields.io/npm/dt/react-refsignal.svg)](https://www.npmjs.com/package/react-refsignal)
+[![bundlephobia](https://badgen.net/bundlephobia/minzip/react-refsignal)](https://bundlephobia.com/result?p=react-refsignal)
 [![MIT License](https://img.shields.io/github/license/jav974/react-refsignal.svg)](LICENSE)
 
 A lightweight React hook library for managing and subscribing to signals within refs, enabling efficient updates and notifications without unnecessary renders.
@@ -28,6 +29,7 @@ npm install react-refsignal
 ### 1. `useRefSignal`
 
 Create a signal-like ref with subscription and update methods.
+The RefSignal object is an extension of React.RefObject, with additional methods to update, subscribe and notify. So you can still use a RefSignal like a normal React.RefObject.
 
 ```typescript
 import { useRefSignal } from "react-refsignal";
@@ -53,6 +55,7 @@ function MyComponent() {
 ### 2. `useRefSignalEffect`
 
 Run an effect when one or more signals or dependencies change.
+This hook internally uses useEffect on the dependency list, you can safely replace your useEffect with a useRefSignalEffect if any of your depencency is a RefSignal and you want to track its changes.
 
 ```typescript
 import { useRefSignal, useRefSignalEffect } from "react-refsignal";
@@ -71,6 +74,7 @@ function MyComponent() {
 ### 3. `useRefSignalMemo`
 
 Create a derived signal whose value is memoized from other signals or dependencies.
+This hook internally uses useMemo, and useRefSignalEffect, so dependency list can contain non RefSignal values as well.
 
 ```typescript
 import { useRefSignal, useRefSignalMemo } from "react-refsignal";
@@ -79,17 +83,18 @@ function MyComponent() {
   const count = useRefSignal(1);
   const double = useRefSignalMemo(() => count.current * 2, [count]);
 
-  useEffect(() => {
-    double.subscribe(val => console.log("Double changed:", val));
+  useRefSignalEffect(() => {
+    console.log("Double changed:", double.current);
   }, [double]);
 
-  // ...
+  // count.update(21); // Will trigger double recompute, then effect on double
 }
 ```
 
 ### 4. `useRefSignalRender`
 
 Force a component to re-render when one or more signals update.
+This hook only takes RefSignal objects as dependencies.
 
 ```typescript
 import { useRefSignal, useRefSignalRender } from "react-refsignal";
@@ -111,6 +116,7 @@ function MyComponent() {
 ### 5. Batching Updates
 
 Batch multiple signal updates and defer notifications until the end of a callback.
+This function will defer notifications only for RefSignals present in the dependency list.
 
 ```typescript
 import { batch } from "react-refsignal";
@@ -224,7 +230,7 @@ Creates a signal-like ref with subscription and update methods.
 
 Runs an effect when any of the provided signals or dependencies change.
 
-### `useRefSignalMemo(factory, dependencies)`
+### `useRefSignalMemo<T>(factory, dependencies): RefSignal<T>`
 
 Creates a memoized signal whose value is derived from other signals or dependencies.
 
@@ -236,7 +242,7 @@ Forces a component to re-render when any of the provided signals update.
 
 Batches updates to multiple signals and defers notifications until the callback completes.
 
-## Changes from v0.1.* to v1.0.0
+## Changes from v0.1.* to v1.*
 ⚠️ Breaking Change in v1.0.0
 
 What’s Changed
