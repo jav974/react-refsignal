@@ -9,26 +9,37 @@ import { useRefSignalEffect } from './useRefSignalEffect';
  * This is useful when you want your component to reflect the latest signal values in its render output.
  *
  * - The hook subscribes to all given RefSignal dependencies.
- * - The component will re-render whenever any of the signals are updated or notified via `.update()`, or `.notify()`, or `.notifyUpdate()`.
+ * - The component will re-render whenever any of the signals are updated or notified via `.update()`, `.notify()`, or `.notifyUpdate()`.
  * - No re-render occurs on the initial mount; only subsequent updates trigger re-renders.
+ * - If the optional `callback` is specified, a re-render will only occur if it returns `true`.
  *
  * @param deps Array of RefSignal objects to watch for changes.
+ * @param callback Optional function that determines if a re-render should occur; should return a boolean.
+ * @returns A function that can be called to force a re-render manually in the component.
  *
  * @example
  * const count = useRefSignal(0);
  * useRefSignalRender([count]);
- * // The component will re-render whenever count.update(newValue) is called.
+ * // The component will re-render whenever count.update(newValue) is called,
+ * // or you can call the returned function to force a re-render manually.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function useRefSignalRender(deps: RefSignal<any>[]): void {
-    const renders = useRef<number>(0);
+export function useRefSignalRender(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deps: RefSignal<any>[],
+    callback?: () => boolean,
+): () => void {
+    const initialRender = useRef<boolean>(true);
     const [, forceUpdate] = useReducer((x) => x + 1, 0);
     const effect = useCallback(() => {
-        if (renders.current > 0) {
-            forceUpdate();
+        if (!initialRender.current) {
+            if (!callback || callback() === true) {
+                forceUpdate();
+            }
         }
-        renders.current++;
-    }, []);
+        initialRender.current = false;
+    }, [callback]);
 
     useRefSignalEffect(effect, deps);
+
+    return forceUpdate;
 }
