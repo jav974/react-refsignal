@@ -234,13 +234,19 @@ Runs an effect when any of the provided signals or dependencies change.
 
 Creates a memoized signal whose value is derived from other signals or dependencies.
 
-### `useRefSignalRender(dependencies)`
+### `useRefSignalRender(dependencies: RefSignal[], callback?: () => boolean): React.ActionDispatch<[]>`
 
-Forces a component to re-render when any of the provided signals update.
+Forces a component to re-render when any of the provided RefSignal update.
+Optionally, you can provide a callback function; a re-render will only occur if this function returns true.
+The returned function can also be called manually to force a re-render.
 
 ### `batch(callback, dependencies)`
 
 Batches updates to multiple signals and defers notifications until the callback completes.
+
+### `createRefSignal<T>(initialValue: T): RefSignal<T>`
+
+Creates a RefSignal object programmatically, allowing you to instantiate a signal outside of React hooks.
 
 ## Changes from v0.1.* to v1.*
 ⚠️ Breaking Change in v1.0.0
