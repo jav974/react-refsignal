@@ -18,7 +18,7 @@ export interface RefSignal<T = unknown> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isUseRefSignalReturn<T>(obj: any): obj is RefSignal<T> {
+export function isRefSignal<T>(obj: any): obj is RefSignal<T> {
     return (
         obj &&
         typeof obj === 'object' &&
