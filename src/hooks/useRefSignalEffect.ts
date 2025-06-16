@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { isUseRefSignalReturn } from '../refsignal';
+import { isRefSignal } from '../refsignal';
 
 /**
  * React hook for running an effect when one or more RefSignal values change.
@@ -25,14 +25,14 @@ export function useRefSignalEffect(
 ) {
     useEffect(() => {
         deps.forEach((dep) => {
-            if (isUseRefSignalReturn(dep)) dep.subscribe(effect);
+            if (isRefSignal(dep)) dep.subscribe(effect);
         });
 
         const destructor = effect();
 
         return () => {
             deps.forEach((dep) => {
-                if (isUseRefSignalReturn(dep)) dep.unsubscribe(effect);
+                if (isRefSignal(dep)) dep.unsubscribe(effect);
             });
 
             if (typeof destructor === 'function') {
