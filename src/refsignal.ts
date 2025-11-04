@@ -1,9 +1,7 @@
-import React, { createRef } from 'react';
 import Stack from './utils/Stack';
 
-type RefType = { current: RefSignal<unknown> };
-// type RefType = React.RefObject<RefSignal<unknown>>; // React 19+ only
 export type Listener<T = unknown> = (value: T) => void;
+// Using object instead of RefSignal<unknown> to avoid variance issues with generic T
 export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
 export const batchStack = new Stack<RefSignal<unknown>[]>();
 
@@ -32,63 +30,63 @@ export function isRefSignal<T>(obj: any): obj is RefSignal<T> {
     );
 }
 
-export function subscribe(ref: RefType, listener: Listener<unknown>): void {
-    if (!listenersMap.has(ref)) {
-        listenersMap.set(ref, new Set());
+export function subscribe<T>(
+    signal: RefSignal<T>,
+    listener: Listener<T>,
+): void {
+    if (!listenersMap.has(signal)) {
+        listenersMap.set(signal, new Set());
     }
-    listenersMap.get(ref)?.add(listener);
+    listenersMap.get(signal)?.add(listener as Listener<unknown>);
 }
 
-export function unsubscribe(ref: RefType, listener: Listener<unknown>): void {
-    const listeners = listenersMap.get(ref);
+export function unsubscribe<T>(
+    signal: RefSignal<T>,
+    listener: Listener<T>,
+): void {
+    const listeners = listenersMap.get(signal);
 
     if (listeners) {
-        listeners.delete(listener);
+        listeners.delete(listener as Listener<unknown>);
 
         if (listeners.size === 0) {
-            listenersMap.delete(ref); // Cleanup if no listeners remain
+            listenersMap.delete(signal); // Cleanup if no listeners remain
         }
     }
 }
 
-export function notify(ref: RefType): void {
-    if (!batchStack.peek()?.some((signal) => signal === ref.current)) {
+export function notify<T>(signal: RefSignal<T>): void {
+    if (!batchStack.peek()?.some((s) => s === signal)) {
         listenersMap
-            .get(ref)
-            ?.forEach((listener) => listener(ref.current.current));
+            .get(signal)
+            ?.forEach((listener) => listener(signal.current));
     }
 }
 
-export function notifyUpdate(ref: RefType): void {
-    ref.current.lastUpdated = Date.now();
-    notify(ref);
+export function notifyUpdate<T>(signal: RefSignal<T>): void {
+    signal.lastUpdated = Date.now();
+    notify(signal);
 }
 
-export function update(ref: RefType, value: unknown) {
-    if (ref.current.current !== value) {
-        ref.current.current = value;
-        notifyUpdate(ref);
+export function update<T>(signal: RefSignal<T>, value: T) {
+    if (signal.current !== value) {
+        signal.current = value;
+        notifyUpdate(signal);
     }
 }
 
 export function createRefSignal<T = unknown>(initialValue: T): RefSignal<T> {
-    const ref = createRef<RefSignal<T>>() as React.RefObject<RefSignal<T>> & {
-        current: RefSignal<T>;
-    };
-
-    ref.current = {
+    const signal: RefSignal<T> = {
         current: initialValue,
         lastUpdated: 0,
-        subscribe: (listener: Listener<T>) =>
-            subscribe(ref as RefType, listener as Listener<unknown>),
-        unsubscribe: (listener: Listener<T>) =>
-            unsubscribe(ref as RefType, listener as Listener<unknown>),
-        notify: () => notify(ref as RefType),
-        notifyUpdate: () => notifyUpdate(ref as RefType),
-        update: (value: T) => update(ref as RefType, value),
+        subscribe: (listener: Listener<T>) => subscribe(signal, listener),
+        unsubscribe: (listener: Listener<T>) => unsubscribe(signal, listener),
+        notify: () => notify(signal),
+        notifyUpdate: () => notifyUpdate(signal),
+        update: (value: T) => update(signal, value),
     };
 
-    return ref.current;
+    return signal;
 }
 
 /**
