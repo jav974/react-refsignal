@@ -129,4 +129,36 @@ describe('batch', () => {
         expect(listenerA).toHaveBeenCalledWith(10);
         expect(listenerB).toHaveBeenCalledWith(20);
     });
+
+    it('should cleanup batch stack even when callback throws error', () => {
+        const signalA = createRefSignal(1);
+        const signalB = createRefSignal(2);
+        const listenerA = jest.fn();
+        const listenerB = jest.fn();
+
+        signalA.subscribe(listenerA);
+        signalB.subscribe(listenerB);
+
+        // First batch that throws an error
+        expect(() => {
+            batch(() => {
+                signalA.update(10);
+                throw new Error('Test error');
+            }, [signalA]);
+        }).toThrow('Test error');
+
+        // Listeners should still be notified after error (finally block)
+        expect(listenerA).toHaveBeenCalledWith(10);
+
+        listenerA.mockClear();
+        listenerB.mockClear();
+
+        // Second batch should work normally (stack not corrupted)
+        batch(() => {
+            signalB.update(20);
+            expect(listenerB).not.toHaveBeenCalled();
+        }, [signalB]);
+
+        expect(listenerB).toHaveBeenCalledWith(20);
+    });
 });
