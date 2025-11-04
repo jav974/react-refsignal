@@ -101,13 +101,16 @@ export function batch(
     deps: RefSignal<any>[],
 ): void {
     batchStack.push(deps);
-    callback();
-    batchStack.pop();
+    try {
+        callback();
+    } finally {
+        batchStack.pop();
 
-    const lastUpdated = Date.now();
+        const lastUpdated = Date.now();
 
-    deps.forEach((dep) => {
-        dep.lastUpdated = lastUpdated;
-        dep.notify();
-    });
+        deps.forEach((dep) => {
+            dep.lastUpdated = lastUpdated;
+            dep.notify();
+        });
+    }
 }
