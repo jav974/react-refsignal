@@ -15,7 +15,7 @@ describe('useRefSignalMemo', () => {
             return useRefSignalMemo(factory, [signal]);
         });
 
-        expect(factory).toHaveBeenCalledTimes(2); // 1 during hook instanciation, and 1 after useEffect()
+        expect(factory).toHaveBeenCalledTimes(1); // Only called once during useMemo on mount
         expect(result.current.current).toBe(2);
     });
 
@@ -32,6 +32,6 @@ describe('useRefSignalMemo', () => {
             result.current.update(2);
         });
 
-        expect(factory).toHaveBeenCalledTimes(3); // 1 more time after dependant value update
+        expect(factory).toHaveBeenCalledTimes(2); // 1 on mount, 1 when signal updates
     });
 });
