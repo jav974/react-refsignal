@@ -1,4 +1,5 @@
 import Stack from './utils/Stack';
+import { devtools } from './devtools';
 
 export type Listener<T = unknown> = (value: T) => void;
 // Using object instead of RefSignal<unknown> to avoid variance issues with generic T
@@ -13,6 +14,8 @@ export interface RefSignal<T = unknown> {
     readonly update: (value: T) => void;
     readonly notify: () => void;
     readonly notifyUpdate: () => void;
+    /** DevTools only: Get the debug name of this signal */
+    readonly getDebugName?: () => string | undefined;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,9 +60,22 @@ export function unsubscribe<T>(
 
 export function notify<T>(signal: RefSignal<T>): void {
     if (!batchStack.peek()?.some((s) => s === signal)) {
-        listenersMap
-            .get(signal)
-            ?.forEach((listener) => listener(signal.current));
+        listenersMap.get(signal)?.forEach((listener) => {
+            try {
+                listener(signal.current);
+            } catch (error) {
+                // Isolate listener errors to prevent breaking the notification chain
+                if (devtools.isEnabled()) {
+                    console.error(
+                        '[RefSignal] Listener error in signal:',
+                        devtools.getSignalName(signal) || 'unknown',
+                        error,
+                    );
+                } else {
+                    console.error('[RefSignal] Listener error:', error);
+                }
+            }
+        });
     }
 }
 
@@ -70,12 +86,22 @@ export function notifyUpdate<T>(signal: RefSignal<T>): void {
 
 export function update<T>(signal: RefSignal<T>, value: T) {
     if (signal.current !== value) {
+        const oldValue = signal.current;
         signal.current = value;
+
+        // Track update in devtools
+        if (devtools.isEnabled()) {
+            devtools.trackUpdate(signal, oldValue, value);
+        }
+
         notifyUpdate(signal);
     }
 }
 
-export function createRefSignal<T = unknown>(initialValue: T): RefSignal<T> {
+export function createRefSignal<T = unknown>(
+    initialValue: T,
+    debugName?: string,
+): RefSignal<T> {
     const signal: RefSignal<T> = {
         current: initialValue,
         lastUpdated: 0,
@@ -84,7 +110,15 @@ export function createRefSignal<T = unknown>(initialValue: T): RefSignal<T> {
         notify: () => notify(signal),
         notifyUpdate: () => notifyUpdate(signal),
         update: (value: T) => update(signal, value),
+        getDebugName: devtools.isEnabled()
+            ? () => devtools.getSignalName(signal)
+            : undefined,
     };
+
+    // Register with devtools if enabled
+    if (devtools.isEnabled()) {
+        devtools.registerSignal(signal, debugName);
+    }
 
     return signal;
 }

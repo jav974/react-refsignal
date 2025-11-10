@@ -14,20 +14,32 @@ import { createRefSignal, listenersMap, RefSignal } from '../refsignal';
  *
  * @template T The type of the value stored in the signal.
  * @param value The initial value for the signal.
+ * @param debugName Optional name for DevTools tracking (only used when devtools are enabled).
  * @returns {RefSignal<T>} A RefSignal object with current, update, subscribe, and notification methods.
  *
  * @example
  * const signal = useRefSignal(0);
  * signal.subscribe((val) => console.log('Updated:', val));
  * signal.update(1); // Triggers listeners
+ *
+ * @example
+ * // With devtools name
+ * const count = useRefSignal(0, 'userCount');
  */
-export function useRefSignal<T>(value: T): RefSignal<T>;
-export function useRefSignal<T>(value: T | null): RefSignal<T | null>;
-export function useRefSignal<T>(value: T | undefined): RefSignal<T | undefined>;
+export function useRefSignal<T>(value: T, debugName?: string): RefSignal<T>;
+export function useRefSignal<T>(
+    value: T | null,
+    debugName?: string,
+): RefSignal<T | null>;
+export function useRefSignal<T>(
+    value: T | undefined,
+    debugName?: string,
+): RefSignal<T | undefined>;
 export function useRefSignal<T>(
     value: T | null | undefined,
+    debugName?: string,
 ): RefSignal<T | null | undefined> {
-    const refSignal = useMemo(() => createRefSignal(value), []);
+    const refSignal = useMemo(() => createRefSignal(value, debugName), []);
 
     useEffect(() => {
         return () => {
