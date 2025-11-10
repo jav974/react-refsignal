@@ -6,6 +6,11 @@ export default class Stack<T> {
     }
 
     pop(): T | undefined {
+        if (this.isEmpty()) {
+            throw new Error(
+                '[RefSignal] Stack underflow - attempting to pop from empty batch stack. This indicates mismatched batch() calls.',
+            );
+        }
         return this.items.pop();
     }
 
