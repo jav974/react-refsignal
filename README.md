@@ -16,6 +16,7 @@ A lightweight React hook library for managing and subscribing to signals within 
 - **No unnecessary renders**: Update values and notify listeners without triggering React re-renders.
 - **Fine-grained reactivity**: Subscribe to changes, batch updates, and trigger effects or renders only when needed.
 - **TypeScript support**: Fully typed API for safe usage.
+- **DevTools**: Built-in debugging tools with update tracking, signal inspection, and Redux DevTools integration.
 
 ## Installation
 
@@ -126,6 +127,78 @@ batch(() => {
   signalB.update(2);
 }, [signalA, signalB]);
 ```
+
+### 6. DevTools
+
+react-refsignal includes powerful debugging tools to help you track signal updates and inspect state changes during development.
+
+#### Configuration
+
+```typescript
+import { configureDevTools } from "react-refsignal";
+
+// Configure DevTools (typically in your app initialization)
+configureDevTools({
+  enabled: true,              // Enable devtools (default: true in development)
+  logUpdates: true,           // Log signal updates to console
+  reduxDevTools: false,       // Enable Redux DevTools Extension integration
+  maxHistory: 100,            // Maximum number of updates to keep in history
+});
+```
+
+#### Named Signals
+
+Give your signals meaningful names for easier debugging:
+
+```typescript
+const count = useRefSignal(0, 'userCount');
+const items = useRefSignal([], 'shoppingCart');
+
+// Access the debug name
+console.log(count.getDebugName?.()); // 'userCount'
+```
+
+#### Update History
+
+Track all signal updates with timestamps:
+
+```typescript
+import { devtools } from "react-refsignal";
+
+// Get update history
+const history = devtools.getUpdateHistory();
+// Returns: [{ signalId, oldValue, newValue, timestamp, ... }]
+
+// Clear history
+devtools.clearHistory();
+```
+
+#### Signal Inspection
+
+Find and inspect signals by name:
+
+```typescript
+// Get a specific signal by name
+const signal = devtools.getSignalByName('userCount');
+console.log(signal?.current);
+
+// Get all tracked signals
+const allSignals = devtools.getAllSignals();
+// Returns: [{ name: 'userCount', signal: RefSignal }, ...]
+```
+
+#### Redux DevTools Integration
+
+When enabled, react-refsignal integrates with the Redux DevTools Extension for time-travel debugging and state inspection:
+
+```typescript
+configureDevTools({
+  enabled: true,
+  reduxDevTools: true,  // Enable Redux DevTools Extension
+});
+```
+
+**DevTools are automatically disabled in production** (`process.env.NODE_ENV === 'production'`) to minimize bundle size and eliminate overhead.
 
 ## Usage with Context Providers
 
@@ -244,9 +317,18 @@ The returned function can also be called manually to force a re-render.
 
 Batches updates to multiple `RefSignal` objects and defers notifications until the callback completes.
 
-### `createRefSignal<T>(initialValue: T): RefSignal<T>`
+### `createRefSignal<T>(initialValue: T, debugName?: string): RefSignal<T>`
 
 Creates a `RefSignal` object programmatically, allowing you to instantiate a signal outside of React hooks.
+Optionally provide a `debugName` for DevTools tracking.
+
+### `configureDevTools(config: Partial<DevToolsConfig>)`
+
+Configure DevTools behavior:
+- `enabled` - Enable/disable devtools (default: `true` in development)
+- `logUpdates` - Log signal updates to console
+- `reduxDevTools` - Enable Redux DevTools Extension integration
+- `maxHistory` - Maximum number of updates to keep in history (default: 100)
 
 ## Changes from v0.1.* to v1.*
 ⚠️ Breaking Change in v1.0.0
