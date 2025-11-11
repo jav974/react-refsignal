@@ -1,12 +1,9 @@
-import Stack from './utils/Stack';
 import { devtools } from './devtools';
 
 export type Listener<T = unknown> = (value: T) => void;
 // Using object instead of RefSignal<unknown> to avoid variance issues with generic T
 export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
-export const batchStack = new Stack<RefSignal<unknown>[]>();
-
-// Auto-inference: track signals updated during batch execution
+export const batchStack: RefSignal<unknown>[][] = [];
 let batchedSignals: Set<RefSignal<unknown>> | null = null;
 
 export interface RefSignal<T = unknown> {
@@ -54,17 +51,15 @@ export function unsubscribe<T>(
 
     if (listeners) {
         listeners.delete(listener as Listener<unknown>);
-
         if (listeners.size === 0) {
-            listenersMap.delete(signal); // Cleanup if no listeners remain
+            listenersMap.delete(signal);
         }
     }
 }
 
 export function notify<T>(signal: RefSignal<T>): void {
-    // Check if we're in a batch (explicit deps in stack OR auto-inference mode tracking this signal)
     const inBatch =
-        batchStack.peek()?.some((s) => s === signal) ||
+        batchStack[batchStack.length - 1]?.some((s) => s === signal) ||
         (batchedSignals && batchedSignals.has(signal as RefSignal<unknown>));
 
     if (!inBatch) {
@@ -72,16 +67,13 @@ export function notify<T>(signal: RefSignal<T>): void {
             try {
                 listener(signal.current);
             } catch (error) {
-                // Isolate listener errors to prevent breaking the notification chain
-                if (devtools.isEnabled()) {
-                    console.error(
-                        '[RefSignal] Listener error in signal:',
-                        devtools.getSignalName(signal) || 'unknown',
-                        error,
-                    );
-                } else {
-                    console.error('[RefSignal] Listener error:', error);
-                }
+                const name = devtools.isEnabled()
+                    ? devtools.getSignalName(signal)
+                    : null;
+                console.error(
+                    `[RefSignal] Listener error${name ? ` in ${name}` : ''}:`,
+                    error,
+                );
             }
         });
     }
@@ -97,12 +89,10 @@ export function update<T>(signal: RefSignal<T>, value: T) {
         const oldValue = signal.current;
         signal.current = value;
 
-        // Track signal for auto-inferred batch
         if (batchedSignals) {
             batchedSignals.add(signal as RefSignal<unknown>);
         }
 
-        // Track update in devtools
         if (devtools.isEnabled()) {
             devtools.trackUpdate(signal, oldValue, value);
         }
@@ -128,7 +118,6 @@ export function createRefSignal<T = unknown>(
             : undefined,
     };
 
-    // Register with devtools if enabled
     if (devtools.isEnabled()) {
         devtools.registerSignal(signal, debugName);
     }
@@ -165,12 +154,6 @@ export function createRefSignal<T = unknown>(
  *   signalB.current = 2;
  * }, [signalA, signalB]);
  */
-export function batch(callback: React.EffectCallback): void;
-export function batch(
-    callback: React.EffectCallback,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    deps: RefSignal<any>[],
-): void;
 export function batch(
     callback: React.EffectCallback,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,6 +162,7 @@ export function batch(
     if (deps !== undefined) {
         // Explicit deps mode - original behavior
         batchStack.push(deps);
+
         try {
             callback();
         } finally {
@@ -202,11 +186,10 @@ export function batch(
         } finally {
             batchedSignals = previousBatchedSignals;
 
-            // Notify all tracked signals (now that batchedSignals is cleared, they'll notify normally)
-            const depsArray = Array.from(tracked);
-            if (depsArray.length > 0) {
+            if (tracked.size > 0) {
                 const lastUpdated = Date.now();
-                depsArray.forEach((dep) => {
+
+                tracked.forEach((dep) => {
                     dep.lastUpdated = lastUpdated;
                     dep.notify();
                 });
