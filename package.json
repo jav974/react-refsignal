@@ -1,6 +1,6 @@
 {
   "name": "react-refsignal",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A lightweight React hook library for managing and subscribing to signals within refs, enabling efficient updates and notifications without unnecessary renders.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
