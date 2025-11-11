@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { renderHook, act } from '@testing-library/react';
 import { useRefSignal } from './hooks/useRefSignal';
 import { configureDevTools, devtools } from './devtools';
@@ -25,7 +25,7 @@ describe('DevTools', () => {
         devtools.reset();
     });
 
-    it('should be disabled by default in test environment', () => {
+    it('should disable devtools when configured', () => {
         configureDevTools({ enabled: false });
         expect(devtools.isEnabled()).toBe(false);
     });
@@ -157,6 +157,83 @@ describe('DevTools', () => {
 
         expect(signal.getDebugName).toBeDefined();
         expect(signal.getDebugName?.()).toBe('test');
+    });
+
+    it('should log updates to console when logUpdates is enabled', () => {
+        configureDevTools({ enabled: true, logUpdates: true });
+
+        const consoleLogSpy = jest
+            .spyOn(console, 'log')
+            .mockImplementation(() => {});
+
+        const signal = createRefSignal(10, 'testSignal');
+        signal.update(20);
+
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+            '[RefSignal] testSignal updated:',
+            { from: 10, to: 20 },
+        );
+
+        consoleLogSpy.mockRestore();
+    });
+
+    it('should integrate with Redux DevTools Extension when available', () => {
+        const mockSend = jest.fn();
+        const mockInit = jest.fn();
+        const mockConnect = jest.fn(() => ({
+            init: mockInit,
+            send: mockSend,
+        }));
+
+        // Mock Redux DevTools Extension
+        const originalExtension = (window as any).__REDUX_DEVTOOLS_EXTENSION__;
+        (window as any).__REDUX_DEVTOOLS_EXTENSION__ = {
+            connect: mockConnect,
+        };
+
+        // Reset devtools to force reconfiguration
+        devtools.reset();
+        configureDevTools({ enabled: true, reduxDevTools: true });
+
+        expect(mockConnect).toHaveBeenCalledWith({
+            name: 'RefSignal DevTools',
+            features: expect.objectContaining({
+                pause: true,
+                export: true,
+            }),
+        });
+
+        expect(mockInit).toHaveBeenCalled();
+
+        // Test that updates are sent to Redux DevTools
+        const signal = createRefSignal(5, 'counter');
+        signal.update(10);
+
+        expect(mockSend).toHaveBeenCalledWith(
+            {
+                type: 'UPDATE counter',
+                payload: { oldValue: 5, newValue: 10 },
+            },
+            expect.objectContaining({ counter: 10 }),
+        );
+
+        // Cleanup
+        (window as any).__REDUX_DEVTOOLS_EXTENSION__ = originalExtension;
+    });
+
+    it('should handle missing Redux DevTools Extension gracefully', () => {
+        const originalExtension = (window as any).__REDUX_DEVTOOLS_EXTENSION__;
+        delete (window as any).__REDUX_DEVTOOLS_EXTENSION__;
+
+        devtools.reset();
+        expect(() => {
+            configureDevTools({ enabled: true, reduxDevTools: true });
+        }).not.toThrow();
+
+        // Restore
+        if (originalExtension) {
+            (window as any).__REDUX_DEVTOOLS_EXTENSION__ = originalExtension;
+        }
     });
 
     it('should not have getDebugName method when disabled', () => {
