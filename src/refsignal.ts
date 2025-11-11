@@ -6,6 +6,9 @@ export type Listener<T = unknown> = (value: T) => void;
 export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
 export const batchStack = new Stack<RefSignal<unknown>[]>();
 
+// Auto-inference: track signals updated during batch execution
+let batchedSignals: Set<RefSignal<unknown>> | null = null;
+
 export interface RefSignal<T = unknown> {
     current: T;
     lastUpdated: number;
@@ -59,7 +62,12 @@ export function unsubscribe<T>(
 }
 
 export function notify<T>(signal: RefSignal<T>): void {
-    if (!batchStack.peek()?.some((s) => s === signal)) {
+    // Check if we're in a batch (explicit deps in stack OR auto-inference mode tracking this signal)
+    const inBatch =
+        batchStack.peek()?.some((s) => s === signal) ||
+        (batchedSignals && batchedSignals.has(signal as RefSignal<unknown>));
+
+    if (!inBatch) {
         listenersMap.get(signal)?.forEach((listener) => {
             try {
                 listener(signal.current);
@@ -88,6 +96,11 @@ export function update<T>(signal: RefSignal<T>, value: T) {
     if (signal.current !== value) {
         const oldValue = signal.current;
         signal.current = value;
+
+        // Track signal for auto-inferred batch
+        if (batchedSignals) {
+            batchedSignals.add(signal as RefSignal<unknown>);
+        }
 
         // Track update in devtools
         if (devtools.isEnabled()) {
@@ -124,25 +137,80 @@ export function createRefSignal<T = unknown>(
 }
 
 /**
- * Defer notifications of refSignals update to the end of callback function
- * @param deps
+ * Batch multiple signal updates and defer notifications until the callback completes.
+ *
+ * **Auto-inference mode** (no deps parameter):
+ * - Automatically tracks signals updated via `.update()`
+ * - Recommended for most use cases
+ * - Direct mutations (`signal.current = value`) are NOT tracked
+ *
+ * **Explicit deps mode** (with deps parameter):
+ * - Manually specify which signals to batch
+ * - Use when you need to batch direct mutations or `.notify()` calls
+ *
+ * @param callback Function that performs signal updates
+ * @param deps Optional array of signals to batch (for explicit mode)
+ *
+ * @example
+ * // Auto-inferred (recommended)
+ * batch(() => {
+ *   signalA.update(1);
+ *   signalB.update(2);
+ * });
+ *
+ * @example
+ * // Explicit deps (for direct mutations)
+ * batch(() => {
+ *   signalA.current = 1;
+ *   signalB.current = 2;
+ * }, [signalA, signalB]);
  */
+export function batch(callback: React.EffectCallback): void;
 export function batch(
     callback: React.EffectCallback,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     deps: RefSignal<any>[],
+): void;
+export function batch(
+    callback: React.EffectCallback,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deps?: RefSignal<any>[],
 ): void {
-    batchStack.push(deps);
-    try {
-        callback();
-    } finally {
-        batchStack.pop();
+    if (deps !== undefined) {
+        // Explicit deps mode - original behavior
+        batchStack.push(deps);
+        try {
+            callback();
+        } finally {
+            batchStack.pop();
 
-        const lastUpdated = Date.now();
+            const lastUpdated = Date.now();
 
-        deps.forEach((dep) => {
-            dep.lastUpdated = lastUpdated;
-            dep.notify();
-        });
+            deps.forEach((dep) => {
+                dep.lastUpdated = lastUpdated;
+                dep.notify();
+            });
+        }
+    } else {
+        // Auto-inference mode - track signals updated via .update()
+        const tracked = new Set<RefSignal<unknown>>();
+        const previousBatchedSignals = batchedSignals;
+        batchedSignals = tracked;
+
+        try {
+            callback();
+        } finally {
+            batchedSignals = previousBatchedSignals;
+
+            // Notify all tracked signals (now that batchedSignals is cleared, they'll notify normally)
+            const depsArray = Array.from(tracked);
+            if (depsArray.length > 0) {
+                const lastUpdated = Date.now();
+                depsArray.forEach((dep) => {
+                    dep.lastUpdated = lastUpdated;
+                    dep.notify();
+                });
+            }
+        }
     }
 }

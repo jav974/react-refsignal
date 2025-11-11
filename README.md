@@ -117,14 +117,26 @@ function MyComponent() {
 ### 5. Batching Updates
 
 Batch multiple signal updates and defer notifications until the end of a callback.
-This function will defer notifications only for RefSignals present in the dependency list.
+
+**Auto-inference (recommended)**: Automatically tracks signals updated via `.update()`:
 
 ```typescript
 import { batch } from "react-refsignal";
 
+// Automatically infers signalA and signalB as dependencies
 batch(() => {
   signalA.update(1);
   signalB.update(2);
+});
+```
+
+**Explicit dependencies**: Useful for direct mutations or manual `.notify()` calls:
+
+```typescript
+// Required when mutating .current directly
+batch(() => {
+  signalA.current = 1;
+  signalB.current = 2;
 }, [signalA, signalB]);
 ```
 
@@ -313,9 +325,13 @@ Forces a component to re-render when any of the provided `RefSignal` objects upd
 Optionally, you can provide a callback function; a re-render will only occur if this function returns `true`.
 The returned function can also be called manually to force a re-render.
 
-### `batch(callback: () => void, dependencies: RefSignal[])`
+### `batch(callback: () => void, dependencies?: RefSignal[])`
 
 Batches updates to multiple `RefSignal` objects and defers notifications until the callback completes.
+
+**Auto-inference mode** (when `dependencies` is omitted): Automatically tracks signals updated via `.update()` and batches their notifications.
+
+**Explicit mode** (when `dependencies` is provided): Batches notifications for the specified signals, useful for direct `.current` mutations or manual `.notify()` calls.
 
 ### `createRefSignal<T>(initialValue: T, debugName?: string): RefSignal<T>`
 
