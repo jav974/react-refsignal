@@ -53,6 +53,29 @@ describe('subscribe/unsubscribe/notify', () => {
         expect(listener).toHaveBeenCalledWith('hello');
         expect(listener2).toHaveBeenCalledWith('hello');
     });
+
+    it('should handle listener exceptions and log error', () => {
+        const signal = createRefSignal('test');
+        const goodListener = jest.fn();
+        const badListener = jest.fn(() => {
+            throw new Error('Listener error');
+        });
+
+        signal.subscribe(goodListener);
+        signal.subscribe(badListener);
+
+        const consoleErrorSpy = jest
+            .spyOn(console, 'error')
+            .mockImplementation(() => {});
+
+        signal.notify();
+
+        expect(goodListener).toHaveBeenCalledWith('test');
+        expect(badListener).toHaveBeenCalledWith('test');
+        expect(consoleErrorSpy).toHaveBeenCalled();
+
+        consoleErrorSpy.mockRestore();
+    });
 });
 
 describe('notify/notifyUpdate', () => {
