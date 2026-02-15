@@ -21,6 +21,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Install React ${{ matrix.react-version }} and matching Testing Library
         run: |
           npm install --no-save react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }}
@@ -29,9 +32,6 @@ jobs:
           else
             npm install --no-save @types/react@latest @testing-library/react@latest
           fi
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Run ESLint
         run: npm run lint
