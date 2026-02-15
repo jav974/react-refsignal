@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import { createRefSignal, batch } from './refsignal';
+import { batch, createRefSignal } from './refsignal';
 
 describe('batch() - Auto-inference', () => {
   it('should auto-infer signals updated via .update()', () => {
@@ -295,8 +295,7 @@ describe('batch() - Edge Cases', () => {
     outerSignal.subscribe(listener);
 
     function updateInner() {
-      const innerSignal = createRefSignal(10);
-      return innerSignal;
+      return createRefSignal(10);
     }
 
     batch(() => {
