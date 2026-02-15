@@ -75,6 +75,7 @@ export function useRefSignalRender(
   // Server snapshot function for SSR compatibility
   // Returns the same snapshot on server as initial client render
   // This prevents hydration mismatches in SSR environments (Next.js, Remix, etc.)
+  // noinspection UnnecessaryLocalVariableJS
   const getServerSnapshot = getSnapshot;
 
   // Use React 18's useSyncExternalStore for concurrent-safe subscriptions
