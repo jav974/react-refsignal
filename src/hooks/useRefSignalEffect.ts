@@ -57,39 +57,39 @@ import { isRefSignal } from '../refsignal';
  * }, [position]);
  */
 export function useRefSignalEffect(
-    effect: React.EffectCallback,
-    deps: React.DependencyList,
+  effect: React.EffectCallback,
+  deps: React.DependencyList,
 ) {
-    // Store effect in ref to avoid stale closures when effect function changes
-    const effectRef = useRef(effect);
-    effectRef.current = effect;
+  // Store effect in ref to avoid stale closures when effect function changes
+  const effectRef = useRef(effect);
+  effectRef.current = effect;
 
-    useEffect(() => {
-        // Wrapper that calls the current effect from ref
-        // The wrapper just runs the effect - no cleanup between signal notifications
-        const wrappedEffect = () => {
-            effectRef.current();
-        };
+  useEffect(() => {
+    // Wrapper that calls the current effect from ref
+    // The wrapper just runs the effect - no cleanup between signal notifications
+    const wrappedEffect = () => {
+      effectRef.current();
+    };
 
-        // Subscribe to all RefSignal dependencies
-        deps.forEach((dep) => {
-            if (isRefSignal(dep)) dep.subscribe(wrappedEffect);
-        });
+    // Subscribe to all RefSignal dependencies
+    deps.forEach((dep) => {
+      if (isRefSignal(dep)) dep.subscribe(wrappedEffect);
+    });
 
-        // Run effect immediately on mount
-        const destructor = effectRef.current();
+    // Run effect immediately on mount
+    const destructor = effectRef.current();
 
-        // Cleanup function - only runs on unmount or deps change
-        return () => {
-            // Unsubscribe from all signals
-            deps.forEach((dep) => {
-                if (isRefSignal(dep)) dep.unsubscribe(wrappedEffect);
-            });
+    // Cleanup function - only runs on unmount or deps change
+    return () => {
+      // Unsubscribe from all signals
+      deps.forEach((dep) => {
+        if (isRefSignal(dep)) dep.unsubscribe(wrappedEffect);
+      });
 
-            // Call effect's cleanup function if it exists
-            if (typeof destructor === 'function') {
-                destructor();
-            }
-        };
-    }, deps);
+      // Call effect's cleanup function if it exists
+      if (typeof destructor === 'function') {
+        destructor();
+      }
+    };
+  }, deps);
 }

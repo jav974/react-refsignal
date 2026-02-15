@@ -26,7 +26,7 @@ export default defineConfig([{
     ),
 
     rules: {
-        indent: ["error", 4]
+        indent: ["error", 2]
     },
 
     plugins: {

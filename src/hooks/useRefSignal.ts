@@ -28,24 +28,24 @@ import { createRefSignal, listenersMap, RefSignal } from '../refsignal';
  */
 export function useRefSignal<T>(value: T, debugName?: string): RefSignal<T>;
 export function useRefSignal<T>(
-    value: T | null,
-    debugName?: string,
+  value: T | null,
+  debugName?: string,
 ): RefSignal<T | null>;
 export function useRefSignal<T>(
-    value: T | undefined,
-    debugName?: string,
+  value: T | undefined,
+  debugName?: string,
 ): RefSignal<T | undefined>;
 export function useRefSignal<T>(
-    value: T | null | undefined,
-    debugName?: string,
+  value: T | null | undefined,
+  debugName?: string,
 ): RefSignal<T | null | undefined> {
-    const refSignal = useMemo(() => createRefSignal(value, debugName), []);
+  const refSignal = useMemo(() => createRefSignal(value, debugName), []);
 
-    useEffect(() => {
-        return () => {
-            listenersMap.delete(refSignal);
-        };
-    }, [refSignal]);
+  useEffect(() => {
+    return () => {
+      listenersMap.delete(refSignal);
+    };
+  }, [refSignal]);
 
-    return refSignal;
+  return refSignal;
 }

@@ -23,32 +23,32 @@ import { RefSignal } from '../refsignal';
  * // When count.update(2) is called, double will update to 4 and notify listeners.
  */
 export function useRefSignalMemo<T>(
-    factory: () => T,
-    deps: DependencyList,
+  factory: () => T,
+  deps: DependencyList,
 ): RefSignal<T>;
 export function useRefSignalMemo<T>(
-    factory: () => T | null,
-    deps: DependencyList,
+  factory: () => T | null,
+  deps: DependencyList,
 ): RefSignal<T | null>;
 export function useRefSignalMemo<T>(
-    factory: () => T | undefined,
-    deps: DependencyList,
+  factory: () => T | undefined,
+  deps: DependencyList,
 ): RefSignal<T | undefined>;
 export function useRefSignalMemo<T>(
-    factory: () => T | null | undefined,
-    deps: DependencyList,
+  factory: () => T | null | undefined,
+  deps: DependencyList,
 ): RefSignal<T | null | undefined> {
-    const memo = useMemo<T | null | undefined>(factory, deps);
-    const value = useRefSignal<T | null | undefined>(memo);
-    const isInitialMount = useRef(true);
+  const memo = useMemo<T | null | undefined>(factory, deps);
+  const value = useRefSignal<T | null | undefined>(memo);
+  const isInitialMount = useRef(true);
 
-    useRefSignalEffect(() => {
-        if (isInitialMount.current) {
-            isInitialMount.current = false;
-            return;
-        }
-        value.update(factory());
-    }, deps);
+  useRefSignalEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    value.update(factory());
+  }, deps);
 
-    return value;
+  return value;
 }
