@@ -13,8 +13,7 @@
     "coverage": "jest --coverage",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
-    "size": "size-limit",
-    "prepare": "tsup"
+    "size": "size-limit"
   },
   "repository": {
     "type": "git",
