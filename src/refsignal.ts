@@ -7,122 +7,122 @@ export const batchStack: RefSignal<unknown>[][] = [];
 let batchedSignals: Set<RefSignal<unknown>> | null = null;
 
 export interface RefSignal<T = unknown> {
-    current: T;
-    lastUpdated: number;
-    readonly subscribe: (listener: Listener<T>) => void;
-    readonly unsubscribe: (listener: Listener<T>) => void;
-    readonly update: (value: T) => void;
-    readonly notify: () => void;
-    readonly notifyUpdate: () => void;
-    /** DevTools only: Get the debug name of this signal */
-    readonly getDebugName?: () => string | undefined;
+  current: T;
+  lastUpdated: number;
+  readonly subscribe: (listener: Listener<T>) => void;
+  readonly unsubscribe: (listener: Listener<T>) => void;
+  readonly update: (value: T) => void;
+  readonly notify: () => void;
+  readonly notifyUpdate: () => void;
+  /** DevTools only: Get the debug name of this signal */
+  readonly getDebugName?: () => string | undefined;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isRefSignal<T>(obj: any): obj is RefSignal<T> {
-    return (
-        obj &&
-        typeof obj === 'object' &&
-        'current' in obj &&
-        typeof obj.lastUpdated === 'number' &&
-        typeof obj.subscribe === 'function' &&
-        typeof obj.unsubscribe === 'function' &&
-        typeof obj.update === 'function' &&
-        typeof obj.notify === 'function' &&
-        typeof obj.notifyUpdate === 'function'
-    );
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    'current' in obj &&
+    typeof obj.lastUpdated === 'number' &&
+    typeof obj.subscribe === 'function' &&
+    typeof obj.unsubscribe === 'function' &&
+    typeof obj.update === 'function' &&
+    typeof obj.notify === 'function' &&
+    typeof obj.notifyUpdate === 'function'
+  );
 }
 
 export function subscribe<T>(
-    signal: RefSignal<T>,
-    listener: Listener<T>,
+  signal: RefSignal<T>,
+  listener: Listener<T>,
 ): void {
-    if (!listenersMap.has(signal)) {
-        listenersMap.set(signal, new Set());
-    }
-    listenersMap.get(signal)?.add(listener as Listener<unknown>);
+  if (!listenersMap.has(signal)) {
+    listenersMap.set(signal, new Set());
+  }
+  listenersMap.get(signal)?.add(listener as Listener<unknown>);
 }
 
 export function unsubscribe<T>(
-    signal: RefSignal<T>,
-    listener: Listener<T>,
+  signal: RefSignal<T>,
+  listener: Listener<T>,
 ): void {
-    const listeners = listenersMap.get(signal);
+  const listeners = listenersMap.get(signal);
 
-    if (listeners) {
-        listeners.delete(listener as Listener<unknown>);
-        if (listeners.size === 0) {
-            listenersMap.delete(signal);
-        }
+  if (listeners) {
+    listeners.delete(listener as Listener<unknown>);
+    if (listeners.size === 0) {
+      listenersMap.delete(signal);
     }
+  }
 }
 
 export function notify<T>(signal: RefSignal<T>): void {
-    const inBatch =
-        batchStack[batchStack.length - 1]?.some((s) => s === signal) ||
-        (batchedSignals && batchedSignals.has(signal as RefSignal<unknown>));
+  const inBatch =
+    batchStack[batchStack.length - 1]?.some((s) => s === signal) ||
+    (batchedSignals && batchedSignals.has(signal as RefSignal<unknown>));
 
-    if (!inBatch) {
-        listenersMap.get(signal)?.forEach((listener) => {
-            try {
-                listener(signal.current);
-            } catch (error) {
-                const name = devtools.isEnabled()
-                    ? devtools.getSignalName(signal)
-                    : null;
-                console.error(
-                    `[RefSignal] Listener error${name ? ` in ${name}` : ''}:`,
-                    error,
-                );
-            }
-        });
-    }
+  if (!inBatch) {
+    listenersMap.get(signal)?.forEach((listener) => {
+      try {
+        listener(signal.current);
+      } catch (error) {
+        const name = devtools.isEnabled()
+          ? devtools.getSignalName(signal)
+          : null;
+        console.error(
+          `[RefSignal] Listener error${name ? ` in ${name}` : ''}:`,
+          error,
+        );
+      }
+    });
+  }
 }
 
 export function notifyUpdate<T>(signal: RefSignal<T>): void {
-    signal.lastUpdated = Date.now();
-    notify(signal);
+  signal.lastUpdated = Date.now();
+  notify(signal);
 }
 
 export function update<T>(signal: RefSignal<T>, value: T) {
-    if (signal.current !== value) {
-        const oldValue = signal.current;
-        signal.current = value;
+  if (signal.current !== value) {
+    const oldValue = signal.current;
+    signal.current = value;
 
-        if (batchedSignals) {
-            batchedSignals.add(signal as RefSignal<unknown>);
-        }
-
-        if (devtools.isEnabled()) {
-            devtools.trackUpdate(signal, oldValue, value);
-        }
-
-        notifyUpdate(signal);
+    if (batchedSignals) {
+      batchedSignals.add(signal as RefSignal<unknown>);
     }
+
+    if (devtools.isEnabled()) {
+      devtools.trackUpdate(signal, oldValue, value);
+    }
+
+    notifyUpdate(signal);
+  }
 }
 
 export function createRefSignal<T = unknown>(
-    initialValue: T,
-    debugName?: string,
+  initialValue: T,
+  debugName?: string,
 ): RefSignal<T> {
-    const signal: RefSignal<T> = {
-        current: initialValue,
-        lastUpdated: 0,
-        subscribe: (listener: Listener<T>) => subscribe(signal, listener),
-        unsubscribe: (listener: Listener<T>) => unsubscribe(signal, listener),
-        notify: () => notify(signal),
-        notifyUpdate: () => notifyUpdate(signal),
-        update: (value: T) => update(signal, value),
-        getDebugName: devtools.isEnabled()
-            ? () => devtools.getSignalName(signal)
-            : undefined,
-    };
+  const signal: RefSignal<T> = {
+    current: initialValue,
+    lastUpdated: 0,
+    subscribe: (listener: Listener<T>) => subscribe(signal, listener),
+    unsubscribe: (listener: Listener<T>) => unsubscribe(signal, listener),
+    notify: () => notify(signal),
+    notifyUpdate: () => notifyUpdate(signal),
+    update: (value: T) => update(signal, value),
+    getDebugName: devtools.isEnabled()
+      ? () => devtools.getSignalName(signal)
+      : undefined,
+  };
 
-    if (devtools.isEnabled()) {
-        devtools.registerSignal(signal, debugName);
-    }
+  if (devtools.isEnabled()) {
+    devtools.registerSignal(signal, debugName);
+  }
 
-    return signal;
+  return signal;
 }
 
 /**
@@ -155,45 +155,45 @@ export function createRefSignal<T = unknown>(
  * }, [signalA, signalB]);
  */
 export function batch(
-    callback: React.EffectCallback,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    deps?: RefSignal<any>[],
+  callback: React.EffectCallback,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deps?: RefSignal<any>[],
 ): void {
-    if (deps !== undefined) {
-        // Explicit deps mode - original behavior
-        batchStack.push(deps);
+  if (deps !== undefined) {
+    // Explicit deps mode - original behavior
+    batchStack.push(deps);
 
-        try {
-            callback();
-        } finally {
-            batchStack.pop();
+    try {
+      callback();
+    } finally {
+      batchStack.pop();
 
-            const lastUpdated = Date.now();
+      const lastUpdated = Date.now();
 
-            deps.forEach((dep) => {
-                dep.lastUpdated = lastUpdated;
-                dep.notify();
-            });
-        }
-    } else {
-        // Auto-inference mode - track signals updated via .update()
-        const tracked = new Set<RefSignal<unknown>>();
-        const previousBatchedSignals = batchedSignals;
-        batchedSignals = tracked;
-
-        try {
-            callback();
-        } finally {
-            batchedSignals = previousBatchedSignals;
-
-            if (tracked.size > 0) {
-                const lastUpdated = Date.now();
-
-                tracked.forEach((dep) => {
-                    dep.lastUpdated = lastUpdated;
-                    dep.notify();
-                });
-            }
-        }
+      deps.forEach((dep) => {
+        dep.lastUpdated = lastUpdated;
+        dep.notify();
+      });
     }
+  } else {
+    // Auto-inference mode - track signals updated via .update()
+    const tracked = new Set<RefSignal<unknown>>();
+    const previousBatchedSignals = batchedSignals;
+    batchedSignals = tracked;
+
+    try {
+      callback();
+    } finally {
+      batchedSignals = previousBatchedSignals;
+
+      if (tracked.size > 0) {
+        const lastUpdated = Date.now();
+
+        tracked.forEach((dep) => {
+          dep.lastUpdated = lastUpdated;
+          dep.notify();
+        });
+      }
+    }
+  }
 }
