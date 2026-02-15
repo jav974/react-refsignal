@@ -1,187 +1,187 @@
 import { createRefSignal, isRefSignal, batch } from './refsignal';
 
 describe('createRefSignal', () => {
-    it('should create a RefSignal with initial value', () => {
-        const signal = createRefSignal(42);
-        expect(signal.current).toBe(42);
-        expect(typeof signal.subscribe).toBe('function');
-        expect(typeof signal.unsubscribe).toBe('function');
-        expect(typeof signal.update).toBe('function');
-        expect(typeof signal.notify).toBe('function');
-        expect(typeof signal.notifyUpdate).toBe('function');
-    });
+  it('should create a RefSignal with initial value', () => {
+    const signal = createRefSignal(42);
+    expect(signal.current).toBe(42);
+    expect(typeof signal.subscribe).toBe('function');
+    expect(typeof signal.unsubscribe).toBe('function');
+    expect(typeof signal.update).toBe('function');
+    expect(typeof signal.notify).toBe('function');
+    expect(typeof signal.notifyUpdate).toBe('function');
+  });
 
-    it('should satisfy isRefSignal', () => {
-        const signal = createRefSignal('test');
-        expect(isRefSignal(signal)).toBe(true);
-    });
+  it('should satisfy isRefSignal', () => {
+    const signal = createRefSignal('test');
+    expect(isRefSignal(signal)).toBe(true);
+  });
 
-    it('should not satisfy isRefSignal', () => {
-        const signal = { current: 'test' };
-        expect(isRefSignal(signal)).toBe(false);
-    });
+  it('should not satisfy isRefSignal', () => {
+    const signal = { current: 'test' };
+    expect(isRefSignal(signal)).toBe(false);
+  });
 });
 
 describe('subscribe/unsubscribe/notify', () => {
-    it('should call listener on notify', () => {
-        const signal = createRefSignal('hello');
-        const listener = jest.fn();
-        signal.subscribe(listener);
+  it('should call listener on notify', () => {
+    const signal = createRefSignal('hello');
+    const listener = jest.fn();
+    signal.subscribe(listener);
 
-        signal.notify();
-        expect(listener).toHaveBeenCalledWith('hello');
+    signal.notify();
+    expect(listener).toHaveBeenCalledWith('hello');
+  });
+
+  it('should not call unsubscribed listener', () => {
+    const signal = createRefSignal('bye');
+    const listener = jest.fn();
+    signal.subscribe(listener);
+    signal.unsubscribe(listener);
+
+    signal.notify();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('should call listeners on notify', () => {
+    const signal = createRefSignal('hello');
+    const listener = jest.fn();
+    const listener2 = jest.fn();
+    signal.subscribe(listener);
+    signal.subscribe(listener2);
+
+    signal.notify();
+    expect(listener).toHaveBeenCalledWith('hello');
+    expect(listener2).toHaveBeenCalledWith('hello');
+  });
+
+  it('should handle listener exceptions and log error', () => {
+    const signal = createRefSignal('test');
+    const goodListener = jest.fn();
+    const badListener = jest.fn(() => {
+      throw new Error('Listener error');
     });
 
-    it('should not call unsubscribed listener', () => {
-        const signal = createRefSignal('bye');
-        const listener = jest.fn();
-        signal.subscribe(listener);
-        signal.unsubscribe(listener);
+    signal.subscribe(goodListener);
+    signal.subscribe(badListener);
 
-        signal.notify();
-        expect(listener).not.toHaveBeenCalled();
-    });
+    const consoleErrorSpy = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
-    it('should call listeners on notify', () => {
-        const signal = createRefSignal('hello');
-        const listener = jest.fn();
-        const listener2 = jest.fn();
-        signal.subscribe(listener);
-        signal.subscribe(listener2);
+    signal.notify();
 
-        signal.notify();
-        expect(listener).toHaveBeenCalledWith('hello');
-        expect(listener2).toHaveBeenCalledWith('hello');
-    });
+    expect(goodListener).toHaveBeenCalledWith('test');
+    expect(badListener).toHaveBeenCalledWith('test');
+    expect(consoleErrorSpy).toHaveBeenCalled();
 
-    it('should handle listener exceptions and log error', () => {
-        const signal = createRefSignal('test');
-        const goodListener = jest.fn();
-        const badListener = jest.fn(() => {
-            throw new Error('Listener error');
-        });
-
-        signal.subscribe(goodListener);
-        signal.subscribe(badListener);
-
-        const consoleErrorSpy = jest
-            .spyOn(console, 'error')
-            .mockImplementation(() => {});
-
-        signal.notify();
-
-        expect(goodListener).toHaveBeenCalledWith('test');
-        expect(badListener).toHaveBeenCalledWith('test');
-        expect(consoleErrorSpy).toHaveBeenCalled();
-
-        consoleErrorSpy.mockRestore();
-    });
+    consoleErrorSpy.mockRestore();
+  });
 });
 
 describe('notify/notifyUpdate', () => {
-    it('should update lastUpdated timestamp when notifyUpdate is called', () => {
-        const signal = createRefSignal(1);
-        expect(signal.lastUpdated).toBe(0);
+  it('should update lastUpdated timestamp when notifyUpdate is called', () => {
+    const signal = createRefSignal(1);
+    expect(signal.lastUpdated).toBe(0);
 
-        signal.notifyUpdate();
-        expect(signal.lastUpdated).not.toBe(0);
-    });
+    signal.notifyUpdate();
+    expect(signal.lastUpdated).not.toBe(0);
+  });
 
-    it('should not update lastUpdated timestamp when notify is called', () => {
-        const signal = createRefSignal(1);
-        expect(signal.lastUpdated).toBe(0);
+  it('should not update lastUpdated timestamp when notify is called', () => {
+    const signal = createRefSignal(1);
+    expect(signal.lastUpdated).toBe(0);
 
-        signal.notify();
-        expect(signal.lastUpdated).toBe(0);
-    });
+    signal.notify();
+    expect(signal.lastUpdated).toBe(0);
+  });
 });
 
 describe('update', () => {
-    it('should update value and notify listeners', () => {
-        const signal = createRefSignal(1);
-        const listener = jest.fn();
-        signal.subscribe(listener);
+  it('should update value and notify listeners', () => {
+    const signal = createRefSignal(1);
+    const listener = jest.fn();
+    signal.subscribe(listener);
 
-        signal.update(2);
-        expect(signal.current).toBe(2);
-        expect(listener).toHaveBeenCalledWith(2);
-    });
+    signal.update(2);
+    expect(signal.current).toBe(2);
+    expect(listener).toHaveBeenCalledWith(2);
+  });
 
-    it('should not notify if value is unchanged', () => {
-        const signal = createRefSignal(5);
-        const listener = jest.fn();
-        signal.subscribe(listener);
+  it('should not notify if value is unchanged', () => {
+    const signal = createRefSignal(5);
+    const listener = jest.fn();
+    signal.subscribe(listener);
 
-        signal.update(5);
-        expect(listener).not.toHaveBeenCalled();
-    });
+    signal.update(5);
+    expect(listener).not.toHaveBeenCalled();
+  });
 
-    it('should update lastUpdated property when updated', () => {
-        const signal = createRefSignal(5);
-        const currentTimestamp = signal.lastUpdated;
+  it('should update lastUpdated property when updated', () => {
+    const signal = createRefSignal(5);
+    const currentTimestamp = signal.lastUpdated;
 
-        expect(currentTimestamp).toBe(0);
+    expect(currentTimestamp).toBe(0);
 
-        const listener = jest.fn();
-        signal.subscribe(listener);
+    const listener = jest.fn();
+    signal.subscribe(listener);
 
-        signal.update(1);
-        expect(signal.lastUpdated).not.toBe(currentTimestamp);
-    });
+    signal.update(1);
+    expect(signal.lastUpdated).not.toBe(currentTimestamp);
+  });
 });
 
 describe('batch', () => {
-    it('should defer notifications until after batch', () => {
-        const signalA = createRefSignal(1);
-        const signalB = createRefSignal(2);
-        const listenerA = jest.fn();
-        const listenerB = jest.fn();
+  it('should defer notifications until after batch', () => {
+    const signalA = createRefSignal(1);
+    const signalB = createRefSignal(2);
+    const listenerA = jest.fn();
+    const listenerB = jest.fn();
 
-        signalA.subscribe(listenerA);
-        signalB.subscribe(listenerB);
+    signalA.subscribe(listenerA);
+    signalB.subscribe(listenerB);
 
-        batch(() => {
-            signalA.update(10);
-            signalB.update(20);
-            // Listeners should not be called yet
-            expect(listenerA).not.toHaveBeenCalled();
-            expect(listenerB).not.toHaveBeenCalled();
-        }, [signalA, signalB]);
+    batch(() => {
+      signalA.update(10);
+      signalB.update(20);
+      // Listeners should not be called yet
+      expect(listenerA).not.toHaveBeenCalled();
+      expect(listenerB).not.toHaveBeenCalled();
+    }, [signalA, signalB]);
 
-        // After batch, listeners should be called
-        expect(listenerA).toHaveBeenCalledWith(10);
-        expect(listenerB).toHaveBeenCalledWith(20);
-    });
+    // After batch, listeners should be called
+    expect(listenerA).toHaveBeenCalledWith(10);
+    expect(listenerB).toHaveBeenCalledWith(20);
+  });
 
-    it('should cleanup batch stack even when callback throws error', () => {
-        const signalA = createRefSignal(1);
-        const signalB = createRefSignal(2);
-        const listenerA = jest.fn();
-        const listenerB = jest.fn();
+  it('should cleanup batch stack even when callback throws error', () => {
+    const signalA = createRefSignal(1);
+    const signalB = createRefSignal(2);
+    const listenerA = jest.fn();
+    const listenerB = jest.fn();
 
-        signalA.subscribe(listenerA);
-        signalB.subscribe(listenerB);
+    signalA.subscribe(listenerA);
+    signalB.subscribe(listenerB);
 
-        // First batch that throws an error
-        expect(() => {
-            batch(() => {
-                signalA.update(10);
-                throw new Error('Test error');
-            }, [signalA]);
-        }).toThrow('Test error');
+    // First batch that throws an error
+    expect(() => {
+      batch(() => {
+        signalA.update(10);
+        throw new Error('Test error');
+      }, [signalA]);
+    }).toThrow('Test error');
 
-        // Listeners should still be notified after error (finally block)
-        expect(listenerA).toHaveBeenCalledWith(10);
+    // Listeners should still be notified after error (finally block)
+    expect(listenerA).toHaveBeenCalledWith(10);
 
-        listenerA.mockClear();
-        listenerB.mockClear();
+    listenerA.mockClear();
+    listenerB.mockClear();
 
-        // Second batch should work normally (stack not corrupted)
-        batch(() => {
-            signalB.update(20);
-            expect(listenerB).not.toHaveBeenCalled();
-        }, [signalB]);
+    // Second batch should work normally (stack not corrupted)
+    batch(() => {
+      signalB.update(20);
+      expect(listenerB).not.toHaveBeenCalled();
+    }, [signalB]);
 
-        expect(listenerB).toHaveBeenCalledWith(20);
-    });
+    expect(listenerB).toHaveBeenCalledWith(20);
+  });
 });

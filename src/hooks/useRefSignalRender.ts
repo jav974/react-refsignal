@@ -33,54 +33,54 @@ import { RefSignal } from '../refsignal';
  * // Only re-renders when count is greater than 5
  */
 export function useRefSignalRender(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    deps: RefSignal<any>[],
-    callback?: () => boolean,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deps: RefSignal<any>[],
+  callback?: () => boolean,
 ): () => void {
-    const [, forceUpdate] = useReducer((x) => x + 1, 0);
+  const [, forceUpdate] = useReducer((x) => x + 1, 0);
 
-    // Store callback in ref to avoid resubscription when callback changes
-    const callbackRef = useRef(callback);
-    callbackRef.current = callback;
+  // Store callback in ref to avoid resubscription when callback changes
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
 
-    // Subscribe function for useSyncExternalStore
-    // This manages the subscription lifecycle to all RefSignal dependencies
-    // IMPORTANT: deps must be in useCallback deps array so subscribe identity changes
-    // when deps change, triggering useSyncExternalStore to resubscribe
-    const subscribe = useCallback(
-        (onStoreChange: () => void) => {
-            const listener = () => {
-                // Apply optional filter callback before notifying React
-                if (!callbackRef.current || callbackRef.current() === true) {
-                    onStoreChange();
-                }
-            };
+  // Subscribe function for useSyncExternalStore
+  // This manages the subscription lifecycle to all RefSignal dependencies
+  // IMPORTANT: deps must be in useCallback deps array so subscribe identity changes
+  // when deps change, triggering useSyncExternalStore to resubscribe
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      const listener = () => {
+        // Apply optional filter callback before notifying React
+        if (!callbackRef.current || callbackRef.current() === true) {
+          onStoreChange();
+        }
+      };
 
-            // Subscribe to all signals
-            deps.forEach((dep) => dep.subscribe(listener));
+      // Subscribe to all signals
+      deps.forEach((dep) => dep.subscribe(listener));
 
-            // Return cleanup function
-            return () => {
-                deps.forEach((dep) => dep.unsubscribe(listener));
-            };
-        },
-        deps, // Include deps so subscribe identity changes when signals change
-    );
+      // Return cleanup function
+      return () => {
+        deps.forEach((dep) => dep.unsubscribe(listener));
+      };
+    },
+    deps, // Include deps so subscribe identity changes when signals change
+  );
 
-    // Snapshot function: returns a value that changes when any signal updates
-    const getSnapshot = useCallback(() => {
-        return deps.reduce((sum, dep) => sum + dep.lastUpdated, 0);
-    }, deps); // Include deps for correctness
+  // Snapshot function: returns a value that changes when any signal updates
+  const getSnapshot = useCallback(() => {
+    return deps.reduce((sum, dep) => sum + dep.lastUpdated, 0);
+  }, deps); // Include deps for correctness
 
-    // Server snapshot function for SSR compatibility
-    // Returns the same snapshot on server as initial client render
-    // This prevents hydration mismatches in SSR environments (Next.js, Remix, etc.)
-    const getServerSnapshot = getSnapshot;
+  // Server snapshot function for SSR compatibility
+  // Returns the same snapshot on server as initial client render
+  // This prevents hydration mismatches in SSR environments (Next.js, Remix, etc.)
+  const getServerSnapshot = getSnapshot;
 
-    // Use React 18's useSyncExternalStore for concurrent-safe subscriptions
-    // This ensures consistent state across all components during concurrent renders
-    useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // Use React 18's useSyncExternalStore for concurrent-safe subscriptions
+  // This ensures consistent state across all components during concurrent renders
+  useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-    // Return forceUpdate for manual re-renders
-    return forceUpdate;
+  // Return forceUpdate for manual re-renders
+  return forceUpdate;
 }
