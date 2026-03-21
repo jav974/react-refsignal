@@ -130,6 +130,23 @@ describe('update', () => {
   });
 });
 
+describe('lastUpdated uniqueness', () => {
+  it('should produce distinct lastUpdated values for rapid consecutive updates within the same millisecond', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1000);
+
+    const signal = createRefSignal(0);
+    signal.update(1);
+    const first = signal.lastUpdated;
+
+    signal.update(2);
+    const second = signal.lastUpdated;
+
+    jest.restoreAllMocks();
+
+    expect(second).not.toBe(first);
+  });
+});
+
 describe('batch', () => {
   it('should defer notifications until after batch', () => {
     const signalA = createRefSignal(1);

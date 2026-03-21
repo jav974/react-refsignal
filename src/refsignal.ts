@@ -5,6 +5,7 @@ export type Listener<T = unknown> = (value: T) => void;
 export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
 export const batchStack: RefSignal<unknown>[][] = [];
 let batchedSignals: Set<RefSignal<unknown>> | null = null;
+let updateCounter = 0;
 
 export interface RefSignal<T = unknown> {
   current: T;
@@ -80,7 +81,7 @@ export function notify<T>(signal: RefSignal<T>): void {
 }
 
 export function notifyUpdate<T>(signal: RefSignal<T>): void {
-  signal.lastUpdated = Date.now();
+  signal.lastUpdated = ++updateCounter;
   notify(signal);
 }
 
@@ -168,7 +169,7 @@ export function batch(
     } finally {
       batchStack.pop();
 
-      const lastUpdated = Date.now();
+      const lastUpdated = ++updateCounter;
 
       deps.forEach((dep) => {
         dep.lastUpdated = lastUpdated;
@@ -187,7 +188,7 @@ export function batch(
       batchedSignals = previousBatchedSignals;
 
       if (tracked.size > 0) {
-        const lastUpdated = Date.now();
+        const lastUpdated = ++updateCounter;
 
         tracked.forEach((dep) => {
           dep.lastUpdated = lastUpdated;
