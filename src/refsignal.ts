@@ -19,7 +19,9 @@ export interface RefSignal<T = unknown> {
   readonly getDebugName?: () => string | undefined;
 }
 
-export function isRefSignal(obj: unknown): obj is RefSignal {
+// T is used for call-site type narrowing only — the shape check is structural,
+// the type of `.current` is not validated at runtime.
+export function isRefSignal<T = unknown>(obj: unknown): obj is RefSignal<T> {
   if (typeof obj !== 'object' || obj === null) return false;
   const candidate = obj as Record<string, unknown>;
   return (
