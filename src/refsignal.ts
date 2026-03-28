@@ -19,7 +19,7 @@ export interface RefSignal<T = unknown> {
   readonly getDebugName?: () => string | undefined;
 }
 
-export function isRefSignal<T>(obj: unknown): obj is RefSignal<T> {
+export function isRefSignal(obj: unknown): obj is RefSignal {
   if (typeof obj !== 'object' || obj === null) return false;
   const candidate = obj as Record<string, unknown>;
   return (
