@@ -14,6 +14,42 @@ export type NamedContextType<TName extends string, TStore> = {
 };
 
 /**
+ * Shared internals used by both createNamedContext and createRefSignalContext.
+ * Not exported from the public index — internal use only.
+ */
+export function createContextCore<TStore>(
+  name: string,
+  factory: () => TStore,
+): {
+  providerName: string;
+  hookName: string;
+  Provider: FC<{ children: ReactNode }>;
+  useStore: () => TStore;
+} {
+  const Context = createContext<TStore | null>(null);
+  Context.displayName = `${name}Context`;
+
+  const providerName = `${name}Provider`;
+  const hookName = `use${name}Context`;
+
+  const Provider: FC<{ children: ReactNode }> = ({ children }) => {
+    const store = useMemo(() => factory(), []);
+    return createElement(Context.Provider, { value: store }, children);
+  };
+  Provider.displayName = providerName;
+
+  const useStore = (): TStore => {
+    const store = useContext(Context);
+    if (store === null) {
+      throw new Error(`${hookName} must be used within a ${providerName}`);
+    }
+    return store;
+  };
+
+  return { providerName, hookName, Provider, useStore };
+}
+
+/**
  * Creates a named React context with a Provider component and a typed hook.
  *
  * Eliminates the boilerplate of writing createContext + Provider + useXxxContext
@@ -48,28 +84,13 @@ export function createNamedContext<TName extends string, TStore>(
   name: TName,
   factory: () => TStore,
 ): NamedContextType<TName, TStore> {
-  const Context = createContext<TStore | null>(null);
-  Context.displayName = `${name}Context`;
-
-  const providerName = `${name}Provider`;
-  const hookName = `use${name}Context`;
-
-  const Provider: FC<{ children: ReactNode }> = ({ children }) => {
-    const store = useMemo(() => factory(), []);
-    return createElement(Context.Provider, { value: store }, children);
-  };
-  Provider.displayName = providerName;
-
-  const useContextHook = (): TStore => {
-    const store = useContext(Context);
-    if (store === null) {
-      throw new Error(`${hookName} must be used within a ${providerName}`);
-    }
-    return store;
-  };
+  const { providerName, hookName, Provider, useStore } = createContextCore(
+    name,
+    factory,
+  );
 
   return {
     [providerName]: Provider,
-    [hookName]: useContextHook,
+    [hookName]: useStore,
   } as NamedContextType<TName, TStore>;
 }

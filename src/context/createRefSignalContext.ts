@@ -1,13 +1,7 @@
-import {
-  createContext,
-  createElement,
-  FC,
-  ReactNode,
-  useContext,
-  useMemo,
-} from 'react';
+import { FC, ReactNode } from 'react';
 import { isRefSignal, RefSignal } from '../refsignal';
 import { useRefSignalRender } from '../hooks/useRefSignalRender';
+import { createContextCore } from './createNamedContext';
 
 /**
  * Extracts the keys of a store whose values are RefSignal instances.
@@ -127,31 +121,16 @@ export function createRefSignalContext<
   factory: () => TStore,
   contextOptions?: RefSignalContextOptions,
 ): RefSignalContextType<TName, TStore> {
-  const Context = createContext<TStore | null>(null);
-  Context.displayName = `${name}Context`;
-
-  const providerName = `${name}Provider`;
-  const hookName = `use${name}Context`;
-
-  const Provider: FC<{ children: ReactNode }> = ({ children }) => {
-    const store = useMemo(() => factory(), []);
-    return createElement(Context.Provider, { value: store }, children);
-  };
-  Provider.displayName = providerName;
-
-  const useBaseContext = (): TStore => {
-    const store = useContext(Context);
-    if (store === null) {
-      throw new Error(`${hookName} must be used within a ${providerName}`);
-    }
-    return store;
-  };
+  const { providerName, hookName, Provider, useStore } = createContextCore(
+    name,
+    factory,
+  );
 
   const useContextHook = (options?: {
     renderOn?: Array<RefSignalKeys<TStore>>;
     unwrap?: boolean;
   }): TStore | UnwrappedStore<TStore> => {
-    const store = useBaseContext();
+    const store = useStore();
 
     let signals: RefSignal[];
     if (options?.renderOn !== undefined) {
