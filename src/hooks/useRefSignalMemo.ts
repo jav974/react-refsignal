@@ -1,7 +1,6 @@
-import { DependencyList, useMemo, useRef } from 'react';
+import { DependencyList, useEffect, useMemo, useRef } from 'react';
+import { isRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
-import { useRefSignalEffect } from './useRefSignalEffect';
-import { RefSignal } from '../refsignal';
 
 /**
  * React hook for creating a memoized {@link RefSignal} whose value is derived from a factory function and dependencies.
@@ -38,17 +37,43 @@ export function useRefSignalMemo<T>(
   factory: () => T | null | undefined,
   deps: DependencyList,
 ): RefSignal<T | null | undefined> {
+  // Handles non-signal deps: React re-renders when state/props in deps change,
+  // useMemo recomputes, and we sync the signal below — no extra factory() call needed.
   const memo = useMemo(factory, deps); // eslint-disable-line react-hooks/exhaustive-deps -- deps forwarded from caller
+
   const value = useRefSignal(memo);
   const isInitialMount = useRef(true);
 
-  useRefSignalEffect(() => {
+  // Always hold the latest factory to avoid stale closures in signal listeners.
+  const factoryRef = useRef(factory);
+  factoryRef.current = factory;
+
+  // Sync signal when non-signal deps cause a React re-render.
+  // memo is already up-to-date from useMemo above — no redundant factory() call.
+  useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
-    value.update(factory());
-  }, deps);
+    value.update(memo);
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps -- mirrors useMemo deps
+
+  // Subscribe to any RefSignal deps and recompute when they fire.
+  // useMemo does not re-run for signal updates (signal identity is stable),
+  // so factory() must be called here to read the latest signal values.
+  useEffect(() => {
+    const listener = () => {
+      value.update(factoryRef.current());
+    };
+    deps.forEach((dep) => {
+      if (isRefSignal(dep)) dep.subscribe(listener);
+    });
+    return () => {
+      deps.forEach((dep) => {
+        if (isRefSignal(dep)) dep.unsubscribe(listener);
+      });
+    };
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps -- resubscribe when signal set changes
 
   return value;
 }
