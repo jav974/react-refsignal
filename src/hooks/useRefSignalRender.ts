@@ -12,13 +12,18 @@ import { RefSignal } from '../refsignal';
  * different components read different values from external state during concurrent renders.
  *
  * - The hook subscribes to all given RefSignal dependencies.
- * - The component will re-render whenever any of the signals are updated or notified via `.update()`, `.notify()`, or `.notifyUpdate()`.
+ * - The component will re-render whenever any of the signals are updated via `.update()` or `.notifyUpdate()`.
+ *   Calling `.notify()` alone does NOT trigger a re-render — it fires listeners but does not change the
+ *   snapshot (`lastUpdated` is unchanged), so `useSyncExternalStore` sees no difference.
  * - If the optional `callback` is specified, a re-render will only occur if it returns `true`.
+ *   Note: the callback filter applies to signal-triggered re-renders only. The returned `forceUpdate`
+ *   function always re-renders unconditionally, bypassing the callback.
  * - The callback is stored in a ref to avoid unnecessary resubscriptions when it changes.
  *
  * @param deps Array of RefSignal objects to watch for changes.
  * @param callback Optional function that determines if a re-render should occur; should return a boolean.
- * @returns A function that can be called to force a re-render manually in the component.
+ * @returns A function that unconditionally forces a re-render of the component. Bypasses the
+ *          `callback` filter — useful for triggering a render outside of signal updates.
  *
  * @example
  * const count = useRefSignal(0);
