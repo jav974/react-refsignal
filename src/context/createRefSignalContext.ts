@@ -50,10 +50,7 @@ type ContextHook<TStore> = {
     renderOn?: Array<RefSignalKeys<TStore>> | 'all';
     unwrap: true;
   }): UnwrappedStore<TStore>;
-  (options: {
-    renderOn: 'all';
-    unwrap?: false;
-  }): TStore;
+  (options: { renderOn: 'all'; unwrap?: false }): TStore;
 };
 
 export type RefSignalContextType<TName extends string, TStore> = {
@@ -106,10 +103,7 @@ export const ALL = 'all' as const;
 export function createRefSignalContext<
   TName extends string,
   TStore extends Record<string, unknown>,
->(
-  name: TName,
-  factory: () => TStore,
-): RefSignalContextType<TName, TStore> {
+>(name: TName, factory: () => TStore): RefSignalContextType<TName, TStore> {
   const { providerName, hookName, Provider, useStore } = createContextCore(
     name,
     factory,
