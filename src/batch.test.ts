@@ -308,6 +308,71 @@ describe('batch() - Edge Cases', () => {
   });
 });
 
+describe('batch() - Error paths', () => {
+  it('should notify explicit deps and rethrow when callback throws', () => {
+    const signal = createRefSignal(0);
+    const listener = jest.fn();
+    signal.subscribe(listener);
+
+    expect(() => {
+      batch(() => {
+        signal.current = 1;
+        throw new Error('explicit deps error');
+      }, [signal]);
+    }).toThrow('explicit deps error');
+
+    // finally still ran — signal was notified
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('should flush outer batch when inner batch throws', () => {
+    const outer = createRefSignal(0);
+    const inner = createRefSignal(0);
+    const outerListener = jest.fn();
+    const innerListener = jest.fn();
+
+    outer.subscribe(outerListener);
+    inner.subscribe(innerListener);
+
+    expect(() => {
+      batch(() => {
+        outer.update(1);
+
+        batch(() => {
+          inner.update(2);
+          throw new Error('inner error');
+        });
+      });
+    }).toThrow('inner error');
+
+    // inner batch flushed via finally
+    expect(innerListener).toHaveBeenCalledWith(2);
+    // outer batch also flushed via finally (error propagated through)
+    expect(outerListener).toHaveBeenCalledWith(1);
+  });
+
+  it('should restore batch context after error so subsequent batches work', () => {
+    const signal = createRefSignal(0);
+    const listener = jest.fn();
+    signal.subscribe(listener);
+
+    expect(() => {
+      batch(() => {
+        throw new Error('batch failed');
+      });
+    }).toThrow('batch failed');
+
+    // batchedSignals restored — next batch works normally
+    batch(() => {
+      signal.update(1);
+      signal.update(2);
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(2);
+  });
+});
+
 describe('batch() - Performance', () => {
   it('should batch 100 signal updates efficiently', () => {
     const signals = Array.from({ length: 100 }, () => createRefSignal(-1));
