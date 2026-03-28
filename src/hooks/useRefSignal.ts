@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { createRefSignal, listenersMap, RefSignal } from '../refsignal';
+import { useMemo } from 'react';
+import { createRefSignal, RefSignal } from '../refsignal';
 
 /**
  * React hook for creating a mutable signal-like ref with subscription support.
@@ -10,7 +10,9 @@ import { createRefSignal, listenersMap, RefSignal } from '../refsignal';
  * - The value should be updated using the `.update()` method to ensure listeners are notified.
  * - Directly mutating `.current` will NOT trigger listeners; call `.notify()` or `.notifyUpdate()` if you do so.
  * - The returned object is stable (does not change between renders).
- * - Listeners are automatically cleaned up when the component unmounts.
+ * - Listener cleanup is handled by the WeakMap: when no component holds a reference to
+ *   the signal, the entry is collected automatically. Each subscriber is responsible for
+ *   unsubscribing via its own cleanup (e.g. `useRefSignalEffect` does this automatically).
  *
  * @template T The type of the value stored in the signal.
  * @param value The initial value for the signal.
@@ -41,12 +43,6 @@ export function useRefSignal<T>(
 ): RefSignal<T | null | undefined> {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- signal is intentionally created once on mount
   const refSignal = useMemo(() => createRefSignal(value, debugName), []);
-
-  useEffect(() => {
-    return () => {
-      listenersMap.delete(refSignal);
-    };
-  }, [refSignal]);
 
   return refSignal;
 }
