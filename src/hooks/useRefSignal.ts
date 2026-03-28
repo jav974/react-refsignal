@@ -39,6 +39,7 @@ export function useRefSignal<T>(
   value: T | null | undefined,
   debugName?: string,
 ): RefSignal<T | null | undefined> {
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- signal is intentionally created once on mount
   const refSignal = useMemo(() => createRefSignal(value, debugName), []);
 
   useEffect(() => {

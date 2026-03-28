@@ -51,17 +51,16 @@ export function createNamedContext<TName extends string, TStore>(
   const Context = createContext<TStore | null>(null);
   Context.displayName = `${name}Context`;
 
-  const providerName = `${name}Provider` as `${TName}Provider`;
-  const hookName = `use${name}Context` as `use${TName}Context`;
+  const providerName = `${name}Provider`;
+  const hookName = `use${name}Context`;
 
   const Provider: FC<{ children: ReactNode }> = ({ children }) => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const store = useMemo(() => factory(), []);
     return createElement(Context.Provider, { value: store }, children);
   };
   Provider.displayName = providerName;
 
-  const hook = (): TStore => {
+  const useContextHook = (): TStore => {
     const store = useContext(Context);
     if (store === null) {
       throw new Error(`${hookName} must be used within a ${providerName}`);
@@ -71,6 +70,6 @@ export function createNamedContext<TName extends string, TStore>(
 
   return {
     [providerName]: Provider,
-    [hookName]: hook,
+    [hookName]: useContextHook,
   } as NamedContextType<TName, TStore>;
 }

@@ -1,10 +1,10 @@
 import { devtools } from './devtools';
 
 export type Listener<T = unknown> = (value: T) => void;
-// Using object instead of RefSignal<unknown> to avoid variance issues with generic T
-export const listenersMap = new WeakMap<object, Set<Listener<unknown>>>();
-export const batchStack: RefSignal<unknown>[][] = [];
-let batchedSignals: Set<RefSignal<unknown>> | null = null;
+// Using object instead of RefSignal to avoid variance issues with generic T
+export const listenersMap = new WeakMap<object, Set<Listener>>();
+export const batchStack: RefSignal[][] = [];
+let batchedSignals: Set<RefSignal> | null = null;
 let updateCounter = 0;
 
 export interface RefSignal<T = unknown> {
@@ -19,18 +19,17 @@ export interface RefSignal<T = unknown> {
   readonly getDebugName?: () => string | undefined;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isRefSignal<T>(obj: any): obj is RefSignal<T> {
+export function isRefSignal<T>(obj: unknown): obj is RefSignal<T> {
+  if (typeof obj !== 'object' || obj === null) return false;
+  const candidate = obj as Record<string, unknown>;
   return (
-    obj &&
-    typeof obj === 'object' &&
-    'current' in obj &&
-    typeof obj.lastUpdated === 'number' &&
-    typeof obj.subscribe === 'function' &&
-    typeof obj.unsubscribe === 'function' &&
-    typeof obj.update === 'function' &&
-    typeof obj.notify === 'function' &&
-    typeof obj.notifyUpdate === 'function'
+    'current' in candidate &&
+    typeof candidate['lastUpdated'] === 'number' &&
+    typeof candidate['subscribe'] === 'function' &&
+    typeof candidate['unsubscribe'] === 'function' &&
+    typeof candidate['update'] === 'function' &&
+    typeof candidate['notify'] === 'function' &&
+    typeof candidate['notifyUpdate'] === 'function'
   );
 }
 
@@ -41,7 +40,7 @@ export function subscribe<T>(
   if (!listenersMap.has(signal)) {
     listenersMap.set(signal, new Set());
   }
-  listenersMap.get(signal)?.add(listener as Listener<unknown>);
+  listenersMap.get(signal)?.add(listener as Listener);
 }
 
 export function unsubscribe<T>(
@@ -51,7 +50,7 @@ export function unsubscribe<T>(
   const listeners = listenersMap.get(signal);
 
   if (listeners) {
-    listeners.delete(listener as Listener<unknown>);
+    listeners.delete(listener as Listener);
     if (listeners.size === 0) {
       listenersMap.delete(signal);
     }
@@ -61,7 +60,7 @@ export function unsubscribe<T>(
 export function notify<T>(signal: RefSignal<T>): void {
   const inBatch =
     batchStack[batchStack.length - 1]?.some((s) => s === signal) ||
-    (batchedSignals && batchedSignals.has(signal as RefSignal<unknown>));
+    (batchedSignals && batchedSignals.has(signal as RefSignal));
 
   if (!inBatch) {
     listenersMap.get(signal)?.forEach((listener) => {
@@ -91,7 +90,7 @@ export function update<T>(signal: RefSignal<T>, value: T) {
     signal.current = value;
 
     if (batchedSignals) {
-      batchedSignals.add(signal as RefSignal<unknown>);
+      batchedSignals.add(signal as RefSignal);
     }
 
     if (devtools.isEnabled()) {
@@ -109,11 +108,21 @@ export function createRefSignal<T = unknown>(
   const signal: RefSignal<T> = {
     current: initialValue,
     lastUpdated: 0,
-    subscribe: (listener: Listener<T>) => subscribe(signal, listener),
-    unsubscribe: (listener: Listener<T>) => unsubscribe(signal, listener),
-    notify: () => notify(signal),
-    notifyUpdate: () => notifyUpdate(signal),
-    update: (value: T) => update(signal, value),
+    subscribe: (listener: Listener<T>) => {
+      subscribe(signal, listener);
+    },
+    unsubscribe: (listener: Listener<T>) => {
+      unsubscribe(signal, listener);
+    },
+    notify: () => {
+      notify(signal);
+    },
+    notifyUpdate: () => {
+      notifyUpdate(signal);
+    },
+    update: (value: T) => {
+      update(signal, value);
+    },
     getDebugName: devtools.isEnabled()
       ? () => devtools.getSignalName(signal)
       : undefined,
@@ -156,7 +165,7 @@ export function createRefSignal<T = unknown>(
  * }, [signalA, signalB]);
  */
 export function batch(
-  callback: React.EffectCallback,
+  callback: () => void,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   deps?: RefSignal<any>[],
 ): void {
@@ -178,7 +187,7 @@ export function batch(
     }
   } else {
     // Auto-inference mode - track signals updated via .update()
-    const tracked = new Set<RefSignal<unknown>>();
+    const tracked = new Set<RefSignal>();
     const previousBatchedSignals = batchedSignals;
     batchedSignals = tracked;
 

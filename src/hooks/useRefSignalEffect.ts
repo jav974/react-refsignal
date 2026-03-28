@@ -57,8 +57,9 @@ import { isRefSignal } from '../refsignal';
  * }, [position]);
  */
 export function useRefSignalEffect(
-  effect: React.EffectCallback,
-  deps: React.DependencyList,
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- mirrors React's EffectCallback: void means "no cleanup returned"
+  effect: () => (() => void) | void,
+  deps: ReadonlyArray<unknown>,
 ) {
   // Store effect in ref to avoid stale closures when effect function changes
   const effectRef = useRef(effect);
@@ -91,5 +92,5 @@ export function useRefSignalEffect(
         destructor();
       }
     };
-  }, deps);
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps -- deps is forwarded from the caller; it must be a variable, not a literal
 }

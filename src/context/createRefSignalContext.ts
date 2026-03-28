@@ -1,7 +1,13 @@
-import { FC, ReactNode } from 'react';
+import {
+  createContext,
+  createElement,
+  FC,
+  ReactNode,
+  useContext,
+  useMemo,
+} from 'react';
 import { isRefSignal, RefSignal } from '../refsignal';
 import { useRefSignalRender } from '../hooks/useRefSignalRender';
-import { createNamedContext } from './createNamedContext';
 
 /**
  * Extracts the keys of a store whose values are RefSignal instances.
@@ -121,29 +127,39 @@ export function createRefSignalContext<
   factory: () => TStore,
   contextOptions?: RefSignalContextOptions,
 ): RefSignalContextType<TName, TStore> {
-  const named = createNamedContext(name, factory);
+  const Context = createContext<TStore | null>(null);
+  Context.displayName = `${name}Context`;
 
-  const providerName = `${name}Provider` as `${TName}Provider`;
-  const hookName = `use${name}Context` as `use${TName}Context`;
+  const providerName = `${name}Provider`;
+  const hookName = `use${name}Context`;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Provider = (named as any)[providerName] as FC<{ children: ReactNode }>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const baseHook = (named as any)[hookName] as () => TStore;
+  const Provider: FC<{ children: ReactNode }> = ({ children }) => {
+    const store = useMemo(() => factory(), []);
+    return createElement(Context.Provider, { value: store }, children);
+  };
+  Provider.displayName = providerName;
 
-  const hook = (options?: {
+  const useBaseContext = (): TStore => {
+    const store = useContext(Context);
+    if (store === null) {
+      throw new Error(`${hookName} must be used within a ${providerName}`);
+    }
+    return store;
+  };
+
+  const useContextHook = (options?: {
     renderOn?: Array<RefSignalKeys<TStore>>;
     unwrap?: boolean;
   }): TStore | UnwrappedStore<TStore> => {
-    const store = baseHook();
+    const store = useBaseContext();
 
-    let signals: RefSignal<unknown>[];
+    let signals: RefSignal[];
     if (options?.renderOn !== undefined) {
       // Explicit renderOn — fine-tuning, replaces provider default
-      signals = options.renderOn.map((key) => store[key] as RefSignal<unknown>);
+      signals = options.renderOn.map((key) => store[key] as RefSignal);
     } else if (contextOptions?.rerender) {
       // Provider default — all signals
-      signals = Object.values(store).filter(isRefSignal) as RefSignal<unknown>[];
+      signals = Object.values(store).filter(isRefSignal);
     } else {
       signals = [];
     }
@@ -155,7 +171,12 @@ export function createRefSignalContext<
       for (const [k, v] of Object.entries(store)) {
         if (isRefSignal(v)) {
           entries.push([k, v.current]);
-          entries.push([`set${k.charAt(0).toUpperCase()}${k.slice(1)}`, (value: unknown) => v.update(value)]);
+          entries.push([
+            `set${k.charAt(0).toUpperCase()}${k.slice(1)}`,
+            (value: unknown) => {
+              v.update(value);
+            },
+          ]);
         } else {
           entries.push([k, v]);
         }
@@ -168,6 +189,6 @@ export function createRefSignalContext<
 
   return {
     [providerName]: Provider,
-    [hookName]: hook,
+    [hookName]: useContextHook,
   } as RefSignalContextType<TName, TStore>;
 }

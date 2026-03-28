@@ -38,8 +38,8 @@ export function useRefSignalMemo<T>(
   factory: () => T | null | undefined,
   deps: DependencyList,
 ): RefSignal<T | null | undefined> {
-  const memo = useMemo<T | null | undefined>(factory, deps);
-  const value = useRefSignal<T | null | undefined>(memo);
+  const memo = useMemo(factory, deps); // eslint-disable-line react-hooks/exhaustive-deps -- deps forwarded from caller
+  const value = useRefSignal(memo);
   const isInitialMount = useRef(true);
 
   useRefSignalEffect(() => {

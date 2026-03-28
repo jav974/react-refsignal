@@ -37,7 +37,7 @@ export function useRefSignalRender(
   deps: RefSignal<any>[],
   callback?: () => boolean,
 ): () => void {
-  const [, forceUpdate] = useReducer((x) => x + 1, 0);
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
 
   // Store callback in ref to avoid resubscription when callback changes
   const callbackRef = useRef(callback);
@@ -51,26 +51,30 @@ export function useRefSignalRender(
     (onStoreChange: () => void) => {
       const listener = () => {
         // Apply optional filter callback before notifying React
-        if (!callbackRef.current || callbackRef.current() === true) {
+        if (!callbackRef.current || callbackRef.current()) {
           onStoreChange();
         }
       };
 
       // Subscribe to all signals
-      deps.forEach((dep) => dep.subscribe(listener));
+      deps.forEach((dep) => {
+        dep.subscribe(listener);
+      });
 
       // Return cleanup function
       return () => {
-        deps.forEach((dep) => dep.unsubscribe(listener));
+        deps.forEach((dep) => {
+          dep.unsubscribe(listener);
+        });
       };
     },
-    deps, // Include deps so subscribe identity changes when signals change
+    deps, // eslint-disable-line react-hooks/exhaustive-deps -- deps array is the dependency: new array identity triggers resubscription
   );
 
   // Snapshot function: returns a value that changes when any signal updates
   const getSnapshot = useCallback(() => {
     return deps.reduce((sum, dep) => sum + dep.lastUpdated, 0);
-  }, deps); // Include deps for correctness
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps -- deps array is the dependency: new array identity recomputes snapshot
 
   // Server snapshot function for SSR compatibility
   // Returns the same snapshot on server as initial client render

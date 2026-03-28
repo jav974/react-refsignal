@@ -60,7 +60,7 @@ describe('useRefSignalEffect', () => {
     const listener = jest.fn();
 
     renderHook(() => {
-      const notASignal = useState<string>('test');
+      const notASignal = useState('test');
       useRefSignalEffect(listener, [notASignal]);
     });
 

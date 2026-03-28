@@ -216,7 +216,9 @@ describe('Robustness Tests', () => {
       expect(renderCounts).toEqual([2, 2, 2]);
 
       // Cleanup
-      hooks.forEach((hook) => hook.unmount());
+      hooks.forEach((hook) => {
+        hook.unmount();
+      });
     });
 
     it('should handle dynamic subscription changes without memory leaks', () => {

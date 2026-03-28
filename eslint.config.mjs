@@ -1,52 +1,107 @@
-import { defineConfig } from "eslint/config";
-import react from "eslint-plugin-react";
-import typescriptEslint from "@typescript-eslint/eslint-plugin";
-import prettier from "eslint-plugin-prettier";
-import globals from "globals";
-import tsParser from "@typescript-eslint/parser";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import js from "@eslint/js";
-import { FlatCompat } from "@eslint/eslintrc";
+import eslint from '@eslint/js'
+import tseslint from 'typescript-eslint'
+import reactPlugin from 'eslint-plugin-react'
+import reactHooksPlugin from 'eslint-plugin-react-hooks'
+import prettierConfig from 'eslint-config-prettier'
+import prettierPlugin from 'eslint-plugin-prettier'
+import globals from 'globals'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const compat = new FlatCompat({
-    baseDirectory: __dirname,
-    recommendedConfig: js.configs.recommended,
-    allConfig: js.configs.all
-});
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-export default defineConfig([{
-    extends: compat.extends(
-        "eslint:recommended",
-        "plugin:react/recommended",
-        "plugin:@typescript-eslint/recommended",
-        "plugin:prettier/recommended",
-    ),
+export default tseslint.config(
+  // ── Base rules ──────────────────────────────────────────────────────────────
+  eslint.configs.recommended,
 
-    rules: {
-        indent: ["error", 2]
+  // ── TypeScript strict + type-aware rules ────────────────────────────────────
+  tseslint.configs.strictTypeChecked,
+
+  // ── Parser options for type-aware linting ───────────────────────────────────
+  {
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.eslint.json',
+        tsconfigRootDir: __dirname,
+      },
+    },
+  },
+
+  // ── React + React Hooks + Prettier ──────────────────────────────────────────
+  {
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
     },
 
     plugins: {
-        react,
-        "@typescript-eslint": typescriptEslint,
-        prettier,
+      react: reactPlugin,
+      'react-hooks': reactHooksPlugin,
+      prettier: prettierPlugin,
     },
 
-    languageOptions: {
-        globals: {
-            ...globals.browser,
-            ...globals.jest,
-        },
+    rules: {
+      ...reactPlugin.configs.recommended.rules,
+      ...reactHooksPlugin.configs.recommended.rules,
 
-        parser: tsParser,
+      'prettier/prettier': 'error',
+      ...prettierConfig.rules,
+
+      'react/react-in-jsx-scope': 'off',
+
+      // React Compiler rules (eslint-plugin-react-hooks v7+) — not using React Compiler
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/use-memo': 'off',
+      'react-hooks/refs': 'off',
+
+
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          varsIgnorePattern: '^_',
+          argsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
     },
 
     settings: {
-        react: {
-            version: "detect",
-        },
+      react: {
+        version: 'detect',
+      },
     },
-}]);
+  },
+
+  // ── Test files: relax rules that are noisy in test code ─────────────────────
+  {
+    files: ['src/**/*.test.{ts,tsx}', 'src/**/*.spec.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.jest,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-redundant-type-constituents': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-misused-promises': 'off',
+      '@typescript-eslint/only-throw-error': 'off',
+      '@typescript-eslint/no-empty-object-type': 'off',
+      '@typescript-eslint/no-invalid-void-type': 'off',
+      '@typescript-eslint/use-unknown-in-catch-callback-variable': 'off',
+      '@typescript-eslint/restrict-template-expressions': 'off',
+      '@typescript-eslint/require-await': 'off',
+      'no-empty-pattern': 'off',
+      'react/display-name': 'off',
+    },
+  },
+)

@@ -242,7 +242,9 @@ describe('createRefSignalContext', () => {
         wrapper: makeWrapper(UserProvider),
       });
 
-      expect((result.current as Record<string, unknown>).setSessionId).toBeUndefined();
+      expect(
+        (result.current as Record<string, unknown>).setSessionId,
+      ).toBeUndefined();
     });
 
     it('setter updates the signal and triggers re-render', () => {
@@ -309,11 +311,15 @@ describe('createRefSignalContext', () => {
       );
 
       const initial = renderCount;
-      act(() => { result.current.name.update('Bob'); });
+      act(() => {
+        result.current.name.update('Bob');
+      });
       expect(renderCount).toBeGreaterThan(initial);
 
       const after = renderCount;
-      act(() => { result.current.score.update(99); });
+      act(() => {
+        result.current.score.update(99);
+      });
       expect(renderCount).toBeGreaterThan(after);
     });
 
@@ -325,12 +331,17 @@ describe('createRefSignalContext', () => {
 
       let renderCount = 0;
       const { result } = renderHook(
-        () => { renderCount++; return useUserContext(); },
+        () => {
+          renderCount++;
+          return useUserContext();
+        },
         { wrapper: makeWrapper(UserProvider) },
       );
 
       const initial = renderCount;
-      act(() => { result.current.name.update('Bob'); });
+      act(() => {
+        result.current.name.update('Bob');
+      });
       expect(renderCount).toBe(initial);
     });
 
@@ -343,15 +354,22 @@ describe('createRefSignalContext', () => {
 
       let renderCount = 0;
       const { result } = renderHook(
-        () => { renderCount++; return useUserContext({ renderOn: ['name'] }); },
+        () => {
+          renderCount++;
+          return useUserContext({ renderOn: ['name'] });
+        },
         { wrapper: makeWrapper(UserProvider) },
       );
 
       const initial = renderCount;
-      act(() => { result.current.score.update(99); });
+      act(() => {
+        result.current.score.update(99);
+      });
       expect(renderCount).toBe(initial); // score not tracked
 
-      act(() => { result.current.name.update('Bob'); });
+      act(() => {
+        result.current.name.update('Bob');
+      });
       expect(renderCount).toBeGreaterThan(initial); // name tracked
     });
 
@@ -364,13 +382,20 @@ describe('createRefSignalContext', () => {
 
       let renderCount = 0;
       const { result } = renderHook(
-        () => { renderCount++; return useUserContext({ renderOn: [] }); },
+        () => {
+          renderCount++;
+          return useUserContext({ renderOn: [] });
+        },
         { wrapper: makeWrapper(UserProvider) },
       );
 
       const initial = renderCount;
-      act(() => { result.current.name.update('Bob'); });
-      act(() => { result.current.score.update(99); });
+      act(() => {
+        result.current.name.update('Bob');
+      });
+      act(() => {
+        result.current.score.update(99);
+      });
       expect(renderCount).toBe(initial);
     });
   });

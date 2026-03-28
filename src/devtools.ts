@@ -41,7 +41,7 @@ class DevTools {
 
   // Using object as key type to avoid generic variance issues
   private signals = new WeakMap<object, string>();
-  private signalsByName = new Map<string, RefSignal<unknown>>();
+  private signalsByName = new Map<string, RefSignal>();
   private signalIdCounter = 0;
   private updateHistory: SignalUpdate[] = [];
   private reduxDevToolsExtension: ReturnType<
@@ -83,11 +83,11 @@ class DevTools {
   registerSignal<T>(signal: RefSignal<T>, name?: string): string {
     if (!this.isEnabled()) return '';
 
-    const id = name || `signal_${this.signalIdCounter++}`;
+    const id = name ?? `signal_${String(this.signalIdCounter++)}`;
     this.signals.set(signal as object, id);
 
     if (name) {
-      this.signalsByName.set(name, signal as RefSignal<unknown>);
+      this.signalsByName.set(name, signal as RefSignal);
     }
 
     return id;
@@ -167,8 +167,8 @@ class DevTools {
     return this.signalsByName.get(name) as RefSignal<T> | undefined;
   }
 
-  getAllSignals(): Array<{ name: string; signal: RefSignal<unknown> }> {
-    const result: Array<{ name: string; signal: RefSignal<unknown> }> = [];
+  getAllSignals(): Array<{ name: string; signal: RefSignal }> {
+    const result: Array<{ name: string; signal: RefSignal }> = [];
 
     this.signalsByName.forEach((signal, name) => {
       result.push({ name, signal });

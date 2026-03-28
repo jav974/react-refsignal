@@ -1,7 +1,6 @@
 /**
  * @jest-environment jsdom
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { renderHook, act } from '@testing-library/react';
 import { useRefSignal } from './hooks/useRefSignal';
 import { configureDevTools, devtools } from './devtools';

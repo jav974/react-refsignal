@@ -2,16 +2,16 @@ export * from './hooks/useRefSignal';
 export * from './hooks/useRefSignalEffect';
 export * from './hooks/useRefSignalMemo';
 export * from './hooks/useRefSignalRender';
-export {
-  Listener,
-  RefSignal,
-  batch,
-  createRefSignal,
-  isRefSignal,
-} from './refsignal';
+export type { Listener, RefSignal } from './refsignal';
+export { batch, createRefSignal, isRefSignal } from './refsignal';
 export { configureDevTools, devtools } from './devtools';
 export type { DevToolsConfig, SignalUpdate } from './devtools';
 export { createNamedContext } from './context/createNamedContext';
 export type { NamedContextType } from './context/createNamedContext';
 export { createRefSignalContext } from './context/createRefSignalContext';
-export type { RefSignalContextType, RefSignalContextOptions, RefSignalKeys, UnwrappedStore } from './context/createRefSignalContext';
+export type {
+  RefSignalContextType,
+  RefSignalContextOptions,
+  RefSignalKeys,
+  UnwrappedStore,
+} from './context/createRefSignalContext';
