@@ -3,6 +3,7 @@
  */
 
 import { act, renderHook } from '@testing-library/react';
+import { createRefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalRender } from './useRefSignalRender';
 
@@ -76,6 +77,56 @@ describe('useRefSignalRender', () => {
     });
 
     expect(renderCount).toBe(2);
+  });
+
+  describe('notify() vs notifyUpdate()', () => {
+    it('should not re-render when notify() is called — snapshot unchanged', () => {
+      const signal = createRefSignal(0);
+      let renderCount = 0;
+
+      renderHook(() => {
+        renderCount++;
+        useRefSignalRender([signal]);
+      });
+
+      const initial = renderCount;
+      act(() => {
+        signal.notify();
+      });
+
+      // notify() does not bump lastUpdated — getSnapshot returns same value — no re-render
+      expect(renderCount).toBe(initial);
+    });
+
+    it('should re-render when notifyUpdate() is called — snapshot changes', () => {
+      const signal = createRefSignal(0);
+      let renderCount = 0;
+
+      renderHook(() => {
+        renderCount++;
+        useRefSignalRender([signal]);
+      });
+
+      const initial = renderCount;
+      act(() => {
+        signal.notifyUpdate();
+      });
+
+      expect(renderCount).toBeGreaterThan(initial);
+    });
+
+    it('notify() still fires useRefSignalEffect listeners', () => {
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+
+      signal.subscribe(listener);
+      act(() => {
+        signal.notify();
+      });
+      signal.unsubscribe(listener);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('should resubscribe when deps array changes', () => {
