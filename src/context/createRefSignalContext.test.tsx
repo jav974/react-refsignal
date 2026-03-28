@@ -345,6 +345,64 @@ describe('createRefSignalContext', () => {
     });
   });
 
+  describe('resubscription stability', () => {
+    it('does not accumulate listeners when component re-renders with renderOn array', () => {
+      const { UserProvider, useUserContext } = createRefSignalContext(
+        'User',
+        makeStore,
+      );
+
+      let renderCount = 0;
+      const { result, rerender } = renderHook(
+        () => {
+          renderCount++;
+          return useUserContext({ renderOn: ['name'] });
+        },
+        { wrapper: makeWrapper(UserProvider) },
+      );
+
+      // Force several re-renders — each creates a new array via .map()
+      rerender();
+      rerender();
+      rerender();
+
+      renderCount = 0;
+      act(() => {
+        result.current.name.update('Bob');
+      });
+
+      // If listeners accumulated, renderCount would be > 1
+      expect(renderCount).toBe(1);
+    });
+
+    it("does not accumulate listeners when component re-renders with renderOn: 'all'", () => {
+      const { UserProvider, useUserContext } = createRefSignalContext(
+        'User',
+        makeStore,
+      );
+
+      let renderCount = 0;
+      const { result, rerender } = renderHook(
+        () => {
+          renderCount++;
+          return useUserContext({ renderOn: 'all' });
+        },
+        { wrapper: makeWrapper(UserProvider) },
+      );
+
+      rerender();
+      rerender();
+      rerender();
+
+      renderCount = 0;
+      act(() => {
+        result.current.name.update('Bob');
+      });
+
+      expect(renderCount).toBe(1);
+    });
+  });
+
   describe('isolation', () => {
     it('each Provider mount gets its own independent store', () => {
       let callCount = 0;
