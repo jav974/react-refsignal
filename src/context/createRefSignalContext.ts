@@ -47,30 +47,23 @@ type ContextHook<TStore> = {
     unwrap?: false;
   }): TStore;
   (options: {
-    renderOn?: Array<RefSignalKeys<TStore>>;
+    renderOn?: Array<RefSignalKeys<TStore>> | 'all';
     unwrap: true;
   }): UnwrappedStore<TStore>;
+  (options: {
+    renderOn: 'all';
+    unwrap?: false;
+  }): TStore;
 };
-
-export interface RefSignalContextOptions {
-  /**
-   * When true, all signals in the store are automatically subscribed to
-   * for re-renders. Acts as the domain-level default — components using
-   * the hook without `renderOn` will re-render on any signal update.
-   *
-   * Components can always override with `renderOn` for fine-grained control,
-   * or pass `renderOn: []` to explicitly opt out.
-   *
-   * @default false
-   */
-  rerender?: boolean;
-}
 
 export type RefSignalContextType<TName extends string, TStore> = {
   [K in `${TName}Provider`]: FC<{ children: ReactNode }>;
 } & {
   [K in `use${TName}Context`]: ContextHook<TStore>;
 };
+
+/** Sentinel value for {@link ContextHook} `renderOn` — subscribes to all signals in the store. */
+export const ALL = 'all' as const;
 
 /**
  * Creates a named React context optimized for signal stores.
@@ -104,14 +97,11 @@ export type RefSignalContextType<TName extends string, TStore> = {
  * store.name.current // 'Alice'
  * store.name.update('Bob')
  *
+ * // Re-renders on any signal update — explicit opt-in at the call site
+ * const store = useUserContext({ renderOn: 'all' })
+ *
  * // TypeScript error — sessionId is not a signal
  * const store = useUserContext({ renderOn: ['sessionId'] })
- *
- * // Provider-level rerender: all signals subscribed by default
- * const { UserProvider, useUserContext } = createRefSignalContext('User', factory, { rerender: true })
- * const store = useUserContext()                        // subscribes to all signals
- * const store = useUserContext({ renderOn: ['name'] })  // fine-tune: only name
- * const store = useUserContext({ renderOn: [] })        // opt-out: no re-renders
  */
 export function createRefSignalContext<
   TName extends string,
@@ -119,7 +109,6 @@ export function createRefSignalContext<
 >(
   name: TName,
   factory: () => TStore,
-  contextOptions?: RefSignalContextOptions,
 ): RefSignalContextType<TName, TStore> {
   const { providerName, hookName, Provider, useStore } = createContextCore(
     name,
@@ -127,18 +116,16 @@ export function createRefSignalContext<
   );
 
   const useContextHook = (options?: {
-    renderOn?: Array<RefSignalKeys<TStore>>;
+    renderOn?: Array<RefSignalKeys<TStore>> | 'all';
     unwrap?: boolean;
   }): TStore | UnwrappedStore<TStore> => {
     const store = useStore();
 
     let signals: RefSignal[];
-    if (options?.renderOn !== undefined) {
-      // Explicit renderOn — fine-tuning, replaces provider default
-      signals = options.renderOn.map((key) => store[key] as RefSignal);
-    } else if (contextOptions?.rerender) {
-      // Provider default — all signals
+    if (options?.renderOn === 'all') {
       signals = Object.values(store).filter(isRefSignal);
+    } else if (options?.renderOn !== undefined) {
+      signals = options.renderOn.map((key) => store[key] as RefSignal);
     } else {
       signals = [];
     }

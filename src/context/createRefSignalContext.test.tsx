@@ -293,19 +293,18 @@ describe('createRefSignalContext', () => {
     });
   });
 
-  describe('provider-level rerender', () => {
-    it('re-renders on all signals when rerender: true and no renderOn', () => {
+  describe("renderOn: 'all'", () => {
+    it("re-renders on all signals when renderOn: 'all'", () => {
       const { UserProvider, useUserContext } = createRefSignalContext(
         'User',
         makeStore,
-        { rerender: true },
       );
 
       let renderCount = 0;
       const { result } = renderHook(
         () => {
           renderCount++;
-          return useUserContext();
+          return useUserContext({ renderOn: 'all' });
         },
         { wrapper: makeWrapper(UserProvider) },
       );
@@ -323,7 +322,7 @@ describe('createRefSignalContext', () => {
       expect(renderCount).toBeGreaterThan(after);
     });
 
-    it('does not re-render by default without rerender option', () => {
+    it('does not re-render by default without renderOn', () => {
       const { UserProvider, useUserContext } = createRefSignalContext(
         'User',
         makeStore,
@@ -341,60 +340,6 @@ describe('createRefSignalContext', () => {
       const initial = renderCount;
       act(() => {
         result.current.name.update('Bob');
-      });
-      expect(renderCount).toBe(initial);
-    });
-
-    it('renderOn overrides provider rerender — fine-tunes to specific signals', () => {
-      const { UserProvider, useUserContext } = createRefSignalContext(
-        'User',
-        makeStore,
-        { rerender: true },
-      );
-
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: ['name'] });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
-
-      const initial = renderCount;
-      act(() => {
-        result.current.score.update(99);
-      });
-      expect(renderCount).toBe(initial); // score not tracked
-
-      act(() => {
-        result.current.name.update('Bob');
-      });
-      expect(renderCount).toBeGreaterThan(initial); // name tracked
-    });
-
-    it('renderOn: [] opts out entirely from a rerender: true provider', () => {
-      const { UserProvider, useUserContext } = createRefSignalContext(
-        'User',
-        makeStore,
-        { rerender: true },
-      );
-
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: [] });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
-
-      const initial = renderCount;
-      act(() => {
-        result.current.name.update('Bob');
-      });
-      act(() => {
-        result.current.score.update(99);
       });
       expect(renderCount).toBe(initial);
     });
