@@ -8,356 +8,338 @@
 [![bundlephobia](https://badgen.net/bundlephobia/minzip/react-refsignal)](https://bundlephobia.com/result?p=react-refsignal)
 [![MIT License](https://img.shields.io/github/license/jav974/react-refsignal.svg)](LICENSE)
 
-A lightweight React hook library for managing and subscribing to signals within refs, enabling efficient updates and notifications without unnecessary renders.
+Mutable signal-like refs for React — update values without re-rendering, subscribe to changes, and opt into re-renders exactly where you need them.
 
-## Features
+## Why
 
-- **Signal-like refs**: Mutable values with subscription and notification support.
-- **No unnecessary renders**: Update values and notify listeners without triggering React re-renders.
-- **Fine-grained reactivity**: Subscribe to changes, batch updates, and trigger effects or renders only when needed.
-- **TypeScript support**: Fully typed API for safe usage.
-- **DevTools**: Built-in debugging tools with update tracking, signal inspection, and Redux DevTools integration.
+`useState` re-renders the component on every update. For high-frequency scenarios — game loops, canvas animation, WebSocket streams, PixiJS — this is too slow.
+
+`react-refsignal` stores values in mutable refs with subscription support. Updating a signal never triggers a re-render by itself. Components read `.current` directly and opt into re-renders only where they need to reflect signal values in JSX.
 
 ## Installation
 
 ```sh
 npm install react-refsignal
 ```
-**Requires React 18.0.0 or newer.**
 
-## Usage
+Requires React ≥ 18.0.0.
 
-### 1. `useRefSignal`
+## Quick Start
 
-Create a signal-like ref with subscription and update methods.
-The RefSignal object is an extension of React.RefObject, with additional methods to update, subscribe and notify. So you can still use a RefSignal like a normal React.RefObject.
+```tsx
+import { useRefSignal, useRefSignalRender } from 'react-refsignal';
 
-```typescript
-import { useRefSignal } from "react-refsignal";
-
-function MyComponent() {
+function Counter() {
   const count = useRefSignal(0);
 
-  // Subscribe to changes
-  useEffect(() => {
-    const listener = (val: number) => console.log("Count changed:", val);
-    count.subscribe(listener);
-    return () => count.unsubscribe(listener);
-  }, [count]);
+  // This component re-renders when count updates
+  useRefSignalRender([count]);
 
   return (
     <button onClick={() => count.update(count.current + 1)}>
-      Increment ({count.current})
+      {count.current}
     </button>
   );
 }
 ```
 
-### 2. `useRefSignalEffect`
+Without `useRefSignalRender`, `count.update()` updates the value and notifies subscribers — but the component never re-renders. That is the point: renders are opt-in.
 
-Run an effect when one or more signals or dependencies change.
-This hook internally uses useEffect on the dependency list, you can safely replace your useEffect with a useRefSignalEffect if any of your depencency is a RefSignal and you want to track its changes.
+## Concepts
 
-```typescript
-import { useRefSignal, useRefSignalEffect } from "react-refsignal";
+### Signals are mutable refs with subscriptions
 
-function MyComponent() {
-  const count = useRefSignal(0);
+A `RefSignal<T>` holds a value in `.current` and adds `.update()`, `.subscribe()`, `.notify()`, and `.notifyUpdate()`. Calling `.update(value)` sets `.current`, bumps an internal `lastUpdated` counter, and notifies all subscribers. Direct mutation of `.current` is allowed but requires a manual `notify()` or `notifyUpdate()` call.
 
-  useRefSignalEffect(() => {
-    console.log("Count changed to", count.current);
-  }, [count]);
+### `useRefSignal` vs `createRefSignal`
 
-  // ...
-}
-```
+`useRefSignal(initialValue)` creates a signal inside a React component — the signal is stable for the component's lifetime. `createRefSignal(initialValue)` creates a signal anywhere: module scope, context factories, event handlers. Both are equivalent; `useRefSignal` is a convenience wrapper.
 
-### 3. `useRefSignalMemo`
+### `useRefSignalEffect` vs `useRefSignalRender`
 
-Create a derived signal whose value is memoized from other signals or dependencies.
-This hook internally uses useMemo, and useRefSignalEffect, so dependency list can contain non RefSignal values as well.
+Two ways to react to signal changes, with different guarantees:
 
-```typescript
-import { useRefSignal, useRefSignalMemo } from "react-refsignal";
+| | `useRefSignalEffect` | `useRefSignalRender` |
+|---|---|---|
+| Purpose | Run a side effect | Trigger a React re-render |
+| Runs on mount | Yes | No |
+| Concurrent-safe | No | Yes (`useSyncExternalStore`) |
+| Cleanup between fires | No | N/A |
 
-function MyComponent() {
-  const count = useRefSignal(1);
-  const double = useRefSignalMemo(() => count.current * 2, [count]);
+Use `useRefSignalEffect` for imperative work (canvas draws, audio, logging). Use `useRefSignalRender` when JSX needs to reflect the signal's value.
 
-  useRefSignalEffect(() => {
-    console.log("Double changed:", double.current);
-  }, [double]);
+### `notify()` vs `notifyUpdate()`
 
-  // count.update(21); // Will trigger double recompute, then effect on double
-}
-```
+Both fire all subscribers. The difference is whether `lastUpdated` changes:
 
-### 4. `useRefSignalRender`
+- **`update(value)`** — sets `.current`, bumps `lastUpdated`, fires subscribers.
+- **`notifyUpdate()`** — bumps `lastUpdated`, fires subscribers. Use when mutating `.current` directly.
+- **`notify()`** — fires subscribers only. `lastUpdated` is unchanged, so `useRefSignalRender` does **not** re-render. Only `useRefSignalEffect` listeners run.
 
-Force a component to re-render when one or more signals update.
-This hook only takes RefSignal objects as dependencies.
+### Signal lifetime
 
-```typescript
-import { useRefSignal, useRefSignalRender } from "react-refsignal";
+Listeners are stored in a `WeakMap` keyed on the signal object. When no reference to the signal exists, the entry is collected automatically. Each subscriber is responsible for its own cleanup — `useRefSignalEffect` and `useRefSignalRender` handle this on unmount.
 
-function MyComponent() {
-  const count = useRefSignal(0);
-
-  // This will re-render the component when count updates or gets notified
-  useRefSignalRender([count]);
-
-  // count.update(1); => Triggers re-render
-  // count.notifyUpdate(); => Trigger re-render
-  // count.notify(); => Triggers re-render
-
-  return <div>Count: {count.current}</div>;
-}
-```
-
-### 5. Batching Updates
-
-Batch multiple signal updates and defer notifications until the end of a callback.
-
-**Auto-inference (recommended)**: Automatically tracks signals updated via `.update()`:
-
-```typescript
-import { batch } from "react-refsignal";
-
-// Automatically infers signalA and signalB as dependencies
-batch(() => {
-  signalA.update(1);
-  signalB.update(2);
-});
-```
-
-**Explicit dependencies**: Useful for direct mutations or manual `.notify()` calls:
-
-```typescript
-// Required when mutating .current directly
-batch(() => {
-  signalA.current = 1;
-  signalB.current = 2;
-}, [signalA, signalB]);
-```
-
-### 6. DevTools
-
-react-refsignal includes powerful debugging tools to help you track signal updates and inspect state changes during development.
-
-#### Configuration
-
-```typescript
-import { configureDevTools } from "react-refsignal";
-
-// Configure DevTools (typically in your app initialization)
-configureDevTools({
-  enabled: true,              // Enable devtools (default: true in development)
-  logUpdates: true,           // Log signal updates to console
-  reduxDevTools: false,       // Enable Redux DevTools Extension integration
-  maxHistory: 100,            // Maximum number of updates to keep in history
-});
-```
-
-#### Named Signals
-
-Give your signals meaningful names for easier debugging:
-
-```typescript
-const count = useRefSignal(0, 'userCount');
-const items = useRefSignal([], 'shoppingCart');
-
-// Access the debug name
-console.log(count.getDebugName?.()); // 'userCount'
-```
-
-#### Update History
-
-Track all signal updates with timestamps:
-
-```typescript
-import { devtools } from "react-refsignal";
-
-// Get update history
-const history = devtools.getUpdateHistory();
-// Returns: [{ signalId, oldValue, newValue, timestamp, ... }]
-
-// Clear history
-devtools.clearHistory();
-```
-
-#### Signal Inspection
-
-Find and inspect signals by name:
-
-```typescript
-// Get a specific signal by name
-const signal = devtools.getSignalByName('userCount');
-console.log(signal?.current);
-
-// Get all tracked signals
-const allSignals = devtools.getAllSignals();
-// Returns: [{ name: 'userCount', signal: RefSignal }, ...]
-```
-
-#### Redux DevTools Integration
-
-When enabled, react-refsignal integrates with the Redux DevTools Extension for time-travel debugging and state inspection:
-
-```typescript
-configureDevTools({
-  enabled: true,
-  reduxDevTools: true,  // Enable Redux DevTools Extension
-});
-```
-
-**DevTools are automatically disabled in production** (`process.env.NODE_ENV === 'production'`) to minimize bundle size and eliminate overhead.
-
-## Usage with Context Providers
-
-This project truly shines when combined with React Context, allowing RefSignals to be passed down through your component hierarchy. Updating a RefSignal will not trigger a re-render unless you explicitly want it.
-
-This pattern is especially powerful for collections: each item in a collection can be a RefSignal. Modifying an individual item's signal will only trigger updates or re-renders in the corresponding child component.
-
-Here's an example in TypeScript:
-
-```typescript
-
-function Provider({ children }) {
-  // The product collection is a RefSignal containing RefSignal<Product> items
-  const products = useRefSignal<RefSignal<Product>[]>([]);
-
-  // You can create product signals outside of hooks using createRefSignal<Product>(productData)
-  const addProduct = useCallback((product: Product) => {
-    products.current.push(createRefSignal(product));
-    products.notifyUpdate(); // Updates lastUpdated and triggers listeners
-  }, []);
-
-  const removeProduct = useCallback((product: Product) => {
-    products.update(
-      products.current.filter(
-        (productSignal: RefSignal<Product>) => productSignal.current.id !== product.id
-      )
-    );
-  }, []);
-
-  // Optional: add an update method for a product
-  const updateProduct = useCallback((product: Product) => {
-    const productSignal = products.current.find(
-      (signal) => signal.current.id === product.id
-    );
-    productSignal?.update(product);
-  }, []);
-
-  // Batch updates to avoid triggering listeners multiple times
-  useEffect(() => {
-    batch(() => {
-      // Example: load multiple products at once
-      // products.current.push(...);
-      // products.notifyUpdate(); // Not needed if using batch
-
-      // Example: update another RefSignal, e.g., user
-      // user.current = ...;
-    }, [products /*, user */]);
-    // Listeners for products (and user) will be invoked once
-  }, []);
-
-  return (
-    <Provider value={{ products, addProduct, removeProduct, updateProduct }}>
-      {children}
-    </Provider>
-  );
-}
-
-function ProductListComponent({ products }: { products: RefSignal<RefSignal<Product>[]> }) {
-  // Re-render when the products array changes (add/remove/replace)
-  useRefSignalRender([products]);
-
-  return (
-    <>
-      {products.current.map((product: RefSignal<Product>) => (
-        <ProductComponent key={product.current.id} product={product} />
-      ))}
-    </>
-  );
-}
-
-function ProductComponent({ product }: { product: RefSignal<Product> }) {
-  // Re-render only when this product changes or is notified
-  useRefSignalRender([product]);
-
-  const { updateProduct } = useProvider();
-
-  // These methods will trigger a re-render:
-  // product.update({...});
-  // product.notify();
-  // product.notifyUpdate();
-  // updateProduct({...});
-
-  return (
-    // ...your product UI...
-  );
-}
-
-// Pattern: wrapper for RefSignal items in a collection
-function RefSignalWrapper({ refSignal, componentFactory }) {
-  useRefSignalRender([refSignal]);
-  return componentFactory(refSignal.current);
-}
-```
+---
 
 ## API Reference
 
-### `useRefSignal<T>(initialValue: T): RefSignal<T>`
+### `RefSignal<T>`
 
-Creates a signal-like ref with subscription and update methods.
+The core interface implemented by all signal objects.
 
-### `useRefSignalEffect(effect: React.EffectCallback, dependencies: React.DependencyList)`
+| Member | Description |
+|---|---|
+| `current: T` | The current value. Mutable directly; prefer `.update()` to notify subscribers. |
+| `lastUpdated: number` | Monotonic counter. Starts at `0`, incremented by `update()` and `notifyUpdate()`. |
+| `update(value)` | Sets `current`, bumps `lastUpdated`, notifies subscribers. No-op if value is strictly equal. |
+| `notify()` | Fires all subscribers. Does **not** change `lastUpdated`. |
+| `notifyUpdate()` | Bumps `lastUpdated`, then fires all subscribers. |
+| `subscribe(listener)` | Registers a listener called with the current value on every notification. |
+| `unsubscribe(listener)` | Removes a previously registered listener. |
+| `getDebugName?()` | Returns the signal's debug name. Only present when DevTools are enabled. |
 
-Runs an effect when any of the provided `RefSignal` objects or dependencies change.
+---
 
-### `useRefSignalMemo<T>(factory: () => T, dependencies: React.DependencyList): RefSignal<T>`
+### `createRefSignal<T>(initialValue, debugName?)`
 
-Creates a memoized `RefSignal` whose value is derived from other signals or dependencies.
+Creates a signal outside of React. Use at module scope or inside context factories.
 
-### `useRefSignalRender(dependencies: RefSignal[], callback?: () => boolean): () => void`
+```ts
+import { createRefSignal } from 'react-refsignal';
 
-Forces a component to re-render when any of the provided `RefSignal` objects update.
-Optionally, you can provide a callback function; a re-render will only occur if this function returns `true`.
-The returned function can also be called manually to force a re-render.
+const position = createRefSignal({ x: 0, y: 0 });
+position.update({ x: 10, y: 20 });
+```
 
-### `batch(callback: () => void, dependencies?: RefSignal[])`
+`lastUpdated` starts at `0` and is only incremented by `update()` or `notifyUpdate()`.
 
-Batches updates to multiple `RefSignal` objects and defers notifications until the callback completes.
+---
 
-**Auto-inference mode** (when `dependencies` is omitted): Automatically tracks signals updated via `.update()` and batches their notifications.
+### `useRefSignal<T>(initialValue, debugName?)`
 
-**Explicit mode** (when `dependencies` is provided): Batches notifications for the specified signals, useful for direct `.current` mutations or manual `.notify()` calls.
+Creates a signal inside a React component. The signal is created once on mount and is stable across re-renders. The initial value is used only at creation — subsequent re-renders do not update it.
 
-### `createRefSignal<T>(initialValue: T, debugName?: string): RefSignal<T>`
+```tsx
+const count = useRefSignal(0);
+const count = useRefSignal(0, 'userCount'); // with debug name
+```
 
-Creates a `RefSignal` object programmatically, allowing you to instantiate a signal outside of React hooks.
-Optionally provide a `debugName` for DevTools tracking.
+---
 
-### `configureDevTools(config: Partial<DevToolsConfig>)`
+### `isRefSignal(obj)`
 
-Configure DevTools behavior:
-- `enabled` - Enable/disable devtools (default: `true` in development)
-- `logUpdates` - Log signal updates to console
-- `reduxDevTools` - Enable Redux DevTools Extension integration
-- `maxHistory` - Maximum number of updates to keep in history (default: 100)
+Type guard. Returns `true` if `obj` has the shape of a `RefSignal`. Validates structure only — does not validate the type of `.current` at runtime.
 
-## Changes from v0.1.* to v1.*
-⚠️ Breaking Change in v1.0.0
+```ts
+import { isRefSignal } from 'react-refsignal';
 
-What’s Changed
-- Structure of RefSignal:
-  - Access data directly from `.current` instead of `.ref.current`
-  - Access lastUpdated directly from `.lastUpdated` instead of `.lastUpdated.current`
+if (isRefSignal(dep)) dep.subscribe(listener);
+```
 
-RefSignal now extends React.RefObject instead of containing it internally.
-This change improves developer experience by simplifying data access paths.
+---
 
-No other changes: All functionalities remain the same.
+### `useRefSignalEffect(effect, deps)`
+
+Runs `effect` on mount and whenever any `RefSignal` in `deps` fires. Non-signal values in `deps` follow standard `useEffect` semantics — the effect resubscribes when they change.
+
+```tsx
+useRefSignalEffect(() => {
+  document.title = `Count: ${count.current}`;
+}, [count]);
+```
+
+**Key behaviors:**
+- Runs immediately on mount.
+- If `effect` returns a cleanup function, it runs on **unmount or deps change only** — not between signal fires.
+- Re-entrancy is allowed: the effect may call `.update()` on a signal in `deps`.
+- Accepts mixed deps: signal deps subscribe directly, non-signal deps resubscribe via React's `useEffect`.
+
+---
+
+### `useRefSignalRender(deps, callback?)`
+
+Subscribes to signals and re-renders the component when any update via `.update()` or `.notifyUpdate()`. Built on `useSyncExternalStore` — concurrent-safe and tear-free.
+
+```tsx
+const score = useRefSignal(0);
+useRefSignalRender([score]);
+
+return <div>Score: {score.current}</div>;
+```
+
+**`callback` filter** — re-renders only when the callback returns `true`:
+
+```tsx
+useRefSignalRender([count], () => count.current % 10 === 0);
+```
+
+**Returns** a `forceUpdate` function that unconditionally re-renders, bypassing the `callback` filter:
+
+```tsx
+const forceUpdate = useRefSignalRender([]);
+forceUpdate();
+```
+
+> **Note:** `notify()` alone does **not** trigger a re-render. `useRefSignalRender` watches `lastUpdated`, which only changes via `update()` and `notifyUpdate()`.
+
+---
+
+### `useRefSignalMemo<T>(factory, deps)`
+
+Creates a derived signal whose value is computed by `factory` and kept in sync with `deps`.
+
+```tsx
+const count = useRefSignal(1);
+const [multiplier, setMultiplier] = useState(2);
+
+const result = useRefSignalMemo(
+  () => count.current * multiplier,
+  [count, multiplier],
+);
+```
+
+- Signal deps trigger `factory()` via direct subscription — no React re-render needed.
+- Non-signal deps trigger a React re-render → `factory` is called exactly once via `useMemo`.
+- The returned signal can be subscribed to like any other signal.
+
+---
+
+### `batch(callback, deps?)`
+
+Defers all signal notifications until `callback` completes. All batched signals receive the same `lastUpdated` timestamp.
+
+**Auto-inference** (recommended) — tracks signals updated via `.update()` automatically:
+
+```ts
+batch(() => {
+  positionX.update(10);
+  positionY.update(20);
+});
+// listeners for positionX and positionY each called once, after the batch
+```
+
+**Explicit deps** — required when mutating `.current` directly or calling `.notify()` manually:
+
+```ts
+batch(() => {
+  positionX.current = 10;
+  positionY.current = 20;
+}, [positionX, positionY]);
+```
+
+Batches are nestable. If the callback throws, the batch still flushes via `finally`.
+
+---
+
+### `createNamedContext<TName, TStore>(name, factory)`
+
+Eliminates the `createContext` / Provider / `useContext` boilerplate. Generates a typed Provider and hook pair.
+
+```ts
+import { createNamedContext, createRefSignal } from 'react-refsignal';
+
+const { CounterProvider, useCounterContext } = createNamedContext(
+  'Counter',
+  () => ({ count: createRefSignal(0) }),
+);
+```
+
+- `${name}Provider` — mounts the context; calls `factory` once per mount.
+- `use${name}Context()` — retrieves the store; throws if used outside the Provider.
+
+---
+
+### `createRefSignalContext<TName, TStore>(name, factory)`
+
+Like `createNamedContext`, but the generated hook supports opt-in re-renders and value unwrapping. Components that do not pass `renderOn` never re-render on signal updates.
+
+```ts
+import { createRefSignalContext, createRefSignal } from 'react-refsignal';
+
+const { UserProvider, useUserContext } = createRefSignalContext('User', () => ({
+  name: createRefSignal('Alice'),
+  score: createRefSignal(0),
+  sessionId: 'abc123', // non-signal — passthrough, excluded from renderOn
+}));
+```
+
+**`renderOn`** — controls which signal updates trigger a re-render:
+
+```tsx
+// No re-renders — read signals imperatively (game loops, rAF callbacks)
+const store = useUserContext();
+store.name.current; // 'Alice'
+
+// Re-render when name changes
+const store = useUserContext({ renderOn: ['name'] });
+
+// Re-render when any signal changes
+import { ALL } from 'react-refsignal';
+const store = useUserContext({ renderOn: ALL });
+// equivalent: useUserContext({ renderOn: 'all' })
+```
+
+Passing a non-signal key in `renderOn` is a TypeScript error.
+
+**`unwrap`** — returns plain values instead of signals, with auto-generated setters:
+
+```tsx
+const { name, setName, score, setScore, sessionId } = useUserContext({
+  renderOn: ['name', 'score'],
+  unwrap: true,
+});
+// name: string, setName: (value: string) => void
+// score: number, setScore: (value: number) => void
+// sessionId: string (passthrough)
+```
+
+---
+
+### DevTools
+
+DevTools are enabled by default in development (`NODE_ENV !== 'production'`). Call `configureDevTools` before creating any signals to ensure full coverage.
+
+```ts
+import { configureDevTools } from 'react-refsignal';
+
+configureDevTools({
+  enabled: true,       // default: true in development
+  logUpdates: true,    // log every update to console
+  reduxDevTools: true, // integrate with Redux DevTools Extension
+  maxHistory: 100,     // max entries in update history (default: 100)
+});
+```
+
+**Named signals** — pass a debug name to `createRefSignal` or `useRefSignal`:
+
+```ts
+const count = useRefSignal(0, 'userCount');
+count.getDebugName?.(); // 'userCount'
+```
+
+**Runtime inspection:**
+
+```ts
+import { devtools } from 'react-refsignal';
+
+devtools.getUpdateHistory(); // SignalUpdate[] — { signalId, oldValue, newValue, timestamp }
+devtools.clearHistory();
+devtools.getSignalByName('userCount'); // RefSignal | undefined
+devtools.getAllSignals();              // Array<{ name: string; signal: RefSignal }>
+```
+
+---
+
+## Patterns
+
+See [docs/patterns.md](docs/patterns.md) for complete real-world examples:
+
+- [High-frequency updates — game loops and canvas](docs/patterns.md#high-frequency-updates--game-loops-and-canvas)
+- [Signal store with context](docs/patterns.md#signal-store-with-context)
+- [Collections of signals](docs/patterns.md#collections-of-signals)
+- [Derived signals with useRefSignalMemo](docs/patterns.md#derived-signals-with-userefignalmemo)
+- [Batching multiple updates](docs/patterns.md#batching-multiple-updates)
 
 ## License
 
