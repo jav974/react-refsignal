@@ -2,7 +2,8 @@
  * @jest-environment jsdom
  */
 
-import { act, renderHook } from '@testing-library/react';
+import { act } from 'react';
+import { renderHook } from '@testing-library/react';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalEffect } from './useRefSignalEffect';
 import { useState } from 'react';

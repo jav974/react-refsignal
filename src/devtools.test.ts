@@ -1,7 +1,8 @@
 /**
  * @jest-environment jsdom
  */
-import { renderHook, act } from '@testing-library/react';
+import { act } from 'react';
+import { renderHook } from '@testing-library/react';
 import { useRefSignal } from './hooks/useRefSignal';
 import { configureDevTools, devtools } from './devtools';
 import { createRefSignal } from './refsignal';

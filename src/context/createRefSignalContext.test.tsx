@@ -2,7 +2,8 @@
  * @jest-environment jsdom
  */
 import React, { createElement, ReactNode } from 'react';
-import { renderHook, act } from '@testing-library/react';
+import { act } from 'react';
+import { renderHook } from '@testing-library/react';
 import { createRefSignalContext } from './createRefSignalContext';
 import { createRefSignal } from '../refsignal';
 
