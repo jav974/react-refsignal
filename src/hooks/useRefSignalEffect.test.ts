@@ -123,3 +123,167 @@ describe('useRefSignalEffect', () => {
     expect(calls).toEqual(['first', 'second']);
   });
 });
+
+describe('useRefSignalEffect — timing options', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('mount always runs synchronously regardless of timing options', () => {
+    const effect = jest.fn();
+
+    renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { debounce: 500 });
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1); // immediate on mount
+  });
+
+  it('throttle: rapid signal fires run effect at most once per window', () => {
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { throttle: 100 });
+      return signal;
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1); // mount
+
+    // First signal fire — leading call
+    act(() => {
+      result.current.update(1);
+    });
+    expect(effect).toHaveBeenCalledTimes(2);
+
+    // More fires within the window — throttled
+    act(() => {
+      result.current.update(2);
+    });
+    act(() => {
+      result.current.update(3);
+    });
+    expect(effect).toHaveBeenCalledTimes(2);
+
+    // Trailing call after window
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    expect(effect).toHaveBeenCalledTimes(3);
+  });
+
+  it('debounce: rapid signal fires produce one effect run after quiet period', () => {
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { debounce: 100 });
+      return signal;
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1); // mount
+
+    act(() => {
+      result.current.update(1);
+    });
+    act(() => {
+      result.current.update(2);
+    });
+    act(() => {
+      result.current.update(3);
+    });
+    expect(effect).toHaveBeenCalledTimes(1); // still only mount
+
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    expect(effect).toHaveBeenCalledTimes(2); // one run after quiet
+  });
+
+  it('rAF: signal fires collapse into one effect run per frame', () => {
+    let rafCallback: FrameRequestCallback | null = null;
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafCallback = cb;
+      return 1;
+    });
+    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { rAF: true });
+      return signal;
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1); // mount (synchronous)
+
+    act(() => {
+      result.current.update(1);
+      result.current.update(2);
+      result.current.update(3);
+    });
+    expect(effect).toHaveBeenCalledTimes(1); // not yet
+
+    act(() => {
+      rafCallback?.(0);
+    });
+    expect(effect).toHaveBeenCalledTimes(2); // exactly one run
+
+    jest.restoreAllMocks();
+  });
+
+  it('conditional logic inside effect body works naturally with timing', () => {
+    const calls: number[] = [];
+    const threshold = 5;
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(
+        () => {
+          if (signal.current < threshold) return; // condition in effect body
+          calls.push(signal.current);
+        },
+        [signal],
+        { debounce: 100 },
+      );
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(3);
+    }); // below threshold
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    expect(calls).toHaveLength(0);
+
+    act(() => {
+      result.current.update(7);
+    }); // above threshold
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    expect(calls).toEqual([7]);
+  });
+
+  it('cleanup cancels pending timer on unmount', () => {
+    const effect = jest.fn();
+
+    const { result, unmount } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { debounce: 100 });
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(1);
+    }); // starts debounce timer
+    unmount();
+
+    act(() => {
+      jest.advanceTimersByTime(200);
+    }); // timer fires after unmount — effect should NOT run again
+    expect(effect).toHaveBeenCalledTimes(1); // only the mount run
+  });
+});

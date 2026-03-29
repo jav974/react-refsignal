@@ -1,6 +1,6 @@
 import { FC, ReactNode } from 'react';
 import { isRefSignal, RefSignal } from '../refsignal';
-import { useRefSignalRender } from '../hooks/useRefSignalRender';
+import { useRefSignalRender, RenderOptions } from '../hooks/useRefSignalRender';
 import { createContextCore } from './createNamedContext';
 
 /**
@@ -42,15 +42,19 @@ export type UnwrappedStore<TStore> = {
 };
 
 type ContextHook<TStore> = {
-  (options?: {
-    renderOn?: Array<RefSignalKeys<TStore>>;
-    unwrap?: false;
-  }): TStore;
-  (options: {
-    renderOn?: Array<RefSignalKeys<TStore>> | 'all';
-    unwrap: true;
-  }): UnwrappedStore<TStore>;
-  (options: { renderOn: 'all'; unwrap?: false }): TStore;
+  (
+    options?: {
+      renderOn?: Array<RefSignalKeys<TStore>>;
+      unwrap?: false;
+    } & RenderOptions,
+  ): TStore;
+  (
+    options: {
+      renderOn?: Array<RefSignalKeys<TStore>> | 'all';
+      unwrap: true;
+    } & RenderOptions,
+  ): UnwrappedStore<TStore>;
+  (options: { renderOn: 'all'; unwrap?: false } & RenderOptions): TStore;
 };
 
 export type RefSignalContextType<TName extends string, TStore> = {
@@ -109,10 +113,12 @@ export function createRefSignalContext<
     factory,
   );
 
-  const useContextHook = (options?: {
-    renderOn?: Array<RefSignalKeys<TStore>> | 'all';
-    unwrap?: boolean;
-  }): TStore | UnwrappedStore<TStore> => {
+  const useContextHook = (
+    options?: {
+      renderOn?: Array<RefSignalKeys<TStore>> | 'all';
+      unwrap?: boolean;
+    } & RenderOptions,
+  ): TStore | UnwrappedStore<TStore> => {
     const store = useStore();
 
     let signals: RefSignal[];
@@ -124,7 +130,13 @@ export function createRefSignalContext<
       signals = [];
     }
 
-    useRefSignalRender(signals);
+    useRefSignalRender(signals, {
+      filter: options?.filter,
+      throttle: options?.throttle,
+      debounce: options?.debounce,
+      maxWait: options?.maxWait,
+      rAF: options?.rAF,
+    });
 
     if (options?.unwrap) {
       const entries: [string, unknown][] = [];

@@ -105,6 +105,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 | `useRefSignal` vs `createRefSignal` | Inside a component vs anywhere else — both produce the same signal |
 | `useRefSignalEffect` vs `useRefSignalRender` | Imperative side effects vs triggering React re-renders |
 | `notify()` vs `notifyUpdate()` | Fire subscribers without or with bumping `lastUpdated` |
+| `RenderOptions` | Rate-limit re-renders and effects via `throttle`, `debounce`, `maxWait`, or `rAF` |
 | Signal lifetime | Listeners are in a `WeakMap` — GC'd when the signal has no references |
 
 ### Signals are mutable refs with subscriptions
@@ -208,7 +209,7 @@ if (isRefSignal<PointData>(from)) {
 
 ---
 
-### `useRefSignalEffect(effect, deps)`
+### `useRefSignalEffect(effect, deps, options?)`
 
 Runs `effect` on mount and whenever any `RefSignal` in `deps` fires. Non-signal values in `deps` follow standard `useEffect` semantics — the effect resubscribes when they change.
 
@@ -219,16 +220,36 @@ useRefSignalEffect(() => {
 ```
 
 **Key behaviors:**
-- Runs immediately on mount.
+- Runs immediately on mount — always synchronous, unaffected by timing options.
 - If `effect` returns a cleanup function, it runs on **unmount or deps change only** — not between signal fires.
 - Re-entrancy is allowed: the effect may call `.update()` on a signal in `deps`.
 - Accepts mixed deps: signal deps subscribe directly, non-signal deps resubscribe via React's `useEffect`.
 
+**`options`** — rate-limit signal-triggered effect runs. Accepts [`EffectOptions`](#renderoptions) (same as `RenderOptions` without `filter` — put conditional logic inside the effect body instead):
+
+```tsx
+// Collapse multiple signal fires per frame into one effect run
+useRefSignalEffect(() => {
+  ctx.fillRect(position.current.x, position.current.y, 20, 20);
+}, [position], { rAF: true });
+
+// Expensive effect — at most once per 100ms
+useRefSignalEffect(() => {
+  rebuildIndex(data.current);
+}, [data], { throttle: 100 });
+
+// Conditional? Put it in the body
+useRefSignalEffect(() => {
+  if (score.current < 100) return;
+  triggerCelebration();
+}, [score], { debounce: 200 });
+```
+
 ---
 
-### `useRefSignalRender(deps, callback?)`
+### `useRefSignalRender(deps, options?)`
 
-Subscribes to signals and re-renders the component when any update via `.update()` or `.notifyUpdate()`. Built on `useSyncExternalStore` — concurrent-safe and tear-free.
+Subscribes to signals and re-renders the component on any update via `.update()` or `.notifyUpdate()`. Built on `useSyncExternalStore` — concurrent-safe and tear-free.
 
 ```tsx
 const score = useRefSignal(0);
@@ -237,13 +258,21 @@ useRefSignalRender([score]);
 return <div>Score: {score.current}</div>;
 ```
 
-**`callback` filter** — re-renders only when the callback returns `true`:
+**`options`** — an optional [`RenderOptions`](#renderoptions) object (or a legacy bare callback for backward compatibility):
 
 ```tsx
+// Legacy callback — still supported
 useRefSignalRender([count], () => count.current % 10 === 0);
+
+// Options object — filter, throttle, debounce, rAF
+useRefSignalRender([price], { throttle: 100 });
+useRefSignalRender([query], { debounce: 200 });
+useRefSignalRender([query], { debounce: 200, maxWait: 1000 });
+useRefSignalRender([position], { rAF: true });
+useRefSignalRender([count], { filter: () => count.current % 10 === 0 });
 ```
 
-**Returns** a `forceUpdate` function that unconditionally re-renders, bypassing the `callback` filter:
+**Returns** a `forceUpdate` function that unconditionally re-renders, bypassing all options:
 
 ```tsx
 const forceUpdate = useRefSignalRender([]);
@@ -251,6 +280,22 @@ forceUpdate();
 ```
 
 > **Note:** `notify()` alone does **not** trigger a re-render. `useRefSignalRender` watches `lastUpdated`, which only changes via `update()` and `notifyUpdate()`.
+
+---
+
+### `RenderOptions`
+
+Shared options accepted by `useRefSignalRender`, `useRefSignalEffect`, and `createRefSignalContext`.
+
+| Option | Type | Description |
+|---|---|---|
+| `filter` | `() => boolean` | Only proceed if this returns `true`. |
+| `throttle` | `number` | At most one trigger per N ms (leading + trailing). |
+| `debounce` | `number` | Trigger after N ms of quiet. |
+| `maxWait` | `number` | With `debounce`: guaranteed flush every N ms even if the signal keeps firing. |
+| `rAF` | `boolean` | Schedule on the next animation frame; multiple fires per frame collapse into one. |
+
+Only one timing mode should be active at a time. If multiple are provided, precedence is `rAF > throttle > debounce`.
 
 ---
 
@@ -354,6 +399,23 @@ const store = useUserContext({ renderOn: ALL });
 ```
 
 Passing a non-signal key in `renderOn` is a TypeScript error.
+
+**Timing options** — all [`RenderOptions`](#renderoptions) fields are accepted alongside `renderOn` and `unwrap`:
+
+```tsx
+// Re-render at most once per 100ms when score changes
+const store = useUserContext({ renderOn: ['score'], throttle: 100 });
+
+// Re-render on the next animation frame when any signal changes
+const store = useUserContext({ renderOn: ALL, rAF: true });
+
+// Re-render only when score exceeds 100, debounced
+const store = useUserContext({
+  renderOn: ['score'],
+  debounce: 200,
+  filter: () => store.score.current > 100,
+});
+```
 
 **`unwrap`** — returns plain values instead of signals, with auto-generated setters:
 

@@ -14,3 +14,5 @@ export type {
   RefSignalKeys,
   UnwrappedStore,
 } from './context/createRefSignalContext';
+export type { RenderOptions } from './hooks/useRefSignalRender';
+export type { EffectOptions } from './hooks/useRefSignalEffect';
