@@ -89,10 +89,23 @@ Options accepted by `createRefSignal` and `useRefSignal`.
 |---|---|---|
 | `debugName` | `string` | Name shown in DevTools. Equivalent to passing a string as the second argument. |
 | `interceptor` | `Interceptor<T>` | Runs before every `.update()`. Return a `T` to store that value, or return `CANCEL` to silently drop the update. |
+| `equal` | `(a: T, b: T) => boolean` | Custom equality check. When it returns `true`, the update is skipped. Useful for object signals where reference equality produces false positives. Runs after `interceptor`, before the built-in `===` check. |
 
 ```ts
 export const CANCEL: unique symbol;
 export type Interceptor<T> = (incoming: T, current: T) => T | typeof CANCEL;
+```
+
+**`equal` example — shallow point comparison:**
+
+```ts
+const position = createRefSignal({ x: 0, y: 0 }, {
+  equal: (a, b) => a.x === b.x && a.y === b.y,
+});
+
+position.subscribe((v) => console.log('moved:', v));
+position.update({ x: 0, y: 0 }); // different reference, same values — skipped
+position.update({ x: 10, y: 0 }); // different values — fires
 ```
 
 `CANCEL` is a unique symbol — safe to use even when `T` includes `undefined` or `null`.
@@ -309,7 +322,15 @@ total.subscribe((v) => console.log('total:', v));
 price.update(20); // total → 60, subscriber called
 ```
 
-The computation stays live as long as at least one dep signal is alive (the computed signal holds subscriptions to each dep).
+The computation stays live as long as at least one dep signal is alive (the computed signal holds subscriptions to each dep). Call `.dispose()` to unsubscribe and stop tracking:
+
+```ts
+const total = createComputedSignal(() => price.current * qty.current, [price, qty]);
+
+// Later — detach from deps, stop recomputing
+total.dispose();
+price.update(99); // total.current remains at the last computed value
+```
 
 ---
 
@@ -535,6 +556,8 @@ devtools.getAllSignals();              // Array<{ name: string; signal: RefSigna
 
 Cross-tab sync is a separate subpath — import from `react-refsignal/broadcast`. Importing the subpath is sufficient to activate it; apps that never import it pay zero cost (~1.3 KB gzipped).
 
+> **SSR:** `setupBroadcast` and `useBroadcast` are no-ops when `typeof window === 'undefined'`. The broadcast subpath is safe to import in SSR environments.
+
 For a full tour with examples, see [Cross-tab Broadcast](broadcast.md).
 
 **Signal-level** — `broadcast` option on `createRefSignal` / `useRefSignal`:
@@ -580,6 +603,8 @@ useBroadcast(store, { channel: 'game', throttle: 100 });
 ### Persist
 
 Cross-session persistence is a separate subpath — import from `react-refsignal/persist`. Importing the subpath is sufficient to activate it; apps that never import it pay zero cost.
+
+> **SSR:** `localStorage` and `sessionStorage` adapters are safe on SSR — access errors are caught and hydration resolves immediately with no stored data. The `indexedDBStorage` adapter also no-ops gracefully when `indexedDB` is unavailable.
 
 For a full tour with examples, see [Persist](persist.md).
 

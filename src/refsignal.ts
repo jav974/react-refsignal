@@ -67,6 +67,16 @@ export type Interceptor<T> = (incoming: T, current: T) => T | typeof CANCEL;
 export type SignalOptions<T> = {
   debugName?: string;
   interceptor?: Interceptor<T>;
+  /**
+   * Custom equality function. When provided, an update is skipped if `equal(incoming, current)`
+   * returns `true`. Useful for object signals where reference equality produces false positives.
+   *
+   * @example
+   * createRefSignal({ x: 0, y: 0 }, {
+   *   equal: (a, b) => a.x === b.x && a.y === b.y,
+   * });
+   */
+  equal?: (a: T, b: T) => boolean;
   /** Sync this signal across tabs. Import `react-refsignal/broadcast` to activate. */
   broadcast?: SignalBroadcastInput;
   /** Persist this signal's value to storage. Import `react-refsignal/persist` to activate. */
@@ -178,7 +188,7 @@ export function createRefSignal<T = unknown>(
 ): RefSignal<T> {
   const resolved =
     typeof options === 'string' ? { debugName: options } : options;
-  const { debugName, interceptor } = resolved ?? {};
+  const { debugName, interceptor, equal } = resolved ?? {};
 
   const intercepted = interceptor
     ? interceptor(initialValue, initialValue)
@@ -203,6 +213,7 @@ export function createRefSignal<T = unknown>(
     update: (value: T) => {
       const result = interceptor ? interceptor(value, signal.current) : value;
       if (result === CANCEL) return;
+      if (equal?.(result, signal.current)) return;
       update(signal, result);
     },
     reset: () => {
@@ -225,10 +236,13 @@ export function createRefSignal<T = unknown>(
 }
 
 /**
- * A read-only view of a {@link RefSignal} — exposes subscription and current value
- * but not `.update()` or `.reset()`. Returned by {@link createComputedSignal}.
+ * A read-only derived signal. Exposes subscription and current value but not
+ * `.update()` or `.reset()`. Call `.dispose()` to stop tracking dep signals.
+ * Returned by {@link createComputedSignal}.
  */
-export type ComputedSignal<T> = Omit<RefSignal<T>, 'update' | 'reset'>;
+export type ComputedSignal<T> = Omit<RefSignal<T>, 'update' | 'reset'> & {
+  readonly dispose: () => void;
+};
 
 /**
  * Creates a derived signal whose value is recomputed whenever any dep signal updates.
@@ -255,10 +269,14 @@ export function createComputedSignal<T>(
   const recompute = () => {
     signal.update(compute());
   };
-  deps.forEach((dep) => {
-    dep.subscribe(recompute);
+  const cleanups = deps.map((dep) => watch(dep, recompute));
+  return Object.assign(signal, {
+    dispose: () => {
+      cleanups.forEach((stop) => {
+        stop();
+      });
+    },
   });
-  return signal;
 }
 
 /**

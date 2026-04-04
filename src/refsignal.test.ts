@@ -33,6 +33,49 @@ describe('createRefSignal', () => {
     expect(signal.current).toBe(0);
   });
 
+  describe('equal option', () => {
+    it('skips update when equal returns true', () => {
+      const signal = createRefSignal(
+        { x: 0, y: 0 },
+        {
+          equal: (a, b) => a.x === b.x && a.y === b.y,
+        },
+      );
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.update({ x: 0, y: 0 }); // different reference, same values
+      expect(listener).not.toHaveBeenCalled();
+      expect(signal.lastUpdated).toBe(0);
+    });
+
+    it('fires update when equal returns false', () => {
+      const signal = createRefSignal(
+        { x: 0 },
+        {
+          equal: (a, b) => a.x === b.x,
+        },
+      );
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.update({ x: 1 });
+      expect(listener).toHaveBeenCalledWith({ x: 1 });
+    });
+
+    it('equal runs after interceptor', () => {
+      const signal = createRefSignal(0, {
+        interceptor: (v) => Math.abs(v),
+        equal: (a, b) => a === b,
+      });
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.update(-5); // interceptor → 5, equal(5, 0) → false, update fires
+      expect(signal.current).toBe(5);
+      expect(listener).toHaveBeenCalledWith(5);
+      signal.update(-5); // interceptor → 5, equal(5, 5) → true, skipped
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('interceptor option', () => {
     it('transforms the incoming value', () => {
       const signal = createRefSignal(0, {
@@ -395,6 +438,24 @@ describe('createComputedSignal', () => {
     source.update(0); // same value — update() is a no-op on source
     expect(compute).not.toHaveBeenCalled();
     expect(abs.current).toBe(0);
+  });
+
+  it('stops recomputing after dispose', () => {
+    const source = createRefSignal(1);
+    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    doubled.dispose();
+    source.update(5);
+    expect(doubled.current).toBe(2); // frozen at initial value
+  });
+
+  it('dispose does not affect other subscribers', () => {
+    const source = createRefSignal(1);
+    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    const listener = jest.fn();
+    source.subscribe(listener);
+    doubled.dispose();
+    source.update(10);
+    expect(listener).toHaveBeenCalledWith(10); // other subscribers unaffected
   });
 });
 

@@ -30,6 +30,16 @@ export interface IDBStorageOptions {
  * persist(factoryB, { key: 'b', storage: idb });
  */
 export function indexedDBStorage(options?: IDBStorageOptions): PersistStorage {
+  // SSR guard — IndexedDB is browser-only; return a no-op adapter that lets
+  // hydration resolve immediately with no stored data.
+  if (typeof indexedDB === 'undefined') {
+    return {
+      get: () => Promise.resolve(null),
+      set: () => Promise.resolve(),
+      remove: () => Promise.resolve(),
+    };
+  }
+
   const {
     dbName = 'refsignal',
     dbVersion = 1,

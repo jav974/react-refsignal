@@ -26,6 +26,9 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
   store: TStore,
   options: BroadcastOptions<TStore>,
 ): () => void {
+  // SSR guard — BroadcastChannel and cross-tab sync are browser-only.
+  if (typeof window === 'undefined') return () => {};
+
   const {
     channel,
     mode = 'many-to-many',
