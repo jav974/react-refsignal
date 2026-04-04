@@ -1,4 +1,11 @@
-import { createRefSignal, isRefSignal, batch, CANCEL } from './refsignal';
+import {
+  createRefSignal,
+  isRefSignal,
+  batch,
+  CANCEL,
+  createComputedSignal,
+  watch,
+} from './refsignal';
 
 describe('createRefSignal', () => {
   it('should create a RefSignal with initial value', () => {
@@ -350,5 +357,71 @@ describe('batch', () => {
     }, [signalB]);
 
     expect(listenerB).toHaveBeenCalledWith(20);
+  });
+});
+
+// ─── createComputedSignal ─────────────────────────────────────────────────────
+
+describe('createComputedSignal', () => {
+  it('initialises with the computed value', () => {
+    const a = createRefSignal(2);
+    const b = createRefSignal(3);
+    const product = createComputedSignal(() => a.current * b.current, [a, b]);
+    expect(product.current).toBe(6);
+  });
+
+  it('recomputes when a dep updates', () => {
+    const a = createRefSignal(2);
+    const b = createRefSignal(3);
+    const product = createComputedSignal(() => a.current * b.current, [a, b]);
+    a.update(5);
+    expect(product.current).toBe(15);
+  });
+
+  it('notifies subscribers on recompute', () => {
+    const source = createRefSignal(1);
+    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    const listener = jest.fn();
+    doubled.subscribe(listener);
+    source.update(4);
+    expect(listener).toHaveBeenCalledWith(8);
+  });
+
+  it('does not recompute when value is unchanged', () => {
+    const source = createRefSignal(0);
+    const compute = jest.fn(() => Math.abs(source.current));
+    const abs = createComputedSignal(compute, [source]);
+    compute.mockClear();
+    source.update(0); // same value — update() is a no-op on source
+    expect(compute).not.toHaveBeenCalled();
+    expect(abs.current).toBe(0);
+  });
+});
+
+// ─── watch ────────────────────────────────────────────────────────────────────
+
+describe('watch', () => {
+  it('calls the listener when the signal updates', () => {
+    const signal = createRefSignal(0);
+    const listener = jest.fn();
+    watch(signal, listener);
+    signal.update(42);
+    expect(listener).toHaveBeenCalledWith(42);
+  });
+
+  it('does not call the listener immediately', () => {
+    const signal = createRefSignal(0);
+    const listener = jest.fn();
+    watch(signal, listener);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('stops listening after the returned cleanup is called', () => {
+    const signal = createRefSignal(0);
+    const listener = jest.fn();
+    const stop = watch(signal, listener);
+    stop();
+    signal.update(1);
+    expect(listener).not.toHaveBeenCalled();
   });
 });

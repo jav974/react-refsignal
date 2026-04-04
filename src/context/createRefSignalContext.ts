@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { isRefSignal, RefSignal } from '../refsignal';
 import { useRefSignalRender } from '../hooks/useRefSignalRender';
+import type { EffectOptions } from '../hooks/useRefSignalEffect';
 import type { TimingOptions } from '../timing';
 
 /**
@@ -55,11 +56,15 @@ export type StoreSnapshot<TStore> = {
     : TStore[K];
 };
 
-export type ContextHookOptions<TStore> = TimingOptions & {
-  renderOn?: Array<RefSignalKeys<TStore>> | 'all';
-  unwrap?: boolean;
+type BaseContextOptions<TStore> = TimingOptions & {
   filter?: (store: StoreSnapshot<TStore>) => boolean;
 };
+
+export type ContextHookOptions<TStore> = BaseContextOptions<TStore> &
+  (
+    | { renderOn?: Array<RefSignalKeys<TStore>> | 'all'; unwrap?: false }
+    | { renderOn: Array<RefSignalKeys<TStore>> | 'all'; unwrap: true }
+  );
 
 export type ContextHook<TStore> = {
   (options?: ContextHookOptions<TStore> & { unwrap?: false }): TStore;
@@ -170,7 +175,7 @@ export function createRefSignalContextHook<
     useRefSignalRender(signals, {
       ...renderOptions,
       filter: filter ? () => filter(snapshot) : undefined,
-    });
+    } as EffectOptions);
 
     const settersMap = useMemo(
       () =>

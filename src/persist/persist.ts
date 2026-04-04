@@ -1,8 +1,10 @@
 import {
+  createRefSignal,
   isRefSignal,
   RefSignal,
   setSignalPersistAdapter,
   SignalPersistInput,
+  watch,
 } from '../refsignal';
 import type { PersistOptions, PersistSignalOptions } from './types';
 import { resolveStorage } from './storage';
@@ -60,11 +62,7 @@ function setupSignalPersist(
       });
   };
 
-  signal.subscribe(save);
-
-  return () => {
-    signal.unsubscribe(save);
-  };
+  return watch(signal, save);
 }
 
 // ─── Store-level setup ────────────────────────────────────────────────────────
@@ -72,7 +70,7 @@ function setupSignalPersist(
 export function setupPersist<TStore extends Record<string, unknown>>(
   store: TStore,
   options: PersistOptions<TStore>,
-): () => void {
+): { cleanup: () => void; hydrated: RefSignal<boolean> } {
   const {
     key,
     keys,
@@ -84,6 +82,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
   } = options;
 
   const storage = resolveStorage(options);
+  const hydrated = createRefSignal(false);
 
   const signalKeys = (
     keys ?? (Object.keys(store) as Array<keyof TStore>)
@@ -111,6 +110,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
         // corrupt — ignore, keep defaults
       }
     }
+    hydrated.update(true);
     onHydrated?.(store);
   });
 
@@ -128,15 +128,15 @@ export function setupPersist<TStore extends Record<string, unknown>>(
       });
   };
 
-  const signals = signalKeys.map((k) => store[k] as RefSignal);
-  signals.forEach((s) => {
-    s.subscribe(save);
-  });
+  const cleanups = signalKeys.map((k) => watch(store[k] as RefSignal, save));
 
-  return () => {
-    signals.forEach((s) => {
-      s.unsubscribe(save);
-    });
+  return {
+    cleanup: () => {
+      cleanups.forEach((stop) => {
+        stop();
+      });
+    },
+    hydrated,
   };
 }
 

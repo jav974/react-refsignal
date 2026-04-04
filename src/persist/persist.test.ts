@@ -389,6 +389,53 @@ describe('usePersist()', () => {
     expect(store.score.current).toBe(55);
   });
 
+  it('returns a hydrated signal that starts false and becomes true after hydration', async () => {
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 1 } });
+    const store = { score: createRefSignal(0) };
+
+    const { result } = renderHook(() =>
+      usePersist(store, { key: 'game', storage }),
+    );
+
+    expect(result.current.current).toBe(false);
+    await flush();
+    expect(result.current.current).toBe(true);
+  });
+
+  it('returned hydrated signal resets to false when key changes', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result, rerender } = renderHook(
+      ({ k }) => usePersist(store, { key: k, storage }),
+      { initialProps: { k: 'key-a' } },
+    );
+    await flush();
+    expect(result.current.current).toBe(true);
+
+    rerender({ k: 'key-b' });
+    expect(result.current.current).toBe(false);
+    await flush();
+    expect(result.current.current).toBe(true);
+  });
+
+  it('returned hydrated signal is stable across re-renders', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result, rerender } = renderHook(
+      ({ extra }: { extra: number }) =>
+        usePersist(store, { key: 'game', storage }),
+      { initialProps: { extra: 0 } },
+    );
+    await flush();
+
+    const signalRef = result.current;
+    rerender({ extra: 1 });
+    expect(result.current).toBe(signalRef);
+  });
+
   it('saves signal updates to storage', async () => {
     const storage = mockStorage();
     const store = { score: createRefSignal(0) };

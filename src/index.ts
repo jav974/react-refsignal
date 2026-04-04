@@ -11,7 +11,15 @@ export type {
   SignalBroadcastInput,
   SignalPersistInput,
 } from './refsignal';
-export { batch, createRefSignal, isRefSignal, CANCEL } from './refsignal';
+export {
+  batch,
+  createRefSignal,
+  isRefSignal,
+  CANCEL,
+  createComputedSignal,
+  watch,
+} from './refsignal';
+export type { ComputedSignal } from './refsignal';
 export {
   createRefSignalContext,
   createRefSignalContextHook,

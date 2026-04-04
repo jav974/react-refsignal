@@ -225,6 +225,64 @@ export function createRefSignal<T = unknown>(
 }
 
 /**
+ * A read-only view of a {@link RefSignal} — exposes subscription and current value
+ * but not `.update()` or `.reset()`. Returned by {@link createComputedSignal}.
+ */
+export type ComputedSignal<T> = Omit<RefSignal<T>, 'update' | 'reset'>;
+
+/**
+ * Creates a derived signal whose value is recomputed whenever any dep signal updates.
+ *
+ * The computed signal is read-only — calling `.update()` or `.reset()` is not exposed.
+ * The computation stays live as long as any dep signal is alive.
+ *
+ * For React components, prefer {@link useRefSignalMemo} which ties the lifetime to the
+ * component and handles non-signal deps (props, state) via React's dependency array.
+ *
+ * @example
+ * const price = createRefSignal(10);
+ * const qty   = createRefSignal(3);
+ * const total = createComputedSignal(() => price.current * qty.current, [price, qty]);
+ * total.subscribe(v => console.log('total:', v)); // 30
+ * price.update(20); // total → 60
+ */
+export function createComputedSignal<T>(
+  compute: () => T,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deps: RefSignal<any>[],
+): ComputedSignal<T> {
+  const signal = createRefSignal(compute());
+  const recompute = () => {
+    signal.update(compute());
+  };
+  deps.forEach((dep) => {
+    dep.subscribe(recompute);
+  });
+  return signal;
+}
+
+/**
+ * Subscribes a listener to a signal and returns a cleanup function.
+ *
+ * Mirrors the `useEffect` return pattern for non-React contexts — no need to
+ * hold a reference to the listener just to unsubscribe later.
+ *
+ * @example
+ * const stop = watch(score, (value) => console.log('score:', value));
+ * // later:
+ * stop();
+ */
+export function watch<T>(
+  signal: RefSignal<T>,
+  listener: Listener<T>,
+): () => void {
+  signal.subscribe(listener);
+  return () => {
+    signal.unsubscribe(listener);
+  };
+}
+
+/**
  * Batch multiple signal updates and defer notifications until the callback completes.
  *
  * **Auto-inference mode** (no deps parameter):

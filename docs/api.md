@@ -14,6 +14,8 @@
 - [`EffectOptions`](#effectoptions)
 - [`ContextHookOptions<TStore>`](#contexthookoptionststore)
 - [`useRefSignalMemo<T>(factory, deps)`](#userefsignalmemot-factory-deps)
+- [`createComputedSignal<T>(compute, deps)`](#createcomputedsignalt-compute-deps)
+- [`watch<T>(signal, listener)`](#watcht-signal-listener)
 - [`batch(callback, deps?)`](#batchcallback-deps)
 - [`createRefSignalContext<TName, TStore>(name, factory)`](#createrefsignalcontexttname-tstore-name-factory)
 - [`createRefSignalContextHook<TStore>(name)`](#createrefsignalcontexthooktstore-name)
@@ -285,6 +287,50 @@ const result = useRefSignalMemo(
 - Signal deps trigger `factory()` via direct subscription — no React re-render needed.
 - Non-signal deps trigger a React re-render → `factory` is called exactly once via `useMemo`.
 - The returned signal can be subscribed to like any other signal.
+
+---
+
+### `createComputedSignal<T>(compute, deps)`
+
+Creates a derived signal whose value is recomputed whenever any dep signal updates. The returned signal is read-only — `.update()` and `.reset()` are not exposed.
+
+Use this at module scope or in context factories. Inside a component, prefer [`useRefSignalMemo`](#userefsignalmemot-factory-deps), which ties the signal's lifetime to the component and handles non-signal deps via React's dependency array.
+
+```ts
+import { createRefSignal, createComputedSignal } from 'react-refsignal';
+
+const price = createRefSignal(10);
+const qty   = createRefSignal(3);
+const total = createComputedSignal(() => price.current * qty.current, [price, qty]);
+
+total.current; // 30
+total.subscribe((v) => console.log('total:', v));
+
+price.update(20); // total → 60, subscriber called
+```
+
+The computation stays live as long as at least one dep signal is alive (the computed signal holds subscriptions to each dep).
+
+---
+
+### `watch<T>(signal, listener)`
+
+Subscribes a listener to a signal and returns a cleanup function. Mirrors the `useEffect` return pattern for non-React contexts — no need to hold a reference to the listener just to unsubscribe later.
+
+```ts
+import { createRefSignal, watch } from 'react-refsignal';
+
+const score = createRefSignal(0);
+const stop = watch(score, (value) => console.log('score:', value));
+
+score.update(10); // → 'score: 10'
+
+// Later — unsubscribe
+stop();
+score.update(20); // listener not called
+```
+
+Useful when managing subscriptions imperatively — in factories, non-React services, or cleanup-heavy code where holding both `signal` and `listener` references is awkward.
 
 ---
 
