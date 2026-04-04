@@ -4,18 +4,6 @@ import { createDebounce, createRAF, createThrottle } from '../timing';
 import type { EffectOptions } from './useRefSignalEffect';
 
 /**
- * Options for controlling when re-renders are triggered.
- * Extends {@link EffectOptions} with an additional `filter` field.
- *
- * Only one timing mode should be active at a time.
- * If multiple are provided, precedence is: `rAF > throttle > debounce`.
- */
-export type RenderOptions = EffectOptions & {
-  /** Re-render only when this returns true. Applied before any timing wrapper. */
-  filter?: () => boolean;
-};
-
-/**
  * React hook that forces a component to re-render whenever one or more {@link RefSignal} dependencies update.
  *
  * Use this hook to automatically trigger a re-render of your component when the value of any provided RefSignal changes.
@@ -36,7 +24,7 @@ export type RenderOptions = EffectOptions & {
  * - The callback is stored in a ref to avoid unnecessary resubscriptions when it changes.
  *
  * @param deps Array of RefSignal objects to watch for changes.
- * @param callbackOrOptions Optional filter callback (legacy) or {@link RenderOptions} object.
+ * @param callbackOrOptions Optional filter callback (legacy) or {@link EffectOptions} object.
  * @returns A function that unconditionally forces a re-render of the component. Bypasses the
  *          `filter` — useful for triggering a render outside of signal updates.
  *
@@ -57,11 +45,11 @@ export type RenderOptions = EffectOptions & {
 export function useRefSignalRender(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   deps: RefSignal<any>[],
-  callbackOrOptions?: (() => boolean) | RenderOptions,
+  callbackOrOptions?: (() => boolean) | EffectOptions,
 ): () => void {
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
 
-  const options: RenderOptions =
+  const options: EffectOptions =
     typeof callbackOrOptions === 'function'
       ? { filter: callbackOrOptions }
       : (callbackOrOptions ?? {});

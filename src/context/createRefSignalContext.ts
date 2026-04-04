@@ -8,7 +8,8 @@ import {
   useMemo,
 } from 'react';
 import { isRefSignal, RefSignal } from '../refsignal';
-import { useRefSignalRender, RenderOptions } from '../hooks/useRefSignalRender';
+import { useRefSignalRender } from '../hooks/useRefSignalRender';
+import { EffectOptions } from '../hooks/useRefSignalEffect';
 
 /**
  * Extracts the keys of a store whose values are RefSignal instances.
@@ -54,7 +55,7 @@ export type StoreSnapshot<TStore> = {
     : TStore[K];
 };
 
-export type ContextHookOptions<TStore> = Omit<RenderOptions, 'filter'> & {
+export type ContextHookOptions<TStore> = Omit<EffectOptions, 'filter'> & {
   renderOn?: Array<RefSignalKeys<TStore>> | 'all';
   unwrap?: boolean;
   filter?: (store: StoreSnapshot<TStore>) => boolean;

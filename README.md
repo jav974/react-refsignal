@@ -111,7 +111,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 | `useRefSignal` vs `createRefSignal` | Inside a component vs anywhere else — both produce the same signal |
 | `useRefSignalEffect` vs `useRefSignalRender` | Imperative side effects vs triggering React re-renders |
 | `notify()` vs `notifyUpdate()` | Fire subscribers without or with bumping `lastUpdated` |
-| `RenderOptions` | Rate-limit re-renders and effects via `throttle`, `debounce`, `maxWait`, or `rAF` |
+| `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
 | Signal lifetime | Listeners are in a `WeakMap` — GC'd when the signal has no references |
 
 See [Concepts](docs/concepts.md) for the full explanation of each.

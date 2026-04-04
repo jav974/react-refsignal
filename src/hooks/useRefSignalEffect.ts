@@ -3,9 +3,9 @@ import { isRefSignal } from '../refsignal';
 import { createDebounce, createRAF, createThrottle } from '../timing';
 
 /**
- * Timing options for {@link useRefSignalEffect}.
- * `filter` is intentionally absent — put conditional logic inside the effect body instead.
- * {@link RenderOptions} extends this type with an additional `filter` field.
+ * Options for {@link useRefSignalEffect} and {@link useRefSignalRender}.
+ * All output mechanisms in react-refsignal (effects, renders, persist, broadcast)
+ * extend this type — timing options rate-limit execution, filter gates it entirely.
  */
 export type EffectOptions = {
   /** At most one effect run per N ms (leading + trailing). */
@@ -19,6 +19,11 @@ export type EffectOptions = {
   maxWait?: number;
   /** Schedule the effect on the next animation frame; multiple fires per frame collapse into one. */
   rAF?: boolean;
+  /**
+   * Skip the effect run when this returns false.
+   * Applied to signal-triggered runs only — the initial mount run always executes unconditionally.
+   */
+  filter?: () => boolean;
 };
 
 /**
@@ -43,9 +48,8 @@ export type EffectOptions = {
  *
  * @param effect A function to run when any dependency signal changes.
  * @param deps An array of RefSignal objects (and optionally other values) to watch for changes.
- * @param options Optional {@link EffectOptions} to rate-limit signal-triggered effect runs.
- *   The initial mount run is always synchronous regardless of options.
- *   Use a conditional inside the effect body instead of a `filter` option.
+ * @param options Optional {@link EffectOptions} to rate-limit or gate signal-triggered effect runs.
+ *   The initial mount run is always synchronous and unconditional regardless of timing or filter options.
  *
  * @example
  * const count = useRefSignal(0);
@@ -92,10 +96,15 @@ export function useRefSignalEffect(
   const effectRef = useRef(effect);
   effectRef.current = effect;
 
-  const { throttle, debounce, maxWait, rAF } = options ?? {};
+  const { throttle, debounce, maxWait, rAF, filter } = options ?? {};
+
+  // Store filter in ref so changes don't trigger resubscription
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
 
   useEffect(() => {
     const runEffect = () => {
+      if (filterRef.current && !filterRef.current()) return;
       effectRef.current();
     };
 

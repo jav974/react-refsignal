@@ -287,3 +287,103 @@ describe('useRefSignalEffect — timing options', () => {
     expect(effect).toHaveBeenCalledTimes(1); // only the mount run
   });
 });
+
+describe('useRefSignalEffect — filter option', () => {
+  it('mount run is unconditional even when filter returns false', () => {
+    const effect = jest.fn();
+
+    renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { filter: () => false });
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips effect when filter returns false on signal update', () => {
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], {
+        filter: () => signal.current > 0,
+      });
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(0);
+    }); // filter returns false — skip
+    expect(effect).toHaveBeenCalledTimes(1); // only mount
+
+    act(() => {
+      result.current.update(1);
+    }); // filter returns true — run
+    expect(effect).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs effect when filter returns true', () => {
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { filter: () => true });
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(1);
+    });
+    expect(effect).toHaveBeenCalledTimes(2); // mount + signal update
+  });
+
+  it('picks up filter changes without resubscription', () => {
+    const effect = jest.fn();
+    let allow = false;
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { filter: () => allow });
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(1);
+    }); // allow=false — skip
+    expect(effect).toHaveBeenCalledTimes(1);
+
+    allow = true;
+    act(() => {
+      result.current.update(2);
+    }); // allow=true — run
+    expect(effect).toHaveBeenCalledTimes(2);
+  });
+
+  it('composes with throttle — filter checked after throttle window', () => {
+    jest.useFakeTimers();
+    const effect = jest.fn();
+    let allow = true;
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], {
+        throttle: 100,
+        filter: () => allow,
+      });
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(1);
+    }); // leading edge fires, allow=true
+    jest.advanceTimersByTime(50);
+    allow = false;
+    act(() => {
+      result.current.update(2);
+    });
+    jest.advanceTimersByTime(100); // trailing edge fires, allow=false — skip
+
+    expect(effect).toHaveBeenCalledTimes(2); // mount + leading edge only
+    jest.useRealTimers();
+  });
+});

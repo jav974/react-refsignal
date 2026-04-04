@@ -11,7 +11,7 @@
 - [`isRefSignal<T>(obj)`](#isrefsignalt-obj)
 - [`useRefSignalEffect(effect, deps, options?)`](#userefsignaleffect-effect-deps-options)
 - [`useRefSignalRender(deps, options?)`](#userefsignalrender-deps-options)
-- [`RenderOptions`](#renderoptions)
+- [`EffectOptions`](#effectoptions)
 - [`ContextHookOptions<TStore>`](#contexthookoptionststore)
 - [`useRefSignalMemo<T>(factory, deps)`](#userefsignalmemot-factory-deps)
 - [`batch(callback, deps?)`](#batchcallback-deps)
@@ -144,7 +144,7 @@ useRefSignalEffect(() => {
 - Re-entrancy is allowed: the effect may call `.update()` on a signal in `deps`.
 - Accepts mixed deps: signal deps subscribe directly, non-signal deps resubscribe via React's `useEffect`.
 
-**`options`** — rate-limit signal-triggered effect runs. Accepts `EffectOptions` (same as `RenderOptions` without `filter` — put conditional logic inside the effect body instead):
+**`options`** — rate-limit or gate signal-triggered effect runs. Accepts [`EffectOptions`](#effectoptions). The mount run is always synchronous and unconditional regardless of options:
 
 ```tsx
 // Collapse multiple signal fires per frame into one effect run
@@ -157,11 +157,10 @@ useRefSignalEffect(() => {
   rebuildIndex(data.current);
 }, [data], { throttle: 100 });
 
-// Conditional? Put it in the body
+// Skip effect unless score crossed the threshold
 useRefSignalEffect(() => {
-  if (score.current < 100) return;
   triggerCelebration();
-}, [score], { debounce: 200 });
+}, [score], { filter: () => score.current >= 100 });
 ```
 
 ---
@@ -177,7 +176,7 @@ useRefSignalRender([score]);
 return <div>Score: {score.current}</div>;
 ```
 
-**`options`** — an optional `RenderOptions` object (or a legacy bare callback for backward compatibility):
+**`options`** — an optional [`EffectOptions`](#effectoptions) object (or a legacy bare callback for backward compatibility):
 
 ```tsx
 // Legacy callback — still supported
@@ -202,13 +201,13 @@ forceUpdate();
 
 ---
 
-### `RenderOptions`
+### `EffectOptions`
 
-Options accepted by `useRefSignalRender` and `useRefSignalEffect`.
+Options accepted by `useRefSignalRender` and `useRefSignalEffect`. All output mechanisms in the library extend this type.
 
 | Option | Type | Description |
 |---|---|---|
-| `filter` | `() => boolean` | Only proceed if this returns `true`. |
+| `filter` | `() => boolean` | Skip the run if this returns `false`. Applied to signal-triggered runs only — mount always executes. |
 | `throttle` | `number` | At most one trigger per N ms (leading + trailing). |
 | `debounce` | `number` | Trigger after N ms of quiet. |
 | `maxWait` | `number` | With `debounce`: guaranteed flush every N ms even if the signal keeps firing. |
@@ -216,13 +215,13 @@ Options accepted by `useRefSignalRender` and `useRefSignalEffect`.
 
 Only one timing mode should be active at a time. If multiple are provided, precedence is `rAF > throttle > debounce`.
 
-Context hooks (`createRefSignalContext`, `createRefSignalContextHook`) accept [`ContextHookOptions`](#contexthookoptionststore) instead, which extends these same timing fields but upgrades `filter` to receive the store directly.
+Context hooks (`createRefSignalContext`, `createRefSignalContextHook`) accept [`ContextHookOptions`](#contexthookoptionststore) instead, which extends these same fields but upgrades `filter` to receive the store snapshot directly.
 
 ---
 
 ### `ContextHookOptions<TStore>`
 
-Options accepted by the hook returned from `createRefSignalContext` and `createRefSignalContextHook`. Extends the timing fields of `RenderOptions` and adds context-specific fields.
+Options accepted by the hook returned from `createRefSignalContext` and `createRefSignalContextHook`. Extends [`EffectOptions`](#effectoptions) and adds context-specific fields.
 
 | Option | Type | Description |
 |---|---|---|
@@ -234,7 +233,7 @@ Options accepted by the hook returned from `createRefSignalContext` and `createR
 | `maxWait` | `number` | With `debounce`: guaranteed flush every N ms even if the signal keeps firing. |
 | `rAF` | `boolean` | Schedule on the next animation frame; multiple fires per frame collapse into one. |
 
-The key difference from `RenderOptions`: `filter` receives the store snapshot as its argument (signals unwrapped to their current values, read-only), making signal-based conditions straightforward:
+`filter` here receives the store snapshot as its argument (signals unwrapped to their current values, read-only) — a convenience upgrade over the base `() => boolean` form:
 
 ```tsx
 // Only re-render when score crosses the 100 threshold
@@ -332,7 +331,7 @@ const store = useUserContext({ renderOn: ALL });
 
 Passing a non-signal key in `renderOn` is a TypeScript error.
 
-**Timing options** — all timing fields from `RenderOptions` are accepted alongside `renderOn` and `unwrap`. `filter` is upgraded to receive the store snapshot directly (see [`ContextHookOptions`](#contexthookoptionststore)):
+**Timing and filter options** — all [`EffectOptions`](#effectoptions) fields are accepted alongside `renderOn` and `unwrap`. `filter` is upgraded to receive the store snapshot directly (see [`ContextHookOptions`](#contexthookoptionststore)):
 
 ```tsx
 // Re-render at most once per 100ms when score changes
