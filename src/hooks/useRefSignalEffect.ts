@@ -11,9 +11,15 @@ import type { TimingOptions } from '../timing';
 export type EffectOptions = TimingOptions & {
   /**
    * Skip the effect run when this returns false.
-   * Applied to signal-triggered runs only — the initial mount run always executes unconditionally.
+   * Applied to signal-triggered runs only — does not affect the mount run
+   * (use `skipMount` to suppress that).
    */
   filter?: () => boolean;
+  /**
+   * Skip the effect run on mount. When `true`, the effect only runs on
+   * signal-triggered updates — never on the initial render.
+   */
+  skipMount?: boolean;
 };
 
 /**
@@ -86,7 +92,7 @@ export function useRefSignalEffect(
   const effectRef = useRef(effect);
   effectRef.current = effect;
 
-  const { throttle, debounce, maxWait, rAF, filter } = options ?? {};
+  const { throttle, debounce, maxWait, rAF, filter, skipMount } = options ?? {};
 
   // Store filter in ref so changes don't trigger resubscription
   const filterRef = useRef(filter);
@@ -114,8 +120,8 @@ export function useRefSignalEffect(
       if (isRefSignal(dep)) dep.subscribe(wrappedEffect);
     });
 
-    // Mount run is always synchronous, unaffected by timing options
-    const destructor = effectRef.current();
+    // Mount run — synchronous and unconditional, unless skipMount is true
+    const destructor = skipMount ? undefined : effectRef.current();
 
     // Cleanup function — only runs on unmount or deps change
     return () => {

@@ -288,6 +288,58 @@ describe('useRefSignalEffect — timing options', () => {
   });
 });
 
+describe('useRefSignalEffect — skipMount option', () => {
+  it('does not run on mount when skipMount is true', () => {
+    const effect = jest.fn();
+
+    renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { skipMount: true });
+    });
+
+    expect(effect).not.toHaveBeenCalled();
+  });
+
+  it('runs on signal update when skipMount is true', () => {
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { skipMount: true });
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(1);
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1);
+  });
+
+  it('filter still applies to signal-triggered runs when skipMount is true', () => {
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], {
+        skipMount: true,
+        filter: () => signal.current > 5,
+      });
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(3);
+    }); // filter false — skip
+    expect(effect).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.update(10);
+    }); // filter true — run
+    expect(effect).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useRefSignalEffect — filter option', () => {
   it('mount run is unconditional even when filter returns false', () => {
     const effect = jest.fn();

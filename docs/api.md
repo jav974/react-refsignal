@@ -161,7 +161,7 @@ useRefSignalEffect(() => {
 - Re-entrancy is allowed: the effect may call `.update()` on a signal in `deps`.
 - Accepts mixed deps: signal deps subscribe directly, non-signal deps resubscribe via React's `useEffect`.
 
-**`options`** — rate-limit or gate signal-triggered effect runs. Accepts [`EffectOptions`](#effectoptions). The mount run is always synchronous and unconditional regardless of options:
+**`options`** — rate-limit or gate signal-triggered effect runs. Accepts [`EffectOptions`](#effectoptions). The mount run is always synchronous and unconditional regardless of timing or filter options. Pass `{ skipMount: true }` to suppress it entirely:
 
 ```tsx
 // Collapse multiple signal fires per frame into one effect run
@@ -178,6 +178,11 @@ useRefSignalEffect(() => {
 useRefSignalEffect(() => {
   triggerCelebration();
 }, [score], { filter: () => score.current >= 100 });
+
+// Skip the mount run — react to changes only, not initial state
+useRefSignalEffect(() => {
+  toast(`Score updated to ${score.current}`);
+}, [score], { skipMount: true });
 ```
 
 ---
@@ -226,7 +231,8 @@ Options accepted by `useRefSignalRender` and `useRefSignalEffect`. All output me
 
 | Option | Type | Description |
 |---|---|---|
-| `filter` | `() => boolean` | Skip the run if this returns `false`. Applied to signal-triggered runs only — mount always executes. |
+| `filter` | `() => boolean` | Skip the run if this returns `false`. Applied to signal-triggered runs only — mount always executes (unless `skipMount` is set). |
+| `skipMount` | `boolean` | Skip the effect run on mount. When `true`, the effect only fires on signal-triggered updates. |
 | `throttle` | `number` | At most one trigger per N ms (leading + trailing). |
 | `debounce` | `number` | Trigger after N ms of quiet. |
 | `maxWait` | `number` | With `debounce` only: guaranteed flush every N ms even if the signal keeps firing. |
