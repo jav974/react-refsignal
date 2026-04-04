@@ -57,4 +57,14 @@ describe('useRefSignal', () => {
       expect(listener).not.toHaveBeenCalled();
     });
   });
+
+  it('applies interceptor on update', () => {
+    const { result } = renderHook(() =>
+      useRefSignal(0, { interceptor: (v) => Math.max(0, v) }),
+    );
+    act(() => {
+      result.current.update(-10);
+    });
+    expect(result.current.current).toBe(0);
+  });
 });

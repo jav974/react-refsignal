@@ -14,7 +14,9 @@
 
 ## Signals are mutable refs with subscriptions
 
-A `RefSignal<T>` holds a value in `.current` and adds `.update()`, `.subscribe()`, `.notify()`, and `.notifyUpdate()`. Calling `.update(value)` sets `.current`, bumps an internal `lastUpdated` counter, and notifies all subscribers. Direct mutation of `.current` is allowed but requires a manual `notify()` or `notifyUpdate()` call.
+A `RefSignal<T>` holds a value in `.current` and adds `.update()`, `.reset()`, `.subscribe()`, `.notify()`, and `.notifyUpdate()`. Calling `.update(value)` sets `.current`, bumps an internal `lastUpdated` counter, and notifies all subscribers. Calling `.reset()` restores `.current` to the signal's initial value via `.update()`. Direct mutation of `.current` is allowed but requires a manual `notify()` or `notifyUpdate()` call.
+
+An optional `interceptor` function can be provided at creation time. It runs on every `.update()` call — including `reset()` — and can transform the incoming value or cancel the update entirely by returning `CANCEL`.
 
 ---
 
@@ -43,7 +45,8 @@ Use `useRefSignalEffect` for imperative work (canvas draws, audio, logging). Use
 
 Both fire all subscribers. The difference is whether `lastUpdated` changes:
 
-- **`update(value)`** — sets `.current`, bumps `lastUpdated`, fires subscribers.
+- **`update(value)`** — runs the interceptor (if any), sets `.current`, bumps `lastUpdated`, fires subscribers.
+- **`reset()`** — calls `.update(initialValue)`, so the interceptor runs, `lastUpdated` is bumped, and subscribers are notified. No-op if already at initial value.
 - **`notifyUpdate()`** — bumps `lastUpdated`, fires subscribers. Use when mutating `.current` directly.
 - **`notify()`** — fires subscribers only. `lastUpdated` is unchanged, so `useRefSignalRender` does **not** re-render. Only `useRefSignalEffect` listeners run.
 

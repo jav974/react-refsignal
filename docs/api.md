@@ -5,8 +5,9 @@
 ---
 
 - [`RefSignal<T>`](#refsignalt)
-- [`createRefSignal<T>(initialValue, debugName?)`](#createrefsignalt-initialvalue-debugname)
-- [`useRefSignal<T>(initialValue, debugName?)`](#userefsignalt-initialvalue-debugname)
+- [`createRefSignal<T>(initialValue, options?)`](#createrefsignalt-initialvalue-options)
+- [`SignalOptions<T>` / `Interceptor<T>` / `CANCEL`](#signaloptionst--interceptort--cancel)
+- [`useRefSignal<T>(initialValue, options?)`](#userefsignalt-initialvalue-options)
 - [`isRefSignal<T>(obj)`](#isrefsignalt-obj)
 - [`useRefSignalEffect(effect, deps, options?)`](#userefsignaleffect-effect-deps-options)
 - [`useRefSignalRender(deps, options?)`](#userefsignalrender-deps-options)
@@ -30,6 +31,7 @@ The core interface implemented by all signal objects.
 | `current: T` | The current value. Mutable directly; prefer `.update()` to notify subscribers. |
 | `lastUpdated: number` | Monotonic counter. Starts at `0`, incremented by `update()` and `notifyUpdate()`. |
 | `update(value)` | Sets `current`, bumps `lastUpdated`, notifies subscribers. No-op if value is strictly equal. |
+| `reset()` | Restores `current` to the initial value via `.update()` — respects the interceptor, notifies subscribers, no-op if already at initial. |
 | `notify()` | Fires all subscribers. Does **not** change `lastUpdated`. [See Concepts](concepts.md#notify-vs-notifyupdate) |
 | `notifyUpdate()` | Bumps `lastUpdated`, then fires all subscribers. [See Concepts](concepts.md#notify-vs-notifyupdate) |
 | `subscribe(listener)` | Registers a listener called with the current value on every notification. |
@@ -38,28 +40,71 @@ The core interface implemented by all signal objects.
 
 ---
 
-### `createRefSignal<T>(initialValue, debugName?)`
+### `createRefSignal<T>(initialValue, options?)`
 
 Creates a signal outside of React. Use at module scope or inside context factories.
 
 ```ts
-import { createRefSignal } from 'react-refsignal';
+import { createRefSignal, CANCEL } from 'react-refsignal';
 
 const position = createRefSignal({ x: 0, y: 0 });
 position.update({ x: 10, y: 20 });
+
+// With debug name (string shorthand — backward compatible)
+const score = createRefSignal(0, 'score');
+
+// With interceptor — transform incoming value
+const health = createRefSignal(100, { interceptor: (v) => Math.max(0, Math.min(100, v)) });
+const angle  = createRefSignal(0,   { interceptor: (v) => v % 360 });
+
+// With interceptor — cancel the update by returning CANCEL
+const state = createRefSignal<'idle' | 'running' | 'paused'>('idle', {
+  interceptor: (incoming, current) => {
+    if (current === 'idle' && incoming === 'paused') return CANCEL; // invalid transition
+    return incoming;
+  },
+});
+
+// Delta-based — use current value to limit rate of change
+const position = createRefSignal(0, {
+  interceptor: (incoming, current) => current + Math.min(incoming - current, 10),
+});
 ```
 
 `lastUpdated` starts at `0` and is only incremented by `update()` or `notifyUpdate()`.
 
+> **Note:** `interceptor` runs inside `.update()` only. Direct mutation of `.current` bypasses it.
+
 ---
 
-### `useRefSignal<T>(initialValue, debugName?)`
+### `SignalOptions<T>` / `Interceptor<T>` / `CANCEL`
+
+Options accepted by `createRefSignal` and `useRefSignal`.
+
+| Option | Type | Description |
+|---|---|---|
+| `debugName` | `string` | Name shown in DevTools. Equivalent to passing a string as the second argument. |
+| `interceptor` | `Interceptor<T>` | Runs before every `.update()`. Return a `T` to store that value, or return `CANCEL` to silently drop the update. |
+
+```ts
+export const CANCEL: unique symbol;
+export type Interceptor<T> = (incoming: T, current: T) => T | typeof CANCEL;
+```
+
+`CANCEL` is a unique symbol — safe to use even when `T` includes `undefined` or `null`.
+
+---
+
+### `useRefSignal<T>(initialValue, options?)`
 
 Creates a signal inside a React component. The signal is created once on mount and is stable across re-renders. The initial value is used only at creation — subsequent re-renders do not update it.
 
 ```tsx
 const count = useRefSignal(0);
 const count = useRefSignal(0, 'userCount'); // with debug name
+
+// With interceptor
+const score = useRefSignal(0, { interceptor: (v) => Math.max(0, v) });
 ```
 
 ---

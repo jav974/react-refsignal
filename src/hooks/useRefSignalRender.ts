@@ -26,7 +26,8 @@ export type RenderOptions = EffectOptions & {
  * different components read different values from external state during concurrent renders.
  *
  * - The hook subscribes to all given RefSignal dependencies.
- * - The component will re-render whenever any of the signals are updated via `.update()` or `.notifyUpdate()`.
+ * - The component will re-render whenever any of the signals are updated via `.update()`, `.notifyUpdate()`,
+ *   or `.reset()` (which goes through `.update()` internally).
  *   Calling `.notify()` alone does NOT trigger a re-render — it fires listeners but does not change the
  *   snapshot (`lastUpdated` is unchanged), so `useSyncExternalStore` sees no difference.
  * - If the optional `callback` is specified, a re-render will only occur if it returns `true`.

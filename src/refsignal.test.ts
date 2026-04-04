@@ -1,4 +1,4 @@
-import { createRefSignal, isRefSignal, batch } from './refsignal';
+import { createRefSignal, isRefSignal, batch, CANCEL } from './refsignal';
 
 describe('createRefSignal', () => {
   it('should create a RefSignal with initial value', () => {
@@ -19,6 +19,156 @@ describe('createRefSignal', () => {
   it('should not satisfy isRefSignal', () => {
     const signal = { current: 'test' };
     expect(isRefSignal(signal)).toBe(false);
+  });
+
+  it('accepts debugName as a string (backward compat)', () => {
+    const signal = createRefSignal(0, 'mySignal');
+    expect(signal.current).toBe(0);
+  });
+
+  describe('interceptor option', () => {
+    it('transforms the incoming value', () => {
+      const signal = createRefSignal(0, {
+        interceptor: (incoming) => Math.max(0, incoming),
+      });
+      signal.update(-5);
+      expect(signal.current).toBe(0);
+    });
+
+    it('intercepted value is what subscribers receive', () => {
+      const signal = createRefSignal(5, {
+        interceptor: (incoming) => Math.max(0, incoming),
+      });
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.update(-5); // interceptor clamps to 0, different from current (5)
+      expect(listener).toHaveBeenCalledWith(0);
+    });
+
+    it('is a no-op when intercepted value equals current', () => {
+      const signal = createRefSignal(0, {
+        interceptor: (incoming) => Math.max(0, incoming),
+      });
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.update(-99); // clamps to 0, which equals current
+      expect(listener).not.toHaveBeenCalled();
+      expect(signal.current).toBe(0);
+    });
+
+    it('cancels the update when CANCEL is returned', () => {
+      const signal = createRefSignal(5, {
+        interceptor: (incoming) => (incoming < 0 ? CANCEL : incoming),
+      });
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.update(-1);
+      expect(listener).not.toHaveBeenCalled();
+      expect(signal.current).toBe(5);
+      expect(signal.lastUpdated).toBe(0);
+    });
+
+    it('CANCEL works for undefined values', () => {
+      const signal = createRefSignal<number | undefined>(undefined, {
+        interceptor: (incoming) => (incoming === undefined ? CANCEL : incoming),
+      });
+      signal.update(undefined);
+      expect(signal.current).toBe(undefined);
+      expect(signal.lastUpdated).toBe(0);
+    });
+
+    it('can use current value for delta-based logic', () => {
+      const signal = createRefSignal(0, {
+        interceptor: (incoming, current) =>
+          current + Math.min(incoming - current, 10),
+      });
+      signal.update(100); // delta is 100, capped to 10
+      expect(signal.current).toBe(10);
+    });
+
+    it('propagates a throwing interceptor out of update', () => {
+      const signal = createRefSignal(5, {
+        interceptor: (incoming) => {
+          if (incoming < 0) throw new RangeError('negative');
+          return incoming;
+        },
+      });
+      expect(() => {
+        signal.update(-1);
+      }).toThrow(RangeError);
+      expect(signal.current).toBe(5);
+    });
+
+    it('accepts debugName alongside interceptor', () => {
+      const signal = createRefSignal(10, {
+        interceptor: (v) => v * 2,
+        debugName: 'doubled',
+      });
+      signal.update(5);
+      expect(signal.current).toBe(10);
+    });
+
+    it('satisfies isRefSignal', () => {
+      const signal = createRefSignal(0, { interceptor: (v) => v });
+      expect(isRefSignal(signal)).toBe(true);
+    });
+
+    it('applies interceptor to initial value', () => {
+      const signal = createRefSignal(-5, {
+        interceptor: (v) => Math.max(0, v),
+      });
+      expect(signal.current).toBe(0);
+    });
+
+    it('falls back to initialValue when interceptor returns CANCEL on mount', () => {
+      const signal = createRefSignal(-1, {
+        interceptor: (v) => (v < 0 ? CANCEL : v),
+      });
+      expect(signal.current).toBe(-1);
+    });
+  });
+
+  describe('reset', () => {
+    it('restores initial value and notifies subscribers', () => {
+      const signal = createRefSignal(10);
+      const listener = jest.fn();
+      signal.update(42);
+      signal.subscribe(listener);
+      signal.reset();
+      expect(signal.current).toBe(10);
+      expect(listener).toHaveBeenCalledWith(10);
+    });
+
+    it('is a no-op if current already equals initial value', () => {
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.reset();
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('respects the interceptor on reset', () => {
+      const signal = createRefSignal(5, {
+        interceptor: (incoming, current) =>
+          incoming <= current ? CANCEL : incoming,
+      });
+      signal.update(10);
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.reset(); // tries to go back to 5, but 5 <= 10 → CANCEL
+      expect(signal.current).toBe(10);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('resets to intercepted initial value, not raw initial value', () => {
+      const signal = createRefSignal(-5, {
+        interceptor: (v) => Math.max(0, v),
+      });
+      // safeInitial is 0 (interceptor applied at mount)
+      signal.update(99);
+      signal.reset();
+      expect(signal.current).toBe(0);
+    });
   });
 });
 

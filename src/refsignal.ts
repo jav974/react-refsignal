@@ -1,6 +1,14 @@
 import { devtools } from './devtools';
 
 export type Listener<T = unknown> = (value: T) => void;
+
+export const CANCEL = Symbol('refsignal.cancel');
+export type Interceptor<T> = (incoming: T, current: T) => T | typeof CANCEL;
+
+export type SignalOptions<T> = {
+  debugName?: string;
+  interceptor?: Interceptor<T>;
+};
 // Using object instead of RefSignal to avoid variance issues with generic T
 export const listenersMap = new WeakMap<object, Set<Listener>>();
 export const batchStack: RefSignal[][] = [];
@@ -13,6 +21,7 @@ export interface RefSignal<T = unknown> {
   readonly subscribe: (listener: Listener<T>) => void;
   readonly unsubscribe: (listener: Listener<T>) => void;
   readonly update: (value: T) => void;
+  readonly reset: () => void;
   readonly notify: () => void;
   readonly notifyUpdate: () => void;
   /** DevTools only: Get the debug name of this signal */
@@ -30,6 +39,7 @@ export function isRefSignal<T = unknown>(obj: unknown): obj is RefSignal<T> {
     typeof candidate['subscribe'] === 'function' &&
     typeof candidate['unsubscribe'] === 'function' &&
     typeof candidate['update'] === 'function' &&
+    typeof candidate['reset'] === 'function' &&
     typeof candidate['notify'] === 'function' &&
     typeof candidate['notifyUpdate'] === 'function'
   );
@@ -105,10 +115,19 @@ export function update<T>(signal: RefSignal<T>, value: T) {
 
 export function createRefSignal<T = unknown>(
   initialValue: T,
-  debugName?: string,
+  options?: string | SignalOptions<T>,
 ): RefSignal<T> {
+  const resolved =
+    typeof options === 'string' ? { debugName: options } : options;
+  const { debugName, interceptor } = resolved ?? {};
+
+  const intercepted = interceptor
+    ? interceptor(initialValue, initialValue)
+    : initialValue;
+  const safeInitial = intercepted === CANCEL ? initialValue : intercepted;
+
   const signal: RefSignal<T> = {
-    current: initialValue,
+    current: safeInitial,
     lastUpdated: 0,
     subscribe: (listener: Listener<T>) => {
       subscribe(signal, listener);
@@ -123,7 +142,12 @@ export function createRefSignal<T = unknown>(
       notifyUpdate(signal);
     },
     update: (value: T) => {
-      update(signal, value);
+      const result = interceptor ? interceptor(value, signal.current) : value;
+      if (result === CANCEL) return;
+      update(signal, result);
+    },
+    reset: () => {
+      signal.update(safeInitial);
     },
     getDebugName: devtools.isEnabled()
       ? () => devtools.getSignalName(signal)

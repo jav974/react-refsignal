@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { createRefSignal, RefSignal } from '../refsignal';
+import { createRefSignal, RefSignal, SignalOptions } from '../refsignal';
 
 /**
  * React hook for creating a mutable signal-like ref with subscription support.
@@ -15,9 +15,15 @@ import { createRefSignal, RefSignal } from '../refsignal';
  *   unsubscribing via its own cleanup (e.g. `useRefSignalEffect` does this automatically).
  *
  * @template T The type of the value stored in the signal.
- * @param value The initial value for the signal.
- * @param debugName Optional name for DevTools tracking (only used when devtools are enabled).
- * @returns {RefSignal<T>} A RefSignal object with current, update, subscribe, and notification methods.
+ * @param value The initial value for the signal. If an `interceptor` is provided, it is
+ *   applied to this value at construction — the signal's effective initial value is the
+ *   interceptor's return value (or `value` itself if the interceptor returns `CANCEL`).
+ * @param options A debug name string, or a {@link SignalOptions} object with:
+ *   - `debugName` — name shown in DevTools (equivalent to passing a plain string).
+ *   - `interceptor` — runs on every `.update()` call. Return a `T` to store that value,
+ *     or return `CANCEL` to silently drop the update. Also applied to the initial value.
+ * @returns {RefSignal<T>} A stable RefSignal with `current`, `update`, `reset`, `subscribe`,
+ *   and notification methods.
  *
  * @example
  * const signal = useRefSignal(0);
@@ -25,24 +31,33 @@ import { createRefSignal, RefSignal } from '../refsignal';
  * signal.update(1); // Triggers listeners
  *
  * @example
- * // With devtools name
+ * // With debug name
  * const count = useRefSignal(0, 'userCount');
+ *
+ * @example
+ * // Clamp value — interceptor applied on every update and at mount
+ * const health = useRefSignal(100, { interceptor: (v) => Math.max(0, Math.min(100, v)) });
+ *
+ * @example
+ * // Cancel invalid updates
+ * const step = useRefSignal(0, { interceptor: (incoming, current) => incoming < current ? CANCEL : incoming });
  */
-export function useRefSignal<T>(value: T, debugName?: string): RefSignal<T>;
+export function useRefSignal<T>(
+  value: T,
+  options?: string | SignalOptions<T>,
+): RefSignal<T>;
 export function useRefSignal<T>(
   value: T | null,
-  debugName?: string,
+  options?: string | SignalOptions<T | null>,
 ): RefSignal<T | null>;
 export function useRefSignal<T>(
   value: T | undefined,
-  debugName?: string,
+  options?: string | SignalOptions<T | undefined>,
 ): RefSignal<T | undefined>;
 export function useRefSignal<T>(
   value: T | null | undefined,
-  debugName?: string,
+  options?: string | SignalOptions<T | null | undefined>,
 ): RefSignal<T | null | undefined> {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- signal is intentionally created once on mount
-  const refSignal = useMemo(() => createRefSignal(value, debugName), []);
-
-  return refSignal;
+  return useMemo(() => createRefSignal(value, options), []);
 }

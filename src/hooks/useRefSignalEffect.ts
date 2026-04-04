@@ -35,7 +35,8 @@ export type EffectOptions = {
  * - Cleanup functions (if returned by the effect) ONLY run on unmount or when deps array changes.
  * - Effects CAN update signals they depend on, which will trigger the effect again (re-entrancy is allowed).
  *
- * - The effect runs once on mount and again whenever any signal in the dependencies array changes value.
+ * - The effect runs once on mount and again whenever any signal in the dependencies array fires —
+ *   including via `.update()`, `.notifyUpdate()`, `.notify()`, and `.reset()`.
  * - Cleanup functions are supported, just like in {@link useEffect}, but only called on unmount/deps change.
  * - If the effect function changes between renders (due to captured props/state), the new function
  *   will be used the next time a signal triggers it.

@@ -107,7 +107,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 
 | Concept | Summary |
 |---|---|
-| `RefSignal<T>` | A mutable ref with `.update()`, `.subscribe()`, and a `lastUpdated` counter |
+| `RefSignal<T>` | A mutable ref with `.update()`, `.reset()`, `.subscribe()`, a `lastUpdated` counter, and an optional `interceptor` |
 | `useRefSignal` vs `createRefSignal` | Inside a component vs anywhere else — both produce the same signal |
 | `useRefSignalEffect` vs `useRefSignalRender` | Imperative side effects vs triggering React re-renders |
 | `notify()` vs `notifyUpdate()` | Fire subscribers without or with bumping `lastUpdated` |
