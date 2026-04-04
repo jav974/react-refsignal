@@ -1,6 +1,6 @@
 # API Reference
 
-← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Broadcast](broadcast.md)
+← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Broadcast](broadcast.md) · [Persist](persist.md)
 
 ---
 
@@ -20,6 +20,7 @@
 - [`ALL`](#all)
 - [DevTools](#devtools)
 - [Broadcast](#broadcast)
+- [Persist](#persist)
 
 ---
 
@@ -513,3 +514,61 @@ useBroadcast(store, { channel: 'game', throttle: 100 });
 ```
 
 `BroadcastOptions` and `BroadcastSignalOptions` accept the same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `rAF`) plus broadcast-specific fields. See the [full reference](broadcast.md#api-reference).
+
+---
+
+### Persist
+
+Cross-session persistence is a separate subpath — import from `react-refsignal/persist`. Importing the subpath is sufficient to activate it; apps that never import it pay zero cost.
+
+For a full tour with examples, see [Persist](persist.md).
+
+**Signal-level** — `persist` option on `createRefSignal` / `useRefSignal`:
+
+```ts
+import 'react-refsignal/persist';
+import { createRefSignal, useRefSignal } from 'react-refsignal';
+
+// Module-scope signal — persists to localStorage under key 'theme'
+const theme = createRefSignal<'light' | 'dark'>('light', {
+  persist: { key: 'theme' },
+});
+
+// Hook — persist subscription is cleaned up on unmount
+const score = useRefSignal(0, { persist: { key: 'score' } });
+
+// IndexedDB backend
+const highScore = useRefSignal(0, {
+  persist: { key: 'high-score', storage: 'indexeddb', dbName: 'myApp' },
+});
+```
+
+**Store-level** — `persist()` factory wrapper or `usePersist()` hook:
+
+```ts
+import { persist, usePersist } from 'react-refsignal/persist';
+
+// Factory wrapper — use with createRefSignalContext
+const { GameProvider, useGameContext } = createRefSignalContext(
+  'Game',
+  persist(
+    () => ({ level: createRefSignal(1), xp: createRefSignal(0) }),
+    { key: 'game' },
+  ),
+);
+
+// Hook variant — use inside a custom Provider for lifecycle-aware cleanup
+usePersist(store, { key: 'game', keys: ['score', 'level'] });
+```
+
+**Versioning and migration:**
+
+```ts
+persist(factory, {
+  key: 'game',
+  version: 2,
+  migrate: (stored) => ({ xp: 0, ...stored }), // backfill missing field
+});
+```
+
+See the [full reference](persist.md#api-reference) for all options including custom storage adapters, `indexedDBStorage()`, `onHydrated`, and `serialize`/`deserialize`.

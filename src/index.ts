@@ -9,6 +9,7 @@ export type {
   Interceptor,
   DevToolsAdapter,
   SignalBroadcastInput,
+  SignalPersistInput,
 } from './refsignal';
 export { batch, createRefSignal, isRefSignal, CANCEL } from './refsignal';
 export {

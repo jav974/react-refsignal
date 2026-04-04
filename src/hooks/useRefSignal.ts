@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import {
   attachSignalBroadcast,
+  attachSignalPersist,
   createRefSignal,
   RefSignal,
   SignalOptions,
@@ -68,14 +69,17 @@ export function useRefSignal<T>(
   value: T | null | undefined,
   options?: string | SignalOptions<T | null | undefined>,
 ): RefSignal<T | null | undefined> {
-  // Strip `broadcast` before passing to createRefSignal — useEffect below owns the lifecycle
+  // Strip `broadcast` and `persist` before passing to createRefSignal — useEffects below own the lifecycle
   const broadcast = typeof options === 'object' ? options.broadcast : undefined;
-  const signalOptions = broadcast
-    ? {
-        ...(options as SignalOptions<T | null | undefined>),
-        broadcast: undefined,
-      }
-    : options;
+  const persist = typeof options === 'object' ? options.persist : undefined;
+  const signalOptions =
+    broadcast || persist
+      ? {
+          ...(options as SignalOptions<T | null | undefined>),
+          broadcast: undefined,
+          persist: undefined,
+        }
+      : options;
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- signal is intentionally created once on mount
   const signal = useMemo(() => createRefSignal(value, signalOptions), []);
@@ -84,6 +88,12 @@ export function useRefSignal<T>(
     if (!broadcast) return;
     return attachSignalBroadcast(signal, broadcast);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- broadcast is a mount-time option; signal is stable for the component lifetime
+  }, []);
+
+  useEffect(() => {
+    if (!persist) return;
+    return attachSignalPersist(signal, persist);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- persist is a mount-time option; signal is stable for the component lifetime
   }, []);
 
   return signal;

@@ -103,6 +103,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 - [API Reference](docs/api.md) — full API with examples for every hook and function
 - [Patterns](docs/patterns.md) — draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders
 - [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`
+- [Persist](docs/persist.md) — persist signals across page loads with `react-refsignal/persist`
 
 ## Concepts
 
@@ -115,8 +116,60 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
 | Signal lifetime | Listeners are in a `WeakMap` — GC'd when the signal has no references |
 | Cross-tab broadcast | Sync signals across tabs via `react-refsignal/broadcast` — zero cost if unused |
+| Persist | Persist signal values across page loads via `react-refsignal/persist` — `localStorage`, `sessionStorage`, IndexedDB, or custom adapter |
 
 See [Concepts](docs/concepts.md) for the full explanation of each.
+
+## Persist
+
+Persist signal values across page loads with `react-refsignal/persist`. Importing the subpath is the only activation step — apps that never import it pay zero cost.
+
+```ts
+import 'react-refsignal/persist';
+import { createRefSignal } from 'react-refsignal';
+
+// Signal-level — survives page reloads via localStorage
+const theme = createRefSignal<'light' | 'dark'>('light', {
+  persist: { key: 'theme' },
+});
+```
+
+Store-level, with versioning and IndexedDB:
+
+```ts
+import { createRefSignalContext, createRefSignal } from 'react-refsignal';
+import { persist } from 'react-refsignal/persist';
+
+const { GameProvider, useGameContext } = createRefSignalContext(
+  'Game',
+  persist(
+    () => ({
+      level: createRefSignal(1),
+      xp:    createRefSignal(0),
+    }),
+    {
+      key: 'game',
+      storage: 'indexeddb',
+      dbName: 'myApp',
+      version: 2,
+      migrate: (stored) => ({ xp: 0, ...stored }),
+    },
+  ),
+);
+```
+
+Signals always start with their default values. Hydration from storage is asynchronous — the signal updates once the read resolves, triggering subscribers and re-renders as normal.
+
+Composes with broadcast — wrap one with the other to get both cross-tab sync and persistence:
+
+```ts
+broadcast(
+  persist(factory, { key: 'game' }),
+  { channel: 'game' },
+)
+```
+
+See [Persist](docs/persist.md) for the full reference including `usePersist`, `indexedDBStorage`, custom adapters, and migration.
 
 ## How it compares
 

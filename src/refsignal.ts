@@ -37,6 +37,30 @@ export function attachSignalBroadcast(
   return signalBroadcastAdapter?.attach(signal, options);
 }
 
+/** Minimal opaque shape — full `PersistSignalOptions` is defined in `react-refsignal/persist`. */
+export type SignalPersistInput =
+  | string
+  | { key: string; [key: string]: unknown };
+
+export interface SignalPersistAdapter {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attach(signal: RefSignal<any>, options: SignalPersistInput): () => void;
+}
+
+let signalPersistAdapter: SignalPersistAdapter | null = null;
+export function setSignalPersistAdapter(adapter: SignalPersistAdapter): void {
+  signalPersistAdapter = adapter;
+}
+
+/** @internal Called by `useRefSignal` to set up persist with React lifecycle cleanup. */
+export function attachSignalPersist(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  signal: RefSignal<any>,
+  options: SignalPersistInput,
+): (() => void) | undefined {
+  return signalPersistAdapter?.attach(signal, options);
+}
+
 export const CANCEL = Symbol('refsignal.cancel');
 export type Interceptor<T> = (incoming: T, current: T) => T | typeof CANCEL;
 
@@ -45,6 +69,8 @@ export type SignalOptions<T> = {
   interceptor?: Interceptor<T>;
   /** Sync this signal across tabs. Import `react-refsignal/broadcast` to activate. */
   broadcast?: SignalBroadcastInput;
+  /** Persist this signal's value to storage. Import `react-refsignal/persist` to activate. */
+  persist?: SignalPersistInput;
 };
 // Using object instead of RefSignal to avoid variance issues with generic T
 export const listenersMap = new WeakMap<object, Set<Listener>>();
@@ -189,6 +215,10 @@ export function createRefSignal<T = unknown>(
 
   if (resolved?.broadcast) {
     signalBroadcastAdapter?.attach(signal, resolved.broadcast);
+  }
+
+  if (resolved?.persist) {
+    signalPersistAdapter?.attach(signal, resolved.persist);
   }
 
   return signal;
