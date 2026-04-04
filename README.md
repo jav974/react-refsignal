@@ -102,6 +102,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 - [Concepts](docs/concepts.md) — signals, notify vs notifyUpdate, effect vs render, signal lifetime
 - [API Reference](docs/api.md) — full API with examples for every hook and function
 - [Patterns](docs/patterns.md) — draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders
+- [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`
 
 ## Concepts
 
@@ -113,6 +114,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 | `notify()` vs `notifyUpdate()` | Fire subscribers without or with bumping `lastUpdated` |
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
 | Signal lifetime | Listeners are in a `WeakMap` — GC'd when the signal has no references |
+| Cross-tab broadcast | Sync signals across tabs via `react-refsignal/broadcast` — zero cost if unused |
 
 See [Concepts](docs/concepts.md) for the full explanation of each.
 

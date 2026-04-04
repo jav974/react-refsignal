@@ -1,5 +1,10 @@
-import { useMemo } from 'react';
-import { createRefSignal, RefSignal, SignalOptions } from '../refsignal';
+import { useEffect, useMemo } from 'react';
+import {
+  attachSignalBroadcast,
+  createRefSignal,
+  RefSignal,
+  SignalOptions,
+} from '../refsignal';
 
 /**
  * React hook for creating a mutable signal-like ref with subscription support.
@@ -22,6 +27,7 @@ import { createRefSignal, RefSignal, SignalOptions } from '../refsignal';
  *   - `debugName` — name shown in DevTools (equivalent to passing a plain string).
  *   - `interceptor` — runs on every `.update()` call. Return a `T` to store that value,
  *     or return `CANCEL` to silently drop the update. Also applied to the initial value.
+ *   - `broadcast` — sync this signal across tabs. Import `react-refsignal/broadcast` to activate.
  * @returns {RefSignal<T>} A stable RefSignal with `current`, `update`, `reset`, `subscribe`,
  *   and notification methods.
  *
@@ -41,6 +47,10 @@ import { createRefSignal, RefSignal, SignalOptions } from '../refsignal';
  * @example
  * // Cancel invalid updates
  * const step = useRefSignal(0, { interceptor: (incoming, current) => incoming < current ? CANCEL : incoming });
+ *
+ * @example
+ * // Cross-tab sync (requires react-refsignal/broadcast import)
+ * const score = useRefSignal(0, { broadcast: 'game-score' });
  */
 export function useRefSignal<T>(
   value: T,
@@ -58,6 +68,23 @@ export function useRefSignal<T>(
   value: T | null | undefined,
   options?: string | SignalOptions<T | null | undefined>,
 ): RefSignal<T | null | undefined> {
+  // Strip `broadcast` before passing to createRefSignal — useEffect below owns the lifecycle
+  const broadcast = typeof options === 'object' ? options.broadcast : undefined;
+  const signalOptions = broadcast
+    ? {
+        ...(options as SignalOptions<T | null | undefined>),
+        broadcast: undefined,
+      }
+    : options;
+
   // eslint-disable-next-line react-hooks/exhaustive-deps -- signal is intentionally created once on mount
-  return useMemo(() => createRefSignal(value, options), []);
+  const signal = useMemo(() => createRefSignal(value, signalOptions), []);
+
+  useEffect(() => {
+    if (!broadcast) return;
+    return attachSignalBroadcast(signal, broadcast);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- broadcast is a mount-time option; signal is stable for the component lifetime
+  }, []);
+
+  return signal;
 }

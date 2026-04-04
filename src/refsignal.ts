@@ -11,12 +11,40 @@ export function setDevToolsAdapter(adapter: DevToolsAdapter | null): void {
   devtoolsAdapter = adapter;
 }
 
+/** Minimal opaque shape — full `BroadcastSignalOptions` is defined in `react-refsignal/broadcast`. */
+export type SignalBroadcastInput =
+  | string
+  | { channel: string; [key: string]: unknown };
+
+export interface SignalBroadcastAdapter {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attach(signal: RefSignal<any>, options: SignalBroadcastInput): () => void;
+}
+
+let signalBroadcastAdapter: SignalBroadcastAdapter | null = null;
+export function setSignalBroadcastAdapter(
+  adapter: SignalBroadcastAdapter,
+): void {
+  signalBroadcastAdapter = adapter;
+}
+
+/** @internal Called by `useRefSignal` to set up broadcast with React lifecycle cleanup. */
+export function attachSignalBroadcast(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  signal: RefSignal<any>,
+  options: SignalBroadcastInput,
+): (() => void) | undefined {
+  return signalBroadcastAdapter?.attach(signal, options);
+}
+
 export const CANCEL = Symbol('refsignal.cancel');
 export type Interceptor<T> = (incoming: T, current: T) => T | typeof CANCEL;
 
 export type SignalOptions<T> = {
   debugName?: string;
   interceptor?: Interceptor<T>;
+  /** Sync this signal across tabs. Import `react-refsignal/broadcast` to activate. */
+  broadcast?: SignalBroadcastInput;
 };
 // Using object instead of RefSignal to avoid variance issues with generic T
 export const listenersMap = new WeakMap<object, Set<Listener>>();
@@ -158,6 +186,10 @@ export function createRefSignal<T = unknown>(
   };
 
   devtoolsAdapter?.registerSignal(signal, debugName);
+
+  if (resolved?.broadcast) {
+    signalBroadcastAdapter?.attach(signal, resolved.broadcast);
+  }
 
   return signal;
 }

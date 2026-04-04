@@ -1,6 +1,6 @@
 # API Reference
 
-← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md)
+← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Broadcast](broadcast.md)
 
 ---
 
@@ -19,6 +19,7 @@
 - [`createRefSignalContextHook<TStore>(name)`](#createrefsignalcontexthooktstore-name)
 - [`ALL`](#all)
 - [DevTools](#devtools)
+- [Broadcast](#broadcast)
 
 ---
 
@@ -466,3 +467,49 @@ devtools.clearHistory();
 devtools.getSignalByName('userCount'); // RefSignal | undefined
 devtools.getAllSignals();              // Array<{ name: string; signal: RefSignal }>
 ```
+
+---
+
+### Broadcast
+
+Cross-tab sync is a separate subpath — import from `react-refsignal/broadcast`. Importing the subpath is sufficient to activate it; apps that never import it pay zero cost (~1.3 KB gzipped).
+
+For a full tour with examples, see [Cross-tab Broadcast](broadcast.md).
+
+**Signal-level** — `broadcast` option on `createRefSignal` / `useRefSignal`:
+
+```ts
+import 'react-refsignal/broadcast';
+import { createRefSignal, useRefSignal } from 'react-refsignal';
+
+// Module-scope signal — broadcast lives for the app lifetime
+const theme = createRefSignal<'light' | 'dark'>('light', { broadcast: 'theme' });
+
+// Hook — broadcast is cleaned up on unmount
+const score = useRefSignal(0, { broadcast: 'game-score' });
+
+// With options
+const cursor = useRefSignal({ x: 0, y: 0 }, {
+  broadcast: { channel: 'cursor', throttle: 50 },
+});
+```
+
+**Store-level** — `broadcast()` factory wrapper or `useBroadcast()` hook:
+
+```ts
+import { broadcast, useBroadcast } from 'react-refsignal/broadcast';
+
+// Factory wrapper — use with createRefSignalContext
+const { GameProvider, useGameContext } = createRefSignalContext(
+  'Game',
+  broadcast(
+    () => ({ level: createRefSignal(1), xp: createRefSignal(0) }),
+    { channel: 'game' },
+  ),
+);
+
+// Hook variant — use inside a custom Provider for lifecycle-aware cleanup
+useBroadcast(store, { channel: 'game', throttle: 100 });
+```
+
+`BroadcastOptions` and `BroadcastSignalOptions` accept the same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `rAF`) plus broadcast-specific fields. See the [full reference](broadcast.md#api-reference).

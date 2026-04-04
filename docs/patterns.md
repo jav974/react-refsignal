@@ -1,6 +1,6 @@
 # Patterns
 
-← [Back to README](../README.md) · [Concepts](concepts.md) · [API Reference](api.md)
+← [Back to README](../README.md) · [Concepts](concepts.md) · [API Reference](api.md) · [Broadcast](broadcast.md)
 
 ---
 

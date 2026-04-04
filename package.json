@@ -13,6 +13,11 @@
       "types": "./dist/devtools.d.ts",
       "import": "./dist/devtools.mjs",
       "require": "./dist/devtools.js"
+    },
+    "./broadcast": {
+      "types": "./dist/broadcast.d.ts",
+      "import": "./dist/broadcast.mjs",
+      "require": "./dist/broadcast.js"
     }
   },
   "scripts": {
