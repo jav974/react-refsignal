@@ -9,9 +9,7 @@ import { createRefSignal } from './refsignal';
 
 describe('DevTools', () => {
   beforeEach(() => {
-    // Reset devtools config before each test
     configureDevTools({
-      enabled: true,
       logUpdates: false,
       reduxDevTools: false,
       maxHistory: 100,
@@ -20,19 +18,7 @@ describe('DevTools', () => {
   });
 
   afterEach(() => {
-    // Disable devtools after tests
-    configureDevTools({ enabled: false });
     devtools.reset();
-  });
-
-  it('should disable devtools when configured', () => {
-    configureDevTools({ enabled: false });
-    expect(devtools.isEnabled()).toBe(false);
-  });
-
-  it('should enable devtools when configured', () => {
-    configureDevTools({ enabled: true });
-    expect(devtools.isEnabled()).toBe(true);
   });
 
   it('should register signal with auto-generated name', () => {
@@ -71,18 +57,8 @@ describe('DevTools', () => {
     });
   });
 
-  it('should not track updates when disabled', () => {
-    configureDevTools({ enabled: false });
-
-    const signal = createRefSignal(0);
-    signal.update(1);
-
-    const history = devtools.getUpdateHistory();
-    expect(history).toHaveLength(0);
-  });
-
   it('should maintain max history size', () => {
-    configureDevTools({ enabled: true, maxHistory: 3 });
+    configureDevTools({ maxHistory: 3 });
 
     const signal = createRefSignal(0, 'counter');
 
@@ -152,15 +128,14 @@ describe('DevTools', () => {
     });
   });
 
-  it('should have getDebugName method when enabled', () => {
+  it('should return debug name from getDebugName when enabled', () => {
     const signal = createRefSignal(0, 'test');
 
-    expect(signal.getDebugName).toBeDefined();
-    expect(signal.getDebugName?.()).toBe('test');
+    expect(signal.getDebugName()).toBe('test');
   });
 
   it('should log updates to console when logUpdates is enabled', () => {
-    configureDevTools({ enabled: true, logUpdates: true });
+    configureDevTools({ logUpdates: true });
 
     const consoleLogSpy = jest
       .spyOn(console, 'log')
@@ -191,9 +166,8 @@ describe('DevTools', () => {
       connect: mockConnect,
     };
 
-    // Reset devtools to force reconfiguration
     devtools.reset();
-    configureDevTools({ enabled: true, reduxDevTools: true });
+    configureDevTools({ reduxDevTools: true });
 
     expect(mockConnect).toHaveBeenCalledWith({
       name: 'RefSignal DevTools',
@@ -227,20 +201,13 @@ describe('DevTools', () => {
 
     devtools.reset();
     expect(() => {
-      configureDevTools({ enabled: true, reduxDevTools: true });
+      configureDevTools({ reduxDevTools: true });
     }).not.toThrow();
 
     // Restore
     if (originalExtension) {
       (window as any).__REDUX_DEVTOOLS_EXTENSION__ = originalExtension;
     }
-  });
-
-  it('should not have getDebugName method when disabled', () => {
-    configureDevTools({ enabled: false });
-    const signal = createRefSignal(0, 'test');
-
-    expect(signal.getDebugName).toBeUndefined();
   });
 
   it('should include timestamps in update history', () => {

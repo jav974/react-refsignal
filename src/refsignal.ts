@@ -1,6 +1,15 @@
-import { devtools } from './devtools';
-
 export type Listener<T = unknown> = (value: T) => void;
+
+export interface DevToolsAdapter {
+  trackUpdate<T>(signal: RefSignal<T>, oldValue: T, newValue: T): void;
+  registerSignal<T>(signal: RefSignal<T>, debugName?: string): void;
+  getSignalName<T>(signal: RefSignal<T>): string | undefined;
+}
+
+let devtoolsAdapter: DevToolsAdapter | null = null;
+export function setDevToolsAdapter(adapter: DevToolsAdapter | null): void {
+  devtoolsAdapter = adapter;
+}
 
 export const CANCEL = Symbol('refsignal.cancel');
 export type Interceptor<T> = (incoming: T, current: T) => T | typeof CANCEL;
@@ -24,8 +33,8 @@ export interface RefSignal<T = unknown> {
   readonly reset: () => void;
   readonly notify: () => void;
   readonly notifyUpdate: () => void;
-  /** DevTools only: Get the debug name of this signal */
-  readonly getDebugName?: () => string | undefined;
+  /** Returns the signal's debug name if registered with devtools, otherwise undefined. */
+  readonly getDebugName: () => string | undefined;
 }
 
 // T is used for call-site type narrowing only — the shape check is structural,
@@ -79,9 +88,7 @@ export function notify<T>(signal: RefSignal<T>): void {
       try {
         listener(signal.current);
       } catch (error) {
-        const name = devtools.isEnabled()
-          ? devtools.getSignalName(signal)
-          : null;
+        const name = devtoolsAdapter?.getSignalName(signal) ?? null;
         console.error(
           `[RefSignal] Listener error${name ? ` in ${name}` : ''}:`,
           error,
@@ -105,9 +112,7 @@ export function update<T>(signal: RefSignal<T>, value: T) {
       batchedSignals.add(signal as RefSignal);
     }
 
-    if (devtools.isEnabled()) {
-      devtools.trackUpdate(signal, oldValue, value);
-    }
+    devtoolsAdapter?.trackUpdate(signal, oldValue, value);
 
     notifyUpdate(signal);
   }
@@ -149,14 +154,10 @@ export function createRefSignal<T = unknown>(
     reset: () => {
       signal.update(safeInitial);
     },
-    getDebugName: devtools.isEnabled()
-      ? () => devtools.getSignalName(signal)
-      : undefined,
+    getDebugName: () => devtoolsAdapter?.getSignalName(signal),
   };
 
-  if (devtools.isEnabled()) {
-    devtools.registerSignal(signal, debugName);
-  }
+  devtoolsAdapter?.registerSignal(signal, debugName);
 
   return signal;
 }

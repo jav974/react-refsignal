@@ -7,10 +7,9 @@ export type {
   RefSignal,
   SignalOptions,
   Interceptor,
+  DevToolsAdapter,
 } from './refsignal';
 export { batch, createRefSignal, isRefSignal, CANCEL } from './refsignal';
-export { configureDevTools, devtools } from './devtools';
-export type { DevToolsConfig, SignalUpdate } from './devtools';
 export {
   createRefSignalContext,
   createRefSignalContextHook,

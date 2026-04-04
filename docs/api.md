@@ -434,15 +434,16 @@ const store = useUserContext({ renderOn: ALL });
 
 ### DevTools
 
-DevTools track every signal update — recording old value, new value, and timestamp — and can surface them in the Redux DevTools Extension for time-travel debugging. Enabled by default in development (`NODE_ENV !== 'production'`).
+DevTools are a separate subpath — import from `react-refsignal/devtools` to keep them out of your main bundle. Importing the subpath is sufficient to activate them; no explicit enable call is required.
 
-Call `configureDevTools` before creating any signals to ensure full coverage.
+DevTools track every signal update — recording old value, new value, and timestamp — and can surface them in the Redux DevTools Extension for time-travel debugging. They are always active once the subpath is imported — no enable flag needed.
+
+`configureDevTools` is optional. Call it to adjust defaults:
 
 ```ts
-import { configureDevTools } from 'react-refsignal';
+import { configureDevTools } from 'react-refsignal/devtools';
 
 configureDevTools({
-  enabled: true,       // default: true in development
   logUpdates: true,    // log every update to console
   reduxDevTools: true, // integrate with Redux DevTools Extension
   maxHistory: 100,     // max entries in update history (default: 100)
@@ -453,13 +454,13 @@ configureDevTools({
 
 ```ts
 const count = useRefSignal(0, 'userCount');
-count.getDebugName?.(); // 'userCount'
+count.getDebugName(); // 'userCount'
 ```
 
 **Runtime inspection:**
 
 ```ts
-import { devtools } from 'react-refsignal';
+import { devtools } from 'react-refsignal/devtools';
 
 devtools.getUpdateHistory(); // SignalUpdate[] — { signalId, oldValue, newValue, timestamp }
 devtools.clearHistory();

@@ -1,4 +1,4 @@
-import { RefSignal } from './refsignal';
+import { DevToolsAdapter, RefSignal, setDevToolsAdapter } from './refsignal';
 
 interface ReduxDevToolsExtension {
   connect(options: { name: string; features: Record<string, unknown> }): {
@@ -11,8 +11,6 @@ interface ReduxDevToolsExtension {
 }
 
 export interface DevToolsConfig {
-  /** Enable devtools tracking (default: true in development) */
-  enabled?: boolean;
   /** Enable Redux DevTools Extension integration */
   reduxDevTools?: boolean;
   /** Log signal updates to console */
@@ -30,10 +28,8 @@ export interface SignalUpdate {
   stackTrace?: string;
 }
 
-class DevTools {
+class DevTools implements DevToolsAdapter {
   private config: DevToolsConfig = {
-    enabled:
-      typeof process !== 'undefined' && process.env.NODE_ENV === 'development',
     reduxDevTools: false,
     logUpdates: false,
     maxHistory: 100,
@@ -76,13 +72,7 @@ class DevTools {
     }
   }
 
-  isEnabled(): boolean {
-    return this.config.enabled ?? false;
-  }
-
   registerSignal<T>(signal: RefSignal<T>, name?: string): string {
-    if (!this.isEnabled()) return '';
-
     const id = name ?? `signal_${String(this.signalIdCounter++)}`;
     this.signals.set(signal as object, id);
 
@@ -94,8 +84,6 @@ class DevTools {
   }
 
   trackUpdate<T>(signal: RefSignal<T>, oldValue: T, newValue: T): void {
-    if (!this.isEnabled()) return;
-
     const signalId = this.signals.get(signal as object) || 'unknown';
     const update: SignalUpdate = {
       signalId,
@@ -185,3 +173,6 @@ export const devtools = new DevTools();
 export function configureDevTools(config: Partial<DevToolsConfig>): void {
   devtools.configure(config);
 }
+
+// Self-register with the core when this module is imported
+setDevToolsAdapter(devtools);
