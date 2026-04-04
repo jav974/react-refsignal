@@ -3,6 +3,24 @@
  * Used by useRefSignalRender and useRefSignalEffect to rate-limit re-renders and effects.
  */
 
+/**
+ * Discriminated union of mutually exclusive timing strategies.
+ * Prevents invalid combinations such as `throttle + debounce`, `rAF + throttle`,
+ * or `maxWait` without `debounce`.
+ *
+ * Valid shapes:
+ * - `{}` — no timing, run synchronously on every signal update
+ * - `{ throttle: N }` — at most one run per N ms (leading + trailing)
+ * - `{ debounce: N }` — run after N ms of quiet
+ * - `{ debounce: N, maxWait: M }` — debounce with guaranteed flush every M ms
+ * - `{ rAF: true }` — one run per animation frame
+ */
+export type TimingOptions =
+  | { throttle?: never; debounce?: never; maxWait?: never; rAF?: never }
+  | { throttle: number; debounce?: never; maxWait?: never; rAF?: never }
+  | { throttle?: never; debounce: number; maxWait?: number; rAF?: never }
+  | { throttle?: never; debounce?: never; maxWait?: never; rAF: true };
+
 export interface TimingWrapper {
   call: () => void;
   cancel: () => void;

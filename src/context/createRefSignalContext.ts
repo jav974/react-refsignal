@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { isRefSignal, RefSignal } from '../refsignal';
 import { useRefSignalRender } from '../hooks/useRefSignalRender';
-import { EffectOptions } from '../hooks/useRefSignalEffect';
+import type { TimingOptions } from '../timing';
 
 /**
  * Extracts the keys of a store whose values are RefSignal instances.
@@ -55,7 +55,7 @@ export type StoreSnapshot<TStore> = {
     : TStore[K];
 };
 
-export type ContextHookOptions<TStore> = Omit<EffectOptions, 'filter'> & {
+export type ContextHookOptions<TStore> = TimingOptions & {
   renderOn?: Array<RefSignalKeys<TStore>> | 'all';
   unwrap?: boolean;
   filter?: (store: StoreSnapshot<TStore>) => boolean;

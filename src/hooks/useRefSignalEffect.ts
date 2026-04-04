@@ -1,24 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { isRefSignal } from '../refsignal';
 import { createDebounce, createRAF, createThrottle } from '../timing';
+import type { TimingOptions } from '../timing';
 
 /**
  * Options for {@link useRefSignalEffect} and {@link useRefSignalRender}.
  * All output mechanisms in react-refsignal (effects, renders, persist, broadcast)
  * extend this type — timing options rate-limit execution, filter gates it entirely.
  */
-export type EffectOptions = {
-  /** At most one effect run per N ms (leading + trailing). */
-  throttle?: number;
-  /** Run effect after N ms of quiet. */
-  debounce?: number;
-  /**
-   * With `debounce`: guarantee a flush at most every N ms even if the signal
-   * keeps firing — prevents indefinite deferral on continuously-updating signals.
-   */
-  maxWait?: number;
-  /** Schedule the effect on the next animation frame; multiple fires per frame collapse into one. */
-  rAF?: boolean;
+export type EffectOptions = TimingOptions & {
   /**
    * Skip the effect run when this returns false.
    * Applied to signal-triggered runs only — the initial mount run always executes unconditionally.

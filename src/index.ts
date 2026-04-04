@@ -26,3 +26,4 @@ export type {
   ContextHookOptions,
 } from './context/createRefSignalContext';
 export type { EffectOptions } from './hooks/useRefSignalEffect';
+export type { TimingOptions } from './timing';

@@ -207,33 +207,47 @@ forceUpdate();
 
 Options accepted by `useRefSignalRender` and `useRefSignalEffect`. All output mechanisms in the library extend this type.
 
+`EffectOptions` is defined as `TimingOptions & { filter? }`. The timing fields come from `TimingOptions` — a discriminated union that makes invalid combinations type errors at compile time.
+
 | Option | Type | Description |
 |---|---|---|
 | `filter` | `() => boolean` | Skip the run if this returns `false`. Applied to signal-triggered runs only — mount always executes. |
 | `throttle` | `number` | At most one trigger per N ms (leading + trailing). |
 | `debounce` | `number` | Trigger after N ms of quiet. |
-| `maxWait` | `number` | With `debounce`: guaranteed flush every N ms even if the signal keeps firing. |
+| `maxWait` | `number` | With `debounce` only: guaranteed flush every N ms even if the signal keeps firing. |
 | `rAF` | `boolean` | Schedule on the next animation frame; multiple fires per frame collapse into one. |
 
-Only one timing mode should be active at a time. If multiple are provided, precedence is `rAF > throttle > debounce`.
+The timing options are mutually exclusive — combining them is a type error:
+
+```ts
+{ throttle: 100, debounce: 200 } // ✗ type error
+{ maxWait: 500 }                 // ✗ type error — maxWait requires debounce
+{ rAF: true, throttle: 50 }     // ✗ type error
+{ debounce: 200, maxWait: 1000 } // ✓
+```
 
 Context hooks (`createRefSignalContext`, `createRefSignalContextHook`) accept [`ContextHookOptions`](#contexthookoptionststore) instead, which extends these same fields but upgrades `filter` to receive the store snapshot directly.
+
+### `TimingOptions`
+
+The discriminated union underlying `EffectOptions`. Exported separately for cases where you want to pass timing configuration without `filter` (e.g. building custom hooks on top of the library):
+
+```ts
+import type { TimingOptions } from 'react-refsignal';
+```
 
 ---
 
 ### `ContextHookOptions<TStore>`
 
-Options accepted by the hook returned from `createRefSignalContext` and `createRefSignalContextHook`. Extends [`EffectOptions`](#effectoptions) and adds context-specific fields.
+Options accepted by the hook returned from `createRefSignalContext` and `createRefSignalContextHook`. Extends [`TimingOptions`](#timingoptions) and adds context-specific fields.
 
 | Option | Type | Description |
 |---|---|---|
 | `renderOn` | `Array<keyof TStore>` \| `'all'` | Signal keys that trigger a re-render. Omit to never re-render. |
 | `unwrap` | `boolean` | If `true`, returns plain values with auto-generated setters instead of raw signals. |
 | `filter` | `(store: StoreSnapshot<TStore>) => boolean` | Only re-render if this returns `true`. Receives the store snapshot — no closure needed. |
-| `throttle` | `number` | At most one re-render per N ms (leading + trailing). |
-| `debounce` | `number` | Re-render after N ms of quiet. |
-| `maxWait` | `number` | With `debounce`: guaranteed flush every N ms even if the signal keeps firing. |
-| `rAF` | `boolean` | Schedule on the next animation frame; multiple fires per frame collapse into one. |
+| `throttle` / `debounce` / `maxWait` / `rAF` | — | Same as [`TimingOptions`](#timingoptions). |
 
 `filter` here receives the store snapshot as its argument (signals unwrapped to their current values, read-only) — a convenience upgrade over the base `() => boolean` form:
 
