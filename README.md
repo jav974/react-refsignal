@@ -104,6 +104,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 - [Patterns](docs/patterns.md) — draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders
 - [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`
 - [Persist](docs/persist.md) — persist signals across page loads with `react-refsignal/persist`
+- [Decision Tree](docs/decision-tree.md) — pick the right API for any scenario
 
 ## Concepts
 
