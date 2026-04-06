@@ -486,3 +486,70 @@ describe('watch', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+// ─── adapter missing warnings ─────────────────────────────────────────────────
+
+describe('adapter missing warnings', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it('warns when broadcast option is used without the adapter', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const { createRefSignal: create } = await import('./refsignal');
+      create(0, { broadcast: 'channel' });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('react-refsignal/broadcast'),
+      );
+    });
+  });
+
+  it('warns when persist option is used without the adapter', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const { createRefSignal: create } = await import('./refsignal');
+      create(0, { persist: 'my-key' });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('react-refsignal/persist'),
+      );
+    });
+  });
+
+  it('warns only once per missing adapter type', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const { createRefSignal: create } = await import('./refsignal');
+      create(0, { broadcast: 'ch1' });
+      create(0, { broadcast: 'ch2' });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('does not warn when the broadcast adapter is registered', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const mod = await import('./refsignal');
+      // Simulates `import 'react-refsignal/broadcast'` which calls setSignalBroadcastAdapter
+      // internally. Using the direct setter here avoids pulling in transport infrastructure
+      // (BroadcastChannel, localStorage) — the real activation path is tested in broadcast.test.ts.
+      mod.setSignalBroadcastAdapter({ attach: () => () => {} });
+      mod.createRefSignal(0, { broadcast: 'channel' });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  it('does not warn when the persist adapter is registered', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const mod = await import('./refsignal');
+      // Simulates `import 'react-refsignal/persist'` which calls setSignalPersistAdapter
+      // internally. Using the direct setter here avoids pulling in storage infrastructure
+      // (localStorage, IndexedDB) — the real activation path is tested in persist.test.ts.
+      mod.setSignalPersistAdapter({ attach: () => () => {} });
+      mod.createRefSignal(0, { persist: 'my-key' });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+  });
+});

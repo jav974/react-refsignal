@@ -22,19 +22,29 @@ export interface SignalBroadcastAdapter {
 }
 
 let signalBroadcastAdapter: SignalBroadcastAdapter | null = null;
+let warnedBroadcast = false;
 export function setSignalBroadcastAdapter(
   adapter: SignalBroadcastAdapter,
 ): void {
   signalBroadcastAdapter = adapter;
 }
 
-/** @internal Called by `useRefSignal` to set up broadcast with React lifecycle cleanup. */
+/** @internal Called by `useRefSignal` and `createRefSignal` to set up broadcast with React lifecycle cleanup. */
 export function attachSignalBroadcast(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   signal: RefSignal<any>,
   options: SignalBroadcastInput,
 ): (() => void) | undefined {
-  return signalBroadcastAdapter?.attach(signal, options);
+  if (!signalBroadcastAdapter) {
+    if (!warnedBroadcast) {
+      warnedBroadcast = true;
+      console.warn(
+        '[refsignal] `broadcast` option has no effect: add `import "react-refsignal/broadcast"` to your entry point.',
+      );
+    }
+    return;
+  }
+  return signalBroadcastAdapter.attach(signal, options);
 }
 
 /** Minimal opaque shape — full `PersistSignalOptions` is defined in `react-refsignal/persist`. */
@@ -48,17 +58,27 @@ export interface SignalPersistAdapter {
 }
 
 let signalPersistAdapter: SignalPersistAdapter | null = null;
+let warnedPersist = false;
 export function setSignalPersistAdapter(adapter: SignalPersistAdapter): void {
   signalPersistAdapter = adapter;
 }
 
-/** @internal Called by `useRefSignal` to set up persist with React lifecycle cleanup. */
+/** @internal Called by `useRefSignal` and `createRefSignal` to set up persist with React lifecycle cleanup. */
 export function attachSignalPersist(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   signal: RefSignal<any>,
   options: SignalPersistInput,
 ): (() => void) | undefined {
-  return signalPersistAdapter?.attach(signal, options);
+  if (!signalPersistAdapter) {
+    if (!warnedPersist) {
+      warnedPersist = true;
+      console.warn(
+        '[refsignal] `persist` option has no effect: add `import "react-refsignal/persist"` to your entry point.',
+      );
+    }
+    return;
+  }
+  return signalPersistAdapter.attach(signal, options);
 }
 
 export const CANCEL = Symbol('refsignal.cancel');
@@ -225,11 +245,11 @@ export function createRefSignal<T = unknown>(
   devtoolsAdapter?.registerSignal(signal, debugName);
 
   if (resolved?.broadcast) {
-    signalBroadcastAdapter?.attach(signal, resolved.broadcast);
+    attachSignalBroadcast(signal, resolved.broadcast);
   }
 
   if (resolved?.persist) {
-    signalPersistAdapter?.attach(signal, resolved.persist);
+    attachSignalPersist(signal, resolved.persist);
   }
 
   return signal;
