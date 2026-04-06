@@ -18,7 +18,8 @@ type Msg<T> =
   | { type: 'update'; tabId: string; payload: T }
   | { type: 'hello'; tabId: string; ts: number }
   | { type: 'bye'; tabId: string }
-  | { type: 'broadcaster-claim'; tabId: string };
+  | { type: 'broadcaster-claim'; tabId: string }
+  | { type: 'state-handoff'; tabId: string; payload: Record<string, unknown> };
 
 // ─── Core setup (plain function — shared by broadcast() and useBroadcast()) ───
 
@@ -97,6 +98,14 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
         tabId: TAB_ID,
       } satisfies Msg<never>);
     } else if (!shouldBe && isBroadcaster) {
+      // Hand off authoritative in-memory state before yielding.
+      // The new broadcaster applies it and re-broadcasts, so receiver tabs
+      // don't see stale data if persist hydration races with the election.
+      transport.post({
+        type: 'state-handoff',
+        tabId: TAB_ID,
+        payload: takeSnapshot(store),
+      } satisfies Msg<never>);
       isBroadcaster = false;
       onBroadcasterChange?.(false);
     }
@@ -125,9 +134,23 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
           electBroadcaster();
         }
         break;
+      case 'state-handoff':
+        // Apply the yielding broadcaster's in-memory state.
+        // Only the new broadcaster applies it — receiver tabs ignore it.
+        // Applying via update() fires the broadcast subscriber, so the
+        // authoritative state is automatically re-broadcast to all receivers.
+        if (mode === 'one-to-many' && isBroadcaster) {
+          applySnapshot(store, msg.payload);
+        }
+        break;
       case 'broadcaster-claim':
         // A tab with a lower ID claimed broadcaster — yield if we think we are
         if (mode === 'one-to-many' && msg.tabId < TAB_ID && isBroadcaster) {
+          transport.post({
+            type: 'state-handoff',
+            tabId: TAB_ID,
+            payload: takeSnapshot(store),
+          } satisfies Msg<never>);
           isBroadcaster = false;
           onBroadcasterChange?.(false);
         }

@@ -640,6 +640,78 @@ describe('edge cases — one-to-many election', () => {
 
     expect(onBroadcasterChange).toHaveBeenCalledWith(true);
   });
+
+  it('sends state-handoff when yielding to a lower-ID broadcaster-claim', () => {
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'handoff-send',
+      mode: 'one-to-many',
+      heartbeatInterval: 100,
+    });
+    const store = factory();
+
+    // Set a known value so we can assert it appears in the handoff payload
+    store.score.update(42);
+
+    const received: unknown[] = [];
+    const spy = new MockBC('handoff-send');
+    spy.onmessage = (e) => received.push(e.data);
+
+    // A tab with a lexicographically lower ID claims broadcaster — we yield
+    deliverFromOtherTab('handoff-send', {
+      type: 'broadcaster-claim',
+      tabId: '0000',
+    });
+
+    const handoff = received.find((m: any) => m?.type === 'state-handoff');
+    expect(handoff).toBeDefined();
+    expect((handoff as any).payload.score).toBe(42);
+
+    spy.close();
+  });
+
+  it('applies state-handoff from yielding tab when this tab is broadcaster', () => {
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'handoff-recv',
+      mode: 'one-to-many',
+      heartbeatInterval: 100,
+    });
+    const store = factory();
+
+    // This tab wins election immediately (no competition) — isBroadcaster = true
+    // Simulate the yielding broadcaster sending its in-memory state
+    deliverFromOtherTab('handoff-recv', {
+      type: 'state-handoff',
+      tabId: 'other-tab',
+      payload: { score: 99 },
+    });
+
+    expect(store.score.current).toBe(99);
+  });
+
+  it('non-broadcaster ignores state-handoff', () => {
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'handoff-ignore',
+      mode: 'one-to-many',
+      heartbeatInterval: 100,
+    });
+    const store = factory();
+
+    // Force the tab to yield broadcaster role
+    deliverFromOtherTab('handoff-ignore', {
+      type: 'broadcaster-claim',
+      tabId: '0000',
+    });
+
+    // Now it's a non-broadcaster — state-handoff should be ignored
+    store.score.update(42); // update via update() — but isBroadcaster is false so no send
+    deliverFromOtherTab('handoff-ignore', {
+      type: 'state-handoff',
+      tabId: 'other-tab',
+      payload: { score: 77 },
+    });
+
+    expect(store.score.current).toBe(42); // unchanged
+  });
 });
 
 describe('edge cases — useBroadcast filter ref', () => {

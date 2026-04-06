@@ -43,11 +43,16 @@ function mockStorage(): PersistStorage & { store: Record<string, string> } {
 /** Flush all pending microtasks (async storage reads). */
 const flush = () => act(async () => {});
 
-/** Flush microtasks + macrotasks — needed for IndexedDB event callbacks. */
-const flushIDB = () =>
-  act(async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  });
+/** Flush microtasks + macrotasks — needed for IndexedDB event callbacks.
+ *  IDB operations involve multiple async steps (open → transaction → request),
+ *  each firing in a separate macrotask tick, so we drain three times to be safe. */
+const flushIDB = async () => {
+  for (let i = 0; i < 3; i++) {
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+  }
+};
 
 // ─── persist() — factory wrapper ─────────────────────────────────────────────
 
