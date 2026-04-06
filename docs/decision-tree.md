@@ -76,7 +76,7 @@ flowchart TD
     Q3 -->|"Yes — default"| F[Normal usage]
     Q3 -->|"No — react to changes only"| G["skipMount: true"]
 
-    B & C --> Q4{"Gate the callback conditionally?"}
+    A & B & C --> Q4{"Gate the callback conditionally?"}
     Q4 -->|Yes| H["filter: () => boolean"]
     Q4 -->|No| I["Rate limit? → Section 4"]
 ```
