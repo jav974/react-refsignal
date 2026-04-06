@@ -12,25 +12,17 @@ Mutable signal-like refs for React — update values without re-rendering, subsc
 
 ## Why
 
-Some values in a React app change at a pace React was never designed to handle.
+Imagine a canvas with a hundred draggable nodes, each connected by curves. The user drags one node — its position changes sixty times a second. Every curve attached to it must follow. The other ninety-nine nodes should be completely unaffected.
 
-Imagine a canvas with a hundred draggable nodes. Each node has connections drawn as curves between them. When the user drags a node, its position changes sixty times a second. Every connection attached to that node needs to follow — redrawing its curve in sync. The other ninety-nine nodes and forty other connections should be completely unaffected.
+React's render cycle is the wrong layer for this. You don't want a re-render — you want a targeted notification: *this value changed, only the things watching it should react*.
 
-`useState` is the wrong tool: every position update re-renders the component, which cascades to its children. At sixty updates a second across dozens of connections, the UI grinds to a halt.
+`useRef` gets you out of the render cycle, but a ref is silent. Nothing can subscribe to it. You end up building a manual event emitter per node — registration, cleanup, ordering. That's the library you'd be writing from scratch.
 
-`useRef` is closer: mutations don't trigger re-renders. But a ref has no broadcast model. Other components can't subscribe to it. You'd have to build and manage a manual event emitter for each node — subscription registration, cleanup on unmount, firing in the right order. That's the library you'd be writing from scratch.
+`react-refsignal` is that primitive: **a ref with a subscription channel**. When a position signal updates, only its subscribers run — directly, synchronously, with no React scheduler involved. One effect redraws the curve. Another updates a HUD label. Everything else is untouched.
 
-The gap is a value that:
-- lives outside React's render cycle (like a ref)
-- can be subscribed to by multiple, independent consumers (unlike a ref)
-- triggers only those subscribers — not the whole tree (unlike state)
-- lets specific components opt into re-renders when they need them
+Outside of high-frequency scenarios, the same model scales down cleanly. Components opt into re-renders explicitly — no selector callbacks, no wrapper components, no observability magic. Just `useRefSignalRender([signal])` where you need it and nothing elsewhere.
 
-That's what `react-refsignal` is. A signal is a ref with a subscription channel. When a position signal notifies, only the effects watching it run — directly, synchronously, with no React scheduler involved. One component updates the canvas container position. Another redraws its Bezier curve. A third updates a HUD label. Everything else is untouched.
-
-The API is deliberately close to what you already know: signals behave like refs, subscriptions behave like effects, and rendering uses `useSyncExternalStore`. No compiler, no proxy magic, no patching React internals — just standard React APIs composed differently.
-
-This is not a replacement for `useState`. For values that drive UI directly and change at human speed, `useState` is the right tool. `react-refsignal` is for the cases where React's scheduler is the wrong layer entirely.
+The API stays within React's public contract: `useSyncExternalStore` for render subscriptions, direct listener callbacks for effects. No compiler, no proxy, no patched internals.
 
 ## Installation
 
