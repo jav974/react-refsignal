@@ -312,6 +312,137 @@ describe('persist() — versioning and migration', () => {
 
 // ─── persist() — edge cases ───────────────────────────────────────────────────
 
+describe('persist() — timing options', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('throttle: rapid signal updates produce at most one write per window', async () => {
+    const storage = mockStorage();
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      throttle: 100,
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(1); // leading edge — write fires immediately
+    store.score.update(2);
+    store.score.update(3); // trailing — pending
+
+    // Only the leading write has fired so far
+    expect(JSON.parse(storage.store['game']).data.score).toBe(1);
+
+    jest.advanceTimersByTime(100); // trailing write fires
+    expect(JSON.parse(storage.store['game']).data.score).toBe(3);
+  });
+
+  it('debounce: only writes after quiet period', async () => {
+    const storage = mockStorage();
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      debounce: 100,
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(1);
+    store.score.update(2);
+    store.score.update(3);
+
+    // Nothing written yet — debounce timer not elapsed
+    expect(storage.store['game']).toBeUndefined();
+
+    jest.advanceTimersByTime(100);
+    expect(JSON.parse(storage.store['game']).data.score).toBe(3);
+  });
+
+  it('cleanup cancels pending timer so no write fires after unmount', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { unmount } = renderHook(() =>
+      usePersist(store, { key: 'game2', storage, debounce: 100 }),
+    );
+    await flush();
+
+    store.score.update(99); // starts debounce timer
+    unmount(); // triggers cleanup → cancels timer
+
+    jest.advanceTimersByTime(200); // timer would have fired — but was cancelled
+    expect(storage.store['game2']).toBeUndefined();
+  });
+
+  it('signal-level throttle: rapid updates produce at most one write per window', async () => {
+    const storage = mockStorage();
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig', storage, throttle: 100 },
+    });
+    await flush();
+
+    signal.update(1);
+    signal.update(2);
+    signal.update(3);
+
+    expect(JSON.parse(storage.store['sig']).data).toBe(1); // leading
+
+    jest.advanceTimersByTime(100);
+    expect(JSON.parse(storage.store['sig']).data).toBe(3); // trailing
+  });
+
+  it('signal-level debounce: only writes after quiet period', async () => {
+    const storage = mockStorage();
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig-deb', storage, debounce: 100 },
+    });
+    await flush();
+
+    signal.update(1);
+    signal.update(2);
+    expect(storage.store['sig-deb']).toBeUndefined();
+
+    jest.advanceTimersByTime(100);
+    expect(JSON.parse(storage.store['sig-deb']).data).toBe(2);
+  });
+
+  it('store-level rAF: batches writes into animation frames', async () => {
+    const storage = mockStorage();
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      rAF: true,
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(1);
+    store.score.update(2);
+    store.score.update(3);
+
+    // rAF pending — nothing written yet
+    expect(storage.store['game']).toBeUndefined();
+
+    jest.runAllTimers(); // flush rAF (fake-timers covers requestAnimationFrame)
+    expect(JSON.parse(storage.store['game']).data.score).toBe(3);
+  });
+
+  it('signal-level rAF: batches writes into animation frames', async () => {
+    const storage = mockStorage();
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig-raf', storage, rAF: true },
+    });
+    await flush();
+
+    signal.update(1);
+    signal.update(2);
+    expect(storage.store['sig-raf']).toBeUndefined();
+
+    jest.runAllTimers();
+    expect(JSON.parse(storage.store['sig-raf']).data).toBe(2);
+  });
+});
+
 describe('persist() — edge cases', () => {
   it('ignores corrupt stored data and keeps default', async () => {
     const storage = mockStorage();

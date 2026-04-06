@@ -1,4 +1,5 @@
 import type { IDBStorageOptions } from './idb';
+import type { TimingOptions } from '../timing';
 
 type PersistableKeys<TStore> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,7 +36,9 @@ type BaseSignalOptions = {
   onHydrated?: () => void;
 };
 
-export type PersistSignalOptions = BaseSignalOptions & StorageConfig;
+export type PersistSignalOptions = TimingOptions &
+  BaseSignalOptions &
+  StorageConfig;
 
 /** String shorthand for signal-level persist — treated as the storage key. */
 export type SignalPersistInput = string | PersistSignalOptions;
@@ -60,4 +63,6 @@ type BaseOptions<TStore> = {
   onHydrated?: (store: TStore) => void;
 };
 
-export type PersistOptions<TStore> = BaseOptions<TStore> & StorageConfig;
+export type PersistOptions<TStore> = TimingOptions &
+  BaseOptions<TStore> &
+  StorageConfig;

@@ -662,4 +662,12 @@ persist(factory, {
 });
 ```
 
-See the [full reference](persist.md#api-reference) for all options including custom storage adapters, `indexedDBStorage()`, `onHydrated`, and `serialize`/`deserialize`.
+**Rate-limiting writes** — same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `rAF`) prevent high-frequency updates from hammering storage:
+
+```ts
+persist(factory, { key: 'game', throttle: 200 });       // at most one write per 200ms
+persist(factory, { key: 'game', debounce: 300 });        // write after 300ms quiet
+persist(factory, { key: 'game', rAF: true });            // one write per animation frame
+```
+
+See the [full reference](persist.md#api-reference) for all options including custom storage adapters, `indexedDBStorage()`, `onHydrated`, `serialize`/`deserialize`, and timing options.

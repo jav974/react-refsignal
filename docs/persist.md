@@ -17,6 +17,7 @@ Persist signal values across page loads using any async storage backend — `loc
   - [Custom adapter](#custom-adapter)
 - [Versioning and migration](#versioning-and-migration)
 - [Hydration timing](#hydration-timing)
+- [Rate-limiting writes](#rate-limiting-writes)
 - [Composing with broadcast](#composing-with-broadcast)
 - [API reference](#api-reference)
 
@@ -289,6 +290,38 @@ persist(factory, {
 
 ---
 
+## Rate-limiting writes
+
+By default, persist writes to storage on every signal update. At high update frequencies — animation loops, pointer tracking, rapid user input — this can mean dozens of writes per second. Use the timing options to coalesce writes:
+
+```ts
+// At most one write per 200ms (leading + trailing)
+persist(factory, { key: 'game', throttle: 200 });
+
+// Write only after 300ms of quiet
+persist(factory, { key: 'game', debounce: 300 });
+
+// With debounce: guaranteed flush every 1s even if the signal keeps firing
+persist(factory, { key: 'game', debounce: 300, maxWait: 1000 });
+
+// Coalesce writes into one per animation frame (~16ms at 60 Hz)
+persist(factory, { key: 'game', rAF: true });
+```
+
+The same options work at the signal level:
+
+```ts
+const position = createRefSignal({ x: 0, y: 0 }, {
+  persist: { key: 'cursor', throttle: 100 },
+});
+```
+
+These are the same `TimingOptions` used by `useRefSignalRender`, `useRefSignalEffect`, and `broadcast` — the four options are mutually exclusive.
+
+> **Cleanup:** when using `usePersist`, any pending debounce or throttle timer is cancelled on unmount, so no write fires after the component is gone.
+
+---
+
 ## Composing with broadcast
 
 `persist` and `broadcast` compose by wrapping one with the other. Order does not matter functionally — both wrappers call the inner factory and attach their own subscriptions:
@@ -335,6 +368,12 @@ Options for the `persist` field on `createRefSignal` / `useRefSignal`.
 | `serialize` | `(value: unknown) => string` | `JSON.stringify` | Serialize the envelope to a string before writing. |
 | `deserialize` | `(raw: string) => unknown` | `JSON.parse` | Deserialize the stored string back to an envelope. |
 | `onHydrated` | `() => void` | — | Called once after hydration completes (including when storage is empty). |
+| `throttle` | `number` | — | At most one write per N ms (leading + trailing). |
+| `debounce` | `number` | — | Write after N ms of quiet. |
+| `maxWait` | `number` | — | With `debounce` only: guaranteed flush every N ms even if the signal keeps firing. |
+| `rAF` | `boolean` | — | Coalesce writes into one per animation frame. |
+
+The timing options are mutually exclusive — combining them is a type error.
 
 ### `PersistOptions<TStore>`
 

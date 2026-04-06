@@ -172,7 +172,14 @@ broadcast(
 )
 ```
 
-See [Persist](docs/persist.md) for the full reference including `usePersist`, `indexedDBStorage`, custom adapters, and migration.
+Rate-limit writes with the same timing options used by `broadcast` and `useRefSignalEffect`:
+
+```ts
+persist(factory, { key: 'game', throttle: 200 }); // at most one write per 200ms
+persist(factory, { key: 'game', rAF: true });      // one write per animation frame
+```
+
+See [Persist](docs/persist.md) for the full reference including `usePersist`, `indexedDBStorage`, custom adapters, migration, and timing options.
 
 ## How it compares
 

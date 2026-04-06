@@ -169,9 +169,15 @@ flowchart TD
     Q3 -->|"Large data / beyond localStorage limits"| F["storage: 'indexeddb'\nOptions: dbName, dbVersion, storeName"]
     Q3 -->|Custom backend| G["Implement PersistStorage\n{ get, set, remove } returning Promise"]
 
-    B & C --> Q4{"Data shape may change across releases?"}
+    A & B & C --> Q4{"Data shape may change across releases?"}
     Q4 -->|Yes| H["version: N\nmigrate: (storedData, storedVersion) => newData"]
-    Q4 -->|No| I[Done]
+    Q4 -->|No| Q5
+
+    Q5{"High-frequency updates? Want to coalesce storage writes?"}
+    Q5 -->|No| I[Done]
+    Q5 -->|"At most once per N ms"| J["throttle: N"]
+    Q5 -->|"After N ms of quiet"| K["debounce: N\n+ optional maxWait: N"]
+    Q5 -->|"One write per animation frame"| L["rAF: true"]
 ```
 
 ---
@@ -190,7 +196,7 @@ flowchart TD
     Q2 -->|"Factory — lives for app lifetime"| B["broadcast(factory, options) wrapper"]
     Q2 -->|Provider mounts and unmounts| C["useBroadcast(store, options)"]
 
-    B & C --> Q3{"How should tabs coordinate?"}
+    A & B & C --> Q3{"How should tabs coordinate?"}
     Q3 -->|"All tabs send and receive equally — default"| D["mode: 'many-to-many'"]
     Q3 -->|"One elected tab sends, others receive only"| E["mode: 'one-to-many'"]
 
