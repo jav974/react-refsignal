@@ -117,11 +117,56 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 | `createComputedSignal` / `useRefSignalMemo` | Derived signals — recompute whenever deps change; module-scope or component-scoped |
 | `watch(signal, listener)` | Subscribe outside React and get a cleanup function back — mirrors `useEffect` return pattern |
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
+| `createRefSignalStore` / `useRefSignalStore` | Provider-free global store — create at module scope, use in any component with `renderOn` opt-in |
+| `createRefSignalContext` | Per-subtree store with auto-generated Provider and hook — for isolated state per route or section |
 | Signal lifetime | Listeners are in a `WeakMap` — GC'd when the signal has no references |
 | Cross-tab broadcast | Sync signals across tabs via `react-refsignal/broadcast` — zero cost if unused |
 | Persist | Persist signal values across page loads via `react-refsignal/persist` — `localStorage`, `sessionStorage`, IndexedDB, or custom adapter |
 
 See [Concepts](docs/concepts.md) for the full explanation of each.
+
+## Global stores
+
+`createRefSignalStore` creates a module-scope singleton store — no Provider required. `useRefSignalStore` connects any store to a component with the same `renderOn`, timing, and `unwrap` options as the context hook.
+
+```ts
+import { createRefSignalStore, useRefSignalStore, createRefSignal } from 'react-refsignal';
+
+const gameStore = createRefSignalStore(() => ({
+  score: createRefSignal(0),
+  level: createRefSignal(1),
+}));
+
+// Outside React — direct access
+gameStore.score.update(42);
+
+// In a component — opt into re-renders explicitly
+function ScoreDisplay() {
+  const store = useRefSignalStore(gameStore, { renderOn: ['score'] });
+  return <div>{store.score.current}</div>;
+}
+
+// Unwrapped — plain value + auto-generated setter
+function ScoreEditor() {
+  const { score, setScore } = useRefSignalStore(gameStore, {
+    renderOn: ['score'],
+    unwrap: true,
+  });
+  return <button onClick={() => setScore(score + 1)}>{score}</button>;
+}
+```
+
+Composes with `persist` and `broadcast` — wrap the factory before passing it in:
+
+```ts
+import { persist } from 'react-refsignal/persist';
+
+const gameStore = createRefSignalStore(
+  persist(() => ({ score: createRefSignal(0) }), { key: 'game' }),
+);
+```
+
+Use `createRefSignalContext` instead when you need per-subtree isolation — a separate store instance per Provider mount (different routes, multiple widget instances).
 
 ## Persist
 

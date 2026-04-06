@@ -27,11 +27,15 @@ export {
 } from './context/createRefSignalContext';
 export type {
   RefSignalContextType,
+  ContextHook,
+} from './context/createRefSignalContext';
+export { createRefSignalStore } from './store/createRefSignalStore';
+export { useRefSignalStore } from './store/useRefSignalStore';
+export type {
   RefSignalKeys,
   UnwrappedStore,
   StoreSnapshot,
-  ContextHook,
-  ContextHookOptions,
-} from './context/createRefSignalContext';
+  SignalStoreOptions,
+} from './store/useRefSignalStore';
 export type { EffectOptions } from './hooks/useRefSignalEffect';
 export type { TimingOptions } from './timing';

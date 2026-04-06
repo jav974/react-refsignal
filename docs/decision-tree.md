@@ -133,18 +133,24 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Q1{"Do you need custom logic in the Provider body?\n(typed props, useEffect, external subscriptions)"}
-    Q1 -->|No| A["createRefSignalContext(name, factory)\nGenerates Provider + hook automatically"]
-    Q1 -->|Yes| B["createRefSignalContextHook(name)\nReturns [Context, hook] — write your own Provider"]
+    Q1{"Scope of shared state?"}
+    Q1 -->|"Global singleton — one instance for the whole app"| A["createRefSignalStore(factory)\nReturns the store directly — no Provider"]
+    Q1 -->|"Per-subtree — isolated store per Provider mount"| Q2
 
-    A & B --> Q2{"Should consumers re-render on signal changes?"}
-    Q2 -->|"Never — read .current imperatively"| C["useXxxContext() — no options"]
-    Q2 -->|Specific signals| D["renderOn: ['key1', 'key2']"]
-    Q2 -->|All signals| E["renderOn: ALL"]
+    A --> B["useRefSignalStore(store, options?)\nConnect to a component with opt-in re-renders"]
 
-    D & E --> Q3{"Want plain values + auto-generated setters instead of signal refs?"}
-    Q3 -->|Yes| F["unwrap: true\nrequires renderOn — type error without it"]
-    Q3 -->|No| G["Read signal.current in JSX"]
+    Q2{"Do you need custom logic in the Provider body?\n(typed props, useEffect, external subscriptions)"}
+    Q2 -->|No| C["createRefSignalContext(name, factory)\nGenerates Provider + hook automatically"]
+    Q2 -->|Yes| D["createRefSignalContextHook(name)\nReturns [Context, hook] — write your own Provider"]
+
+    B & C & D --> Q3{"Should consumers re-render on signal changes?"}
+    Q3 -->|"Never — read .current imperatively"| E["No renderOn"]
+    Q3 -->|Specific signals| F["renderOn: ['key1', 'key2']"]
+    Q3 -->|All signals| G["renderOn: ALL"]
+
+    F & G --> Q4{"Want plain values + auto-generated setters instead of signal refs?"}
+    Q4 -->|Yes| H["unwrap: true\nrequires renderOn — type error without it"]
+    Q4 -->|No| I["Read signal.current in JSX"]
 ```
 
 ---

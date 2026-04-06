@@ -12,11 +12,13 @@
 - [`useRefSignalEffect(effect, deps, options?)`](#userefsignaleffect-effect-deps-options)
 - [`useRefSignalRender(deps, options?)`](#userefsignalrender-deps-options)
 - [`EffectOptions`](#effectoptions)
-- [`ContextHookOptions<TStore>`](#contexthookoptionststore)
+- [`SignalStoreOptions<TStore>`](#signalstoreoptionststore)
 - [`useRefSignalMemo<T>(factory, deps)`](#userefsignalmemot-factory-deps)
 - [`createComputedSignal<T>(compute, deps)`](#createcomputedsignalt-compute-deps)
 - [`watch<T>(signal, listener)`](#watcht-signal-listener)
 - [`batch(callback, deps?)`](#batchcallback-deps)
+- [`createRefSignalStore<TStore>(factory)`](#createrefsignalstoretstore-factory)
+- [`useRefSignalStore<TStore>(store, options?)`](#userefsignalstoretstore-store-options)
 - [`createRefSignalContext<TName, TStore>(name, factory)`](#createrefsignalcontexttname-tstore-name-factory)
 - [`createRefSignalContextHook<TStore>(name)`](#createrefsignalcontexthooktstore-name)
 - [`ALL`](#all)
@@ -247,7 +249,7 @@ The timing options are mutually exclusive — combining them is a type error:
 { debounce: 200, maxWait: 1000 } // ✓
 ```
 
-Context hooks (`createRefSignalContext`, `createRefSignalContextHook`) accept [`ContextHookOptions`](#contexthookoptionststore) instead, which extends these same fields but upgrades `filter` to receive the store snapshot directly.
+Context hooks (`createRefSignalContext`, `createRefSignalContextHook`) accept [`SignalStoreOptions`](#signalstoreoptionststore) instead, which extends these same fields but upgrades `filter` to receive the store snapshot directly.
 
 ### `TimingOptions`
 
@@ -259,28 +261,26 @@ import type { TimingOptions } from 'react-refsignal';
 
 ---
 
-### `ContextHookOptions<TStore>`
+### `SignalStoreOptions<TStore>`
 
-Options accepted by the hook returned from `createRefSignalContext` and `createRefSignalContextHook`. Extends [`TimingOptions`](#timingoptions) and adds context-specific fields.
+Options accepted by `useRefSignalStore`, `createRefSignalContext`, and `createRefSignalContextHook`. Extends [`TimingOptions`](#timingoptions).
 
 | Option | Type | Description |
 |---|---|---|
-| `renderOn` | `Array<keyof TStore>` \| `'all'` | Signal keys that trigger a re-render. Omit to never re-render. |
-| `unwrap` | `boolean` | If `true`, returns plain values with auto-generated setters instead of raw signals. |
-| `filter` | `(store: StoreSnapshot<TStore>) => boolean` | Only re-render if this returns `true`. Receives the store snapshot — no closure needed. |
+| `renderOn` | `Array<RefSignalKeys<TStore>>` \| `'all'` | Signal keys that trigger a re-render. Omit to never re-render. |
+| `unwrap` | `boolean` | If `true`, returns plain values with auto-generated setters instead of raw signals. Requires `renderOn`. |
+| `filter` | `(store: StoreSnapshot<TStore>) => boolean` | Only re-render if this returns `true`. Receives the store snapshot — signals unwrapped to their current values. |
 | `throttle` / `debounce` / `maxWait` / `rAF` | — | Same as [`TimingOptions`](#timingoptions). |
-
-`filter` here receives the store snapshot as its argument (signals unwrapped to their current values, read-only) — a convenience upgrade over the base `() => boolean` form:
 
 ```tsx
 // Only re-render when score crosses the 100 threshold
-const store = useGameContext({
+useRefSignalStore(gameStore, {
   renderOn: ['score'],
   filter: (store) => store.score > 100,
 });
 
-// Combine with timing — debounced and gated
-const store = useGameContext({
+// Debounced and gated
+useRefSignalStore(gameStore, {
   renderOn: ['score'],
   debounce: 200,
   filter: (store) => store.score % 10 === 0,
@@ -388,6 +388,72 @@ Batches are nestable. If the callback throws, the batch still flushes via `final
 
 ---
 
+### `createRefSignalStore<TStore>(factory)`
+
+Creates a module-scope signal store singleton. The factory is called once immediately — the returned store lives for the application's lifetime. No Provider required.
+
+Use [`useRefSignalStore`](#userefsignalstoretstore-store-options) to connect the store to React components. Use [`createRefSignalContext`](#createrefsignalcontexttname-tstore-name-factory) instead when you need per-subtree isolation (separate store per Provider mount).
+
+```ts
+import { createRefSignalStore, createRefSignal } from 'react-refsignal';
+
+const gameStore = createRefSignalStore(() => ({
+  score: createRefSignal(0),
+  level: createRefSignal(1),
+  tag:   'game', // non-signal passthrough
+}));
+
+// Outside React — direct access, no Provider
+gameStore.score.update(42);
+gameStore.score.current; // 42
+```
+
+Composes with `persist()` and `broadcast()` — wrap the factory before passing it in:
+
+```ts
+import { persist } from 'react-refsignal/persist';
+import { broadcast } from 'react-refsignal/broadcast';
+
+const gameStore = createRefSignalStore(
+  broadcast(
+    persist(() => ({ score: createRefSignal(0) }), { key: 'game' }),
+    { channel: 'game' },
+  ),
+);
+```
+
+---
+
+### `useRefSignalStore<TStore>(store, options?)`
+
+Connects a signal store to a React component with opt-in re-renders, timing, filtering, and optional value unwrapping. Works with any store object — from `createRefSignalStore`, from context, or plain.
+
+```ts
+import { useRefSignalStore, ALL } from 'react-refsignal';
+
+// No re-renders — read signals imperatively
+const store = useRefSignalStore(gameStore);
+
+// Re-render when score changes
+const store = useRefSignalStore(gameStore, { renderOn: ['score'] });
+
+// Re-render when any signal changes
+const store = useRefSignalStore(gameStore, { renderOn: ALL });
+
+// Rate-limit re-renders
+const store = useRefSignalStore(gameStore, { renderOn: ['score'], throttle: 100 });
+
+// Plain values + auto-generated setters
+const { score, setScore } = useRefSignalStore(gameStore, {
+  renderOn: ['score'],
+  unwrap: true,
+});
+```
+
+`options` accepts [`SignalStoreOptions<TStore>`](#signalstoreoptionststore--contexthookoptionststore).
+
+---
+
 ### `createRefSignalContext<TName, TStore>(name, factory)`
 
 Eliminates the `createContext` / Provider / `useContext` boilerplate for signal stores. Generates a typed Provider and hook pair with opt-in re-renders and value unwrapping. Components that do not pass `renderOn` never re-render on signal updates.
@@ -420,7 +486,7 @@ const store = useUserContext({ renderOn: ALL });
 
 Passing a non-signal key in `renderOn` is a TypeScript error.
 
-**Timing and filter options** — all [`EffectOptions`](#effectoptions) fields are accepted alongside `renderOn` and `unwrap`. `filter` is upgraded to receive the store snapshot directly (see [`ContextHookOptions`](#contexthookoptionststore)):
+**Timing and filter options** — all [`EffectOptions`](#effectoptions) fields are accepted alongside `renderOn` and `unwrap`. `filter` is upgraded to receive the store snapshot directly (see [`SignalStoreOptions`](#signalstoreoptionststore)):
 
 ```tsx
 // Re-render at most once per 100ms when score changes
@@ -456,7 +522,7 @@ const { name, setName, score, setScore, sessionId } = useUserContext({
 
 Creates a React context object and a fully reactive hook **without generating a Provider component**. Use this when you need to write your own Provider body — custom effects, typed props, external subscriptions, or any other logic that belongs in the Provider.
 
-The returned hook accepts the same [`ContextHookOptions`](#contexthookoptionststore) as the hook from `createRefSignalContext` — including `renderOn`, `unwrap`, timing options, and a store-aware `filter`.
+The returned hook accepts the same [`SignalStoreOptions`](#signalstoreoptionststore) as the hook from `createRefSignalContext` — including `renderOn`, `unwrap`, timing options, and a store-aware `filter`.
 
 ```tsx
 import {

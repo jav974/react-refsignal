@@ -7,71 +7,27 @@ import {
   useContext,
   useMemo,
 } from 'react';
-import { isRefSignal, RefSignal } from '../refsignal';
-import { useRefSignalRender } from '../hooks/useRefSignalRender';
-import type { EffectOptions } from '../hooks/useRefSignalEffect';
-import type { TimingOptions } from '../timing';
+import {
+  useRefSignalStore,
+  type SignalStoreOptions,
+  type UnwrappedStore,
+} from '../store/useRefSignalStore';
 
-/**
- * Extracts the keys of a store whose values are RefSignal instances.
- * Non-signal values are excluded from the resulting union type.
- *
- * @example
- * type Store = { name: RefSignal<string>; score: RefSignal<number>; sessionId: string }
- * type Keys = RefSignalKeys<Store> // 'name' | 'score'
- */
-export type RefSignalKeys<TStore> = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [K in keyof TStore]: TStore[K] extends RefSignal<any> ? K : never;
-}[keyof TStore];
+// ─── Re-exports for backwards compatibility ────────────────────────────────────
 
-/**
- * Replaces each RefSignal<V> in the store with its inner value V,
- * and generates a `set${Key}` setter for each signal key.
- * Non-signal values are left unchanged. No setter is generated for them.
- *
- * @example
- * type Store = { name: RefSignal<string>; score: RefSignal<number>; sessionId: string }
- * type Unwrapped = UnwrappedStore<Store>
- * // {
- * //   name: string
- * //   score: number
- * //   sessionId: string
- * //   setName: (value: string) => void
- * //   setScore: (value: number) => void
- * // }
- */
-export type UnwrappedStore<TStore> = {
-  [K in keyof TStore]: TStore[K] extends RefSignal<infer V> ? V : TStore[K];
-} & {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [K in keyof TStore as TStore[K] extends RefSignal<any>
-    ? `set${Capitalize<string & K>}`
-    : never]: TStore[K] extends RefSignal<infer V> ? (value: V) => void : never;
-};
+export type {
+  RefSignalKeys,
+  UnwrappedStore,
+  StoreSnapshot,
+} from '../store/useRefSignalStore';
 
-export type StoreSnapshot<TStore> = {
-  readonly [K in keyof TStore]: TStore[K] extends RefSignal<infer V>
-    ? V
-    : TStore[K];
-};
+// ─── Context-specific types ────────────────────────────────────────────────────
 
-type BaseContextOptions<TStore> = TimingOptions & {
-  filter?: (store: StoreSnapshot<TStore>) => boolean;
-};
-
-export type ContextHookOptions<TStore> = BaseContextOptions<TStore> &
-  (
-    | { renderOn?: Array<RefSignalKeys<TStore>> | 'all'; unwrap?: false }
-    | { renderOn: Array<RefSignalKeys<TStore>> | 'all'; unwrap: true }
-  );
-
-export type ContextHook<TStore> = {
-  (options?: ContextHookOptions<TStore> & { unwrap?: false }): TStore;
-  (
-    options: ContextHookOptions<TStore> & { unwrap: true },
-  ): UnwrappedStore<TStore>;
-};
+export type ContextHook<TStore> = <
+  TOptions extends SignalStoreOptions<TStore> | undefined = undefined,
+>(
+  options?: TOptions,
+) => TOptions extends { unwrap: true } ? UnwrappedStore<TStore> : TStore;
 
 export type RefSignalContextType<TName extends string, TStore> = {
   [K in `${Capitalize<TName>}Provider`]: FC<{ children: ReactNode }>;
@@ -79,10 +35,14 @@ export type RefSignalContextType<TName extends string, TStore> = {
   [K in `use${Capitalize<TName>}Context`]: ContextHook<TStore>;
 };
 
+// ─── Internal helpers ──────────────────────────────────────────────────────────
+
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Sentinel value for {@link ContextHook} `renderOn` — subscribes to all signals in the store. */
+/** Sentinel value for `renderOn` — subscribes to all signals in the store. */
 export const ALL = 'all' as const;
+
+// ─── createRefSignalContextHook ───────────────────────────────────────────────
 
 /**
  * Creates a React context object and a fully reactive hook for a signal store,
@@ -125,94 +85,22 @@ export function createRefSignalContextHook<
   const hookName = `use${capitalizedName}Context`;
   const providerName = `${capitalizedName}Provider`;
 
-  const useStore = (): TStore => {
+  function useContextHook<
+    TOptions extends SignalStoreOptions<TStore> | undefined = undefined,
+  >(
+    options?: TOptions,
+  ): TOptions extends { unwrap: true } ? UnwrappedStore<TStore> : TStore {
     const store = useContext(context);
     if (store === null) {
       throw new Error(`${hookName} must be used within a ${providerName}`);
     }
-    return store;
-  };
-
-  function useContextHook(
-    options?: ContextHookOptions<TStore> & { unwrap?: false },
-  ): TStore;
-  function useContextHook(
-    options: ContextHookOptions<TStore> & { unwrap: true },
-  ): UnwrappedStore<TStore>;
-  function useContextHook(
-    options?: ContextHookOptions<TStore>,
-  ): TStore | UnwrappedStore<TStore> {
-    const store = useStore();
-
-    let signals: RefSignal[];
-    if (options?.renderOn === 'all') {
-      signals = Object.values(store).filter(isRefSignal);
-    } else if (options?.renderOn !== undefined) {
-      signals = options.renderOn.map((key) => store[key] as RefSignal);
-    } else {
-      signals = [];
-    }
-
-    const snapshot = useMemo(
-      () =>
-        new Proxy(store, {
-          get(target, key) {
-            const val = (target as Record<string | symbol, unknown>)[
-              key as string
-            ];
-            return isRefSignal(val) ? val.current : val;
-          },
-        }) as StoreSnapshot<TStore>,
-      [store],
-    );
-
-    const {
-      renderOn: _renderOn,
-      unwrap: _unwrap,
-      filter,
-      ...renderOptions
-    } = options ?? {};
-    useRefSignalRender(signals, {
-      ...renderOptions,
-      filter: filter ? () => filter(snapshot) : undefined,
-    } as EffectOptions);
-
-    const settersMap = useMemo(
-      () =>
-        Object.fromEntries(
-          Object.entries(store)
-            .filter(([, v]) => isRefSignal(v))
-            .map(([k, v]) => [
-              `set${capitalize(k)}`,
-              (value: unknown) => {
-                (v as RefSignal).update(value);
-              },
-            ]),
-        ),
-      [store],
-    );
-
-    const unwrappedProxy = useMemo(
-      () =>
-        new Proxy(store, {
-          get(_, key) {
-            const k = String(key);
-            if (k in settersMap) return settersMap[k];
-            return snapshot[k];
-          },
-        }) as UnwrappedStore<TStore>,
-      [store, settersMap, snapshot],
-    );
-
-    if (options?.unwrap) {
-      return unwrappedProxy;
-    }
-
-    return store;
+    return useRefSignalStore(store, options);
   }
 
   return [context, useContextHook];
 }
+
+// ─── createRefSignalContext ───────────────────────────────────────────────────
 
 /**
  * Creates a named React context optimized for signal stores.
