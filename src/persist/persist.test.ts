@@ -547,6 +547,85 @@ describe('persist() — edge cases', () => {
 
     expect(store.score.current).toBe(5);
   });
+
+  it('hydration overwrites an update that arrived before it resolved', async () => {
+    // Documents the "hydration always wins" contract:
+    // storage.get() is async — a signal update that fires between setup and
+    // hydration resolving will be overwritten by the stored value.
+    // Callers that need to override stored state should do so inside onHydrated.
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
+
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+    });
+    const store = factory();
+
+    // Update fires before hydration resolves
+    store.score.update(100);
+    expect(store.score.current).toBe(100);
+
+    // Hydration resolves — stored value (5) overwrites the in-flight update
+    await flush();
+    expect(store.score.current).toBe(5);
+  });
+
+  it('store-level: valid JSON envelope missing data field keeps defaults', async () => {
+    // envelope.data is undefined → the for-in loop throws → caught → defaults kept
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({ v: 1 }); // no data field
+
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+    });
+    const store = factory();
+    await flush();
+
+    expect(store.score.current).toBe(0);
+  });
+
+  it('signal-level: valid JSON envelope missing data field keeps default', async () => {
+    // envelope.data is undefined → signal.update(undefined) must not corrupt the signal
+    const storage = mockStorage();
+    storage.store['sig'] = JSON.stringify({ v: 1 }); // no data field
+
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig', storage },
+    });
+    await flush();
+
+    expect(signal.current).toBe(0);
+  });
+
+  it('two stores sharing the same key do not corrupt each other', async () => {
+    // Last write wins — no crash, final stored value is a valid state
+    const storage = mockStorage();
+
+    const factoryA = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'shared',
+      storage,
+    });
+    const factoryB = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'shared',
+      storage,
+    });
+
+    const storeA = factoryA();
+    const storeB = factoryB();
+    await flush();
+
+    storeA.score.update(10);
+    storeB.score.update(20);
+    await flush();
+
+    const stored = JSON.parse(storage.store['shared']);
+    expect([10, 20]).toContain(stored.data.score);
+    expect(() => {
+      storeA.score.update(99);
+    }).not.toThrow();
+  });
 });
 
 // ─── usePersist() ─────────────────────────────────────────────────────────────

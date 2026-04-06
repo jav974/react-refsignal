@@ -38,6 +38,7 @@ function setupSignalPersist(
     if (raw !== null) {
       try {
         const envelope = deserialize(raw) as Envelope;
+        if (!('data' in (envelope as object))) throw new Error('corrupt');
         const value =
           migrate && envelope.v !== version
             ? migrate(envelope.data, envelope.v)
