@@ -548,11 +548,11 @@ describe('persist() — edge cases', () => {
     expect(store.score.current).toBe(5);
   });
 
-  it('hydration overwrites an update that arrived before it resolved', async () => {
-    // Documents the "hydration always wins" contract:
-    // storage.get() is async — a signal update that fires between setup and
-    // hydration resolving will be overwritten by the stored value.
-    // Callers that need to override stored state should do so inside onHydrated.
+  it('hydration is skipped when the signal was updated before it resolved', async () => {
+    // If a signal receives any update between setup and hydration resolving,
+    // the stored value is NOT applied — the newer in-memory state wins.
+    // This prevents broadcast state-handoffs (or any other update) from being
+    // silently overwritten by older persisted data.
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
 
@@ -566,9 +566,9 @@ describe('persist() — edge cases', () => {
     store.score.update(100);
     expect(store.score.current).toBe(100);
 
-    // Hydration resolves — stored value (5) overwrites the in-flight update
+    // Hydration resolves — stored value (5) is skipped, in-memory state wins
     await flush();
-    expect(store.score.current).toBe(5);
+    expect(store.score.current).toBe(100);
   });
 
   it('store-level: valid JSON envelope missing data field keeps defaults', async () => {

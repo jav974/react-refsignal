@@ -262,17 +262,7 @@ If the stored data is corrupt or cannot be deserialized, it is silently discarde
 
 Signals always start with their default value. Hydration from storage is asynchronous — even for `localStorage` (wrapped in `Promise.resolve` for a consistent API). The signal updates once the read resolves, which triggers subscribers and re-renders as normal.
 
-**Hydration always wins.** If a signal is updated after `persist()` or `usePersist()` is called but before the storage read resolves, the stored value will overwrite that update once hydration completes. If you need to set an initial value that overrides storage, do it inside `onHydrated`:
-
-```ts
-persist(factory, {
-  key: 'game',
-  onHydrated: (store) => {
-    // Safe — runs after hydration, your update will not be overwritten
-    if (store.score.current === 0) store.score.update(10);
-  },
-});
-```
+**In-memory state wins over hydration.** Each signal's update counter is snapshotted when `persist()` or `usePersist()` is called. If a signal receives any update before the storage read resolves (for example, a broadcast `state-handoff` from another tab), hydration is skipped for that signal — the newer in-memory state is preserved. Signals that were not updated receive the stored value as normal.
 
 Use `onHydrated` to react to the moment hydration completes — whether storage had a value or not:
 

@@ -1095,14 +1095,13 @@ describe('edge cases — persist + broadcast state-handoff race', () => {
 
     expect(store.score.current).toBe(100);
 
-    // Now persist hydration resolves with older stored value (score=5)
+    // Now persist hydration resolves with older stored value (score=5).
+    // Because score.lastUpdated moved (state-handoff called update()),
+    // hydration detects the in-flight update and skips — handoff wins.
     resolveGet(JSON.stringify({ v: 1, data: { score: 5 } }));
     await act(async () => {});
 
-    // Current behavior: hydration overwrites the handoff → score=5
-    // Desired behavior would be: score=100 (handoff wins)
-    // This test documents the gap so it can be addressed deliberately.
-    expect(store.score.current).toBe(5);
+    expect(store.score.current).toBe(100);
 
     cleanup();
     broadcastCleanup();

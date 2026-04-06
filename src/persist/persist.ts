@@ -34,8 +34,13 @@ function setupSignalPersist(
 
   // ── Hydrate ────────────────────────────────────────────────────────────────
 
+  // Snapshot the update counter before the async read so we can detect whether
+  // the signal was updated (e.g. via broadcast state-handoff) while the read
+  // was in flight. If it was, hydration is skipped — the newer in-memory state wins.
+  const counterAtSetup = signal.lastUpdated;
+
   void storage.get(key).then((raw) => {
-    if (raw !== null) {
+    if (raw !== null && signal.lastUpdated === counterAtSetup) {
       try {
         const envelope = deserialize(raw) as Envelope;
         if (!('data' in (envelope as object))) throw new Error('corrupt');
@@ -98,6 +103,13 @@ export function setupPersist<TStore extends Record<string, unknown>>(
 
   // ── Hydrate ────────────────────────────────────────────────────────────────
 
+  // Snapshot each signal's update counter before the async read. Hydration is
+  // skipped per-signal if the counter moved while the read was in flight —
+  // the newer in-memory state (e.g. from a broadcast state-handoff) wins.
+  const countersAtSetup = new Map(
+    signalKeys.map((k) => [k, (store[k] as RefSignal).lastUpdated]),
+  );
+
   void storage.get(key).then((raw) => {
     if (raw !== null) {
       try {
@@ -110,7 +122,10 @@ export function setupPersist<TStore extends Record<string, unknown>>(
 
         for (const k of signalKeys) {
           const sk = k as string;
-          if (sk in data) {
+          if (
+            sk in data &&
+            (store[k] as RefSignal).lastUpdated === countersAtSetup.get(k)
+          ) {
             (store[k] as RefSignal).update(data[sk]);
           }
         }
