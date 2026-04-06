@@ -223,6 +223,29 @@ describe('DevTools', () => {
     expect(history[0].timestamp).toBeLessThanOrEqual(afterUpdate);
   });
 
+  it('uses "unknown" as signalId for signals not registered via registerSignal', () => {
+    // Construct a bare object that was never passed through registerSignal —
+    // devtools.trackUpdate looks it up in a WeakMap; missing → falls back to 'unknown'
+    const unregistered = { current: 0 } as any;
+
+    devtools.trackUpdate(unregistered, 0, 1);
+
+    const history = devtools.getUpdateHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].signalId).toBe('unknown');
+  });
+
+  it('defaults maxHistory to 100 when not set in config', () => {
+    configureDevTools({ maxHistory: undefined });
+
+    const signal = createRefSignal(0);
+    for (let i = 1; i <= 101; i++) {
+      signal.update(i);
+    }
+
+    expect(devtools.getUpdateHistory()).toHaveLength(100);
+  });
+
   it('should handle multiple signals independently', () => {
     const counter = createRefSignal(0, 'counter');
     const message = createRefSignal('', 'message');

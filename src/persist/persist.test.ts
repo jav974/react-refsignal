@@ -376,6 +376,46 @@ describe('persist() — edge cases', () => {
     expect(raw.startsWith('{"__custom":true')).toBe(true);
     expect(JSON.parse(raw).__custom).toBe(true);
   });
+
+  it('signal-level: silently swallows storage.set rejection on save', async () => {
+    const failStorage: PersistStorage = {
+      get: () => Promise.resolve(null),
+      set: () => Promise.reject(new Error('write failed')),
+      remove: () => Promise.resolve(),
+    };
+
+    const signal = createRefSignal(0, {
+      persist: { key: 'fail-sig', storage: failStorage },
+    });
+    await flush();
+
+    // update triggers save → storage.set rejects → .catch swallows it
+    signal.update(42);
+    await flush();
+
+    // no error escaped; signal still updated
+    expect(signal.current).toBe(42);
+  });
+
+  it('store-level: silently swallows storage.set rejection on save', async () => {
+    const failStorage: PersistStorage = {
+      get: () => Promise.resolve(null),
+      set: () => Promise.reject(new Error('write failed')),
+      remove: () => Promise.resolve(),
+    };
+
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'fail-store',
+      storage: failStorage,
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(5);
+    await flush();
+
+    expect(store.score.current).toBe(5);
+  });
 });
 
 // ─── usePersist() ─────────────────────────────────────────────────────────────
@@ -611,6 +651,13 @@ describe('built-in storage adapters', () => {
     const val = await sessionStorageAdapter.get('sess-key');
     expect(val).toBe('world');
   });
+
+  it('localStorageAdapter.get returns null when storage access throws', async () => {
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('storage access denied');
+    });
+    expect(await localStorageAdapter.get('any-key')).toBeNull();
+  });
 });
 
 // ─── indexedDBStorage() factory ───────────────────────────────────────────────
@@ -651,6 +698,73 @@ describe('indexedDBStorage()', () => {
     const val = await idb.get('default-k');
     expect(val).toBe('default-v');
     await idb.remove('default-k');
+  });
+
+  it('returns a no-op adapter when indexedDB is unavailable (SSR guard)', async () => {
+    const saved = (globalThis as any).indexedDB;
+    delete (globalThis as any).indexedDB;
+    try {
+      const idb = indexedDBStorage({ dbName: 'ssr-test', storeName: 'p' });
+      expect(await idb.get('key')).toBeNull();
+      await expect(idb.set('key', 'val')).resolves.toBeUndefined();
+      await expect(idb.remove('key')).resolves.toBeUndefined();
+    } finally {
+      (globalThis as any).indexedDB = saved;
+    }
+  });
+
+  it('rejects when the IDB open request fires onerror', async () => {
+    const idb = indexedDBStorage({ dbName: 'open-err', storeName: 's' });
+
+    const spy = jest
+      .spyOn(globalThis.indexedDB, 'open')
+      .mockImplementationOnce(() => {
+        const req: any = {
+          result: null,
+          error: null, // null forces the ?? fallback: new Error('IDBFactory.open failed')
+          source: null,
+          transaction: null,
+          readyState: 'pending',
+          onupgradeneeded: null,
+          onsuccess: null,
+          onerror: null,
+        };
+        setTimeout(() => req.onerror?.(new Event('error')), 0);
+        return req as IDBOpenDBRequest;
+      });
+
+    await expect(idb.get('key')).rejects.toBeDefined();
+    spy.mockRestore();
+  });
+
+  it('rejects when an IDB transaction request fires onerror', async () => {
+    const idb = indexedDBStorage({ dbName: 'tx-err', storeName: 's' });
+
+    // Warm up dbPromise so the next call goes straight to tx()
+    await idb.get('warmup');
+
+    // Patch IDBObjectStore.prototype.get to fire onerror instead of onsuccess
+    const IDBObjectStoreCtor = (globalThis as any).IDBObjectStore;
+    const origGet = IDBObjectStoreCtor.prototype.get;
+    IDBObjectStoreCtor.prototype.get = function () {
+      const req: any = {
+        result: undefined,
+        error: null, // null forces the ?? fallback: new Error('IDBTransaction failed')
+        source: null,
+        transaction: null,
+        readyState: 'pending',
+        onsuccess: null,
+        onerror: null,
+      };
+      setTimeout(() => req.onerror?.(new Event('error')), 0);
+      return req;
+    };
+
+    try {
+      await expect(idb.get('key')).rejects.toBeDefined();
+    } finally {
+      IDBObjectStoreCtor.prototype.get = origGet;
+    }
   });
 
   it('two persist calls sharing one instance write to same store under different keys', async () => {

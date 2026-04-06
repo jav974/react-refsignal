@@ -5,6 +5,7 @@ import { act } from 'react';
 import { renderHook } from '@testing-library/react';
 import { createRefSignal } from '../refsignal';
 import { broadcast, useBroadcast } from './index';
+import { setupBroadcast } from './broadcast';
 import { useRefSignal } from '../hooks/useRefSignal';
 
 // ─── Transport mocks ──────────────────────────────────────────────────────────
@@ -615,6 +616,38 @@ describe('edge cases — one-to-many election', () => {
     expect(onBroadcasterChange).toHaveBeenLastCalledWith(false);
   });
 
+  it('yields to a lower-ID tab announced via hello, sends state-handoff', () => {
+    const onBroadcasterChange = jest.fn();
+    const factory = broadcast(() => ({ score: createRefSignal(42) }), {
+      channel: 'hello-yield',
+      mode: 'one-to-many',
+      onBroadcasterChange,
+      heartbeatInterval: 1000,
+    });
+    factory();
+
+    // Tab wins initial election (no competition yet)
+    expect(onBroadcasterChange).toHaveBeenCalledWith(true);
+
+    const received: unknown[] = [];
+    const spy = new MockBC('hello-yield');
+    spy.onmessage = (e) => received.push(e.data);
+
+    // A lower-ID tab announces itself via hello — triggers electBroadcaster, which yields
+    deliverFromOtherTab('hello-yield', {
+      type: 'hello',
+      tabId: '0000',
+      ts: Date.now(),
+    });
+
+    expect(onBroadcasterChange).toHaveBeenLastCalledWith(false);
+    const handoff = received.find((m: any) => m?.type === 'state-handoff');
+    expect(handoff).toBeDefined();
+    expect((handoff as any).payload.score).toBe(42);
+
+    spy.close();
+  });
+
   it('removes dead tabs after heartbeatTimeout and re-elects', () => {
     const onBroadcasterChange = jest.fn();
 
@@ -898,5 +931,102 @@ describe('useRefSignal — broadcast option', () => {
     expect(received).toHaveLength(1);
 
     spy.close();
+  });
+});
+
+// ─── Branch coverage ──────────────────────────────────────────────────────────
+
+describe('branch coverage', () => {
+  it('SSR guard: returns a no-op cleanup when window is undefined', () => {
+    const savedWindow = (global as any).window;
+    (global as any).window = undefined;
+    try {
+      const store = { score: createRefSignal(0) };
+      const cleanup = setupBroadcast(store, { channel: 'ssr-bc' });
+      expect(typeof cleanup).toBe('function');
+      expect(() => {
+        cleanup();
+      }).not.toThrow(); // covers the returned () => {} function
+    } finally {
+      (global as any).window = savedWindow;
+    }
+  });
+
+  it('rAF option: collapses rapid updates into one send per frame', () => {
+    let rafCb: FrameRequestCallback | null = null;
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafCb = cb;
+      return 1;
+    });
+    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'raf-bc',
+      rAF: true,
+    });
+    const store = factory();
+
+    const received: unknown[] = [];
+    const spy = new MockBC('raf-bc');
+    spy.onmessage = (e) => {
+      if ((e.data as any)?.type === 'update') received.push(e.data);
+    };
+
+    store.score.update(1);
+    store.score.update(2);
+    expect(received).toHaveLength(0); // batched, not sent yet
+
+    rafCb?.(0);
+    expect(received).toHaveLength(1); // one send per frame
+
+    spy.close();
+    jest.restoreAllMocks();
+  });
+
+  it('debounce option: rapid updates produce one send after quiet period', () => {
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'debounce-bc',
+      debounce: 100,
+    });
+    const store = factory();
+
+    const received: unknown[] = [];
+    const spy = new MockBC('debounce-bc');
+    spy.onmessage = (e) => {
+      if ((e.data as any)?.type === 'update') received.push(e.data);
+    };
+
+    store.score.update(1);
+    store.score.update(2);
+    expect(received).toHaveLength(0);
+
+    jest.advanceTimersByTime(100);
+    expect(received).toHaveLength(1);
+
+    spy.close();
+  });
+
+  it('prunes timed-out tabs during election, then re-elects', () => {
+    const onBroadcasterChange = jest.fn();
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'prune-test',
+      mode: 'one-to-many',
+      onBroadcasterChange,
+      heartbeatInterval: 100,
+      heartbeatTimeout: 300,
+    });
+    factory();
+
+    // Register a lower-ID tab — our tab yields
+    deliverFromOtherTab('prune-test', {
+      type: 'hello',
+      tabId: '0000',
+      ts: Date.now(),
+    });
+    expect(onBroadcasterChange).toHaveBeenLastCalledWith(false);
+
+    // Advance past heartbeatTimeout — '0000' goes stale and is pruned, we re-elect
+    jest.advanceTimersByTime(400);
+    expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
   });
 });
