@@ -27,6 +27,19 @@ export interface TimingWrapper {
 }
 
 /**
+ * Options accepted by {@link watch} and all React hooks that subscribe to signals.
+ * Extends {@link TimingOptions} with an optional filter gate.
+ *
+ * - `filter` — skip the callback when this returns `false`
+ * - timing fields — rate-limit how often the callback fires
+ *
+ * {@link EffectOptions} extends this with `skipMount` for hook mount semantics.
+ */
+export type WatchOptions = TimingOptions & {
+  filter?: () => boolean;
+};
+
+/**
  * Leading + trailing throttle.
  * - Calls fn immediately on the first invocation within a window.
  * - Schedules a trailing call at the end of the window if further calls arrive.
@@ -122,6 +135,27 @@ export function createDebounce(
  * - Multiple calls within the same frame are collapsed into one.
  * - cancel() prevents the scheduled frame from firing.
  */
+/**
+ * Wraps a callback with the timing strategy described by `options`.
+ * When no timing option is set, returns a passthrough wrapper so callers
+ * can always call `wrapper.call()` / `wrapper.cancel()` unconditionally.
+ */
+export function applyTimingOptions(
+  fn: () => void,
+  options: TimingOptions,
+): TimingWrapper {
+  const { rAF, throttle, debounce, maxWait } = options as {
+    rAF?: true;
+    throttle?: number;
+    debounce?: number;
+    maxWait?: number;
+  };
+  if (rAF) return createRAF(fn);
+  if (throttle !== undefined) return createThrottle(fn, throttle);
+  if (debounce !== undefined) return createDebounce(fn, debounce, maxWait);
+  return { call: fn, cancel: () => {} };
+}
+
 export function createRAF(fn: () => void): TimingWrapper {
   let rafId: number | null = null;
 

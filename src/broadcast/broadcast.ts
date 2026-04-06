@@ -5,7 +5,7 @@ import {
   SignalBroadcastInput,
 } from '../refsignal';
 import { StoreSnapshot } from '../context/createRefSignalContext';
-import { createThrottle, createDebounce, createRAF } from '../timing';
+import { applyTimingOptions } from '../timing';
 import type { BroadcastOptions, BroadcastSignalOptions } from './types';
 import { resolveTransport, Transport } from './transport';
 import { takeSnapshot, applySnapshot } from './snapshot';
@@ -37,10 +37,6 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     onBroadcasterChange,
     heartbeatInterval = 2000,
     heartbeatTimeout = 5000,
-    throttle,
-    debounce,
-    maxWait,
-    rAF,
   } = options;
 
   const transport: Transport = resolveTransport(channel);
@@ -62,19 +58,11 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     transport.post(msg);
   };
 
-  const timed = rAF
-    ? createRAF(sendSnapshot)
-    : throttle !== undefined
-      ? createThrottle(sendSnapshot, throttle)
-      : debounce !== undefined
-        ? createDebounce(sendSnapshot, debounce, maxWait)
-        : null;
-
-  const timedSend = timed ? timed.call : sendSnapshot;
+  const wrapper = applyTimingOptions(sendSnapshot, options);
 
   const signals = Object.values(store).filter(isRefSignal);
   signals.forEach((s) => {
-    s.subscribe(timedSend);
+    s.subscribe(wrapper.call);
   });
 
   // ── Election helpers (one-to-many only) ─────────────────────────────────────
@@ -178,9 +166,9 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
   // ── Cleanup ─────────────────────────────────────────────────────────────────
 
   return () => {
-    timed?.cancel();
+    wrapper.cancel();
     signals.forEach((s) => {
-      s.unsubscribe(timedSend);
+      s.unsubscribe(wrapper.call);
     });
     if (heartbeatTimer !== null) {
       clearInterval(heartbeatTimer);

@@ -11,11 +11,12 @@
 - [`isRefSignal<T>(obj)`](#isrefsignalt-obj)
 - [`useRefSignalEffect(effect, deps, options?)`](#userefsignaleffect-effect-deps-options)
 - [`useRefSignalRender(deps, options?)`](#userefsignalrender-deps-options)
+- [`WatchOptions`](#watchoptions)
 - [`EffectOptions`](#effectoptions)
 - [`SignalStoreOptions<TStore>`](#signalstoreoptionststore)
 - [`useRefSignalMemo<T>(factory, deps)`](#userefsignalmemot-factory-deps)
 - [`createComputedSignal<T>(compute, deps)`](#createcomputedsignalt-compute-deps)
-- [`watch<T>(signal, listener)`](#watcht-signal-listener)
+- [`watch<T>(signal, listener, options?)`](#watcht-signal-listener-options)
 - [`batch(callback, deps?)`](#batchcallback-deps)
 - [`createRefSignalStore<TStore>(factory)`](#createrefsignalstoretstore-factory)
 - [`useRefSignalStore<TStore>(store, options?)`](#userefsignalstoretstore-store-options)
@@ -200,7 +201,7 @@ useRefSignalRender([score]);
 return <div>Score: {score.current}</div>;
 ```
 
-**`options`** — an optional [`EffectOptions`](#effectoptions) object (or a legacy bare callback for backward compatibility):
+**`options`** — an optional [`WatchOptions`](#watchoptions) object (or a legacy bare callback for backward compatibility). `WatchOptions` is the same as `EffectOptions` minus `skipMount`, which has no meaning for render hooks:
 
 ```tsx
 // Legacy callback — still supported
@@ -225,16 +226,33 @@ forceUpdate();
 
 ---
 
+### `WatchOptions`
+
+The options type accepted by `watch()`, `useRefSignalRender`, and as the base for all other options types. Extends [`TimingOptions`](#timingoptions) with a filter gate.
+
+```
+TimingOptions
+  └── WatchOptions       = TimingOptions & { filter? }    ← watch(), useRefSignalRender
+        └── EffectOptions = WatchOptions & { skipMount? }  ← useRefSignalEffect
+```
+
+| Option | Type | Description |
+|---|---|---|
+| `filter` | `() => boolean` | Skip the callback when this returns `false`. |
+| `throttle` / `debounce` / `maxWait` / `rAF` | — | See [`TimingOptions`](#timingoptions). |
+
+---
+
 ### `EffectOptions`
 
-Options accepted by `useRefSignalRender` and `useRefSignalEffect`. All output mechanisms in the library extend this type.
+Options accepted by `useRefSignalEffect`. Extends [`WatchOptions`](#watchoptions) with hook-specific mount behaviour.
 
-`EffectOptions` is defined as `TimingOptions & { filter? }`. The timing fields come from `TimingOptions` — a discriminated union that makes invalid combinations type errors at compile time.
+`EffectOptions` is defined as `WatchOptions & { skipMount? }`. The timing fields come from `TimingOptions` — a discriminated union that makes invalid combinations type errors at compile time.
 
 | Option | Type | Description |
 |---|---|---|
 | `filter` | `() => boolean` | Skip the run if this returns `false`. Applied to signal-triggered runs only — mount always executes (unless `skipMount` is set). |
-| `skipMount` | `boolean` | Skip the effect run on mount. When `true`, the effect only fires on signal-triggered updates. |
+| `skipMount` | `boolean` | Skip the effect run on mount. When `true`, the effect only fires on signal-triggered updates. *(Not available in `WatchOptions` or `useRefSignalRender` — mount is not a concept there.)* |
 | `throttle` | `number` | At most one trigger per N ms (leading + trailing). |
 | `debounce` | `number` | Trigger after N ms of quiet. |
 | `maxWait` | `number` | With `debounce` only: guaranteed flush every N ms even if the signal keeps firing. |
@@ -253,17 +271,17 @@ Context hooks (`createRefSignalContext`, `createRefSignalContextHook`) accept [`
 
 ### `TimingOptions`
 
-The discriminated union underlying `EffectOptions`. Exported separately for cases where you want to pass timing configuration without `filter` (e.g. building custom hooks on top of the library):
+The discriminated union underlying `WatchOptions` and `EffectOptions`. Exported separately for cases where you want to pass timing configuration without `filter` (e.g. building custom hooks on top of the library). For most use cases, prefer `WatchOptions`.
 
 ```ts
-import type { TimingOptions } from 'react-refsignal';
+import type { TimingOptions, WatchOptions } from 'react-refsignal';
 ```
 
 ---
 
 ### `SignalStoreOptions<TStore>`
 
-Options accepted by `useRefSignalStore`, `createRefSignalContext`, and `createRefSignalContextHook`. Extends [`TimingOptions`](#timingoptions).
+Options accepted by `useRefSignalStore`, `createRefSignalContext`, and `createRefSignalContextHook`. Extends [`TimingOptions`](#timingoptions). The `filter` field is upgraded from `WatchOptions`'s `() => boolean` to receive the store snapshot directly.
 
 | Option | Type | Description |
 |---|---|---|
@@ -340,24 +358,44 @@ price.update(99); // total.current remains at the last computed value
 
 ---
 
-### `watch<T>(signal, listener)`
+### `watch<T>(signal, listener, options?)`
 
-Subscribes a listener to a signal and returns a cleanup function. Mirrors the `useEffect` return pattern for non-React contexts — no need to hold a reference to the listener just to unsubscribe later.
+Subscribes a listener to a signal and returns a cleanup function. The framework-free counterpart to `useRefSignalEffect` — same `filter` and timing options, no React required.
 
 ```ts
 import { createRefSignal, watch } from 'react-refsignal';
 
 const score = createRefSignal(0);
+
+// Basic — fires synchronously on every update
 const stop = watch(score, (value) => console.log('score:', value));
-
 score.update(10); // → 'score: 10'
+stop();           // unsubscribe
 
-// Later — unsubscribe
-stop();
-score.update(20); // listener not called
+// Throttled — at most once per 100 ms
+const stop = watch(score, (v) => draw(v), { throttle: 100 });
+
+// Debounced — only after 300 ms of quiet
+const stop = watch(score, (v) => save(v), { debounce: 300, maxWait: 1000 });
+
+// Frame-synced — collapses rapid updates into one call per animation frame
+const stop = watch(position, (v) => render(v), { rAF: true });
+
+// Filtered — only reacts when score is positive
+const stop = watch(score, (v) => log(v), { filter: () => score.current > 0 });
+
+// Combined — debounce + filter
+const stop = watch(score, (v) => sync(v), {
+  debounce: 200,
+  filter: () => score.current > 0,
+});
 ```
 
-Useful when managing subscriptions imperatively — in factories, non-React services, or cleanup-heavy code where holding both `signal` and `listener` references is awkward.
+**`options`** — accepts [`WatchOptions`](#watchoptions): `filter`, `throttle`, `debounce`, `maxWait`, `rAF`. Timing options are mutually exclusive.
+
+When timing is active, `listener` receives the **latest captured value** at the moment the timer fires — intermediate values between fires are not replayed.
+
+`stop()` also cancels any pending timer or animation frame so the listener never fires after unsubscribing.
 
 ---
 

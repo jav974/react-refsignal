@@ -38,4 +38,4 @@ export type {
   SignalStoreOptions,
 } from './store/useRefSignalStore';
 export type { EffectOptions } from './hooks/useRefSignalEffect';
-export type { TimingOptions } from './timing';
+export type { TimingOptions, WatchOptions } from './timing';

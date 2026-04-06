@@ -8,7 +8,7 @@ import {
 } from '../refsignal';
 import type { PersistOptions, PersistSignalOptions } from './types';
 import { resolveStorage } from './storage';
-import { createThrottle, createDebounce, createRAF } from '../timing';
+import { applyTimingOptions } from '../timing';
 
 // ─── Stored envelope ──────────────────────────────────────────────────────────
 
@@ -28,10 +28,6 @@ function setupSignalPersist(
     version = 1,
     migrate,
     onHydrated,
-    throttle,
-    debounce,
-    maxWait,
-    rAF,
   } = options;
 
   const storage = resolveStorage(options);
@@ -67,19 +63,11 @@ function setupSignalPersist(
       });
   };
 
-  const timed = rAF
-    ? createRAF(save)
-    : throttle !== undefined
-      ? createThrottle(save, throttle)
-      : debounce !== undefined
-        ? createDebounce(save, debounce, maxWait)
-        : null;
-
-  const timedSave = timed ? timed.call : save;
-  const stopWatching = watch(signal, timedSave);
+  const wrapper = applyTimingOptions(save, options);
+  const stopWatching = watch(signal, wrapper.call);
 
   return () => {
-    timed?.cancel();
+    wrapper.cancel();
     stopWatching();
   };
 }
@@ -98,10 +86,6 @@ export function setupPersist<TStore extends Record<string, unknown>>(
     version = 1,
     migrate,
     onHydrated,
-    throttle,
-    debounce,
-    maxWait,
-    rAF,
   } = options;
 
   const storage = resolveStorage(options);
@@ -151,22 +135,14 @@ export function setupPersist<TStore extends Record<string, unknown>>(
       });
   };
 
-  const timed = rAF
-    ? createRAF(save)
-    : throttle !== undefined
-      ? createThrottle(save, throttle)
-      : debounce !== undefined
-        ? createDebounce(save, debounce, maxWait)
-        : null;
-
-  const timedSave = timed ? timed.call : save;
+  const wrapper = applyTimingOptions(save, options);
   const cleanups = signalKeys.map((k) =>
-    watch(store[k] as RefSignal, timedSave),
+    watch(store[k] as RefSignal, wrapper.call),
   );
 
   return {
     cleanup: () => {
-      timed?.cancel();
+      wrapper.cancel();
       cleanups.forEach((stop) => {
         stop();
       });

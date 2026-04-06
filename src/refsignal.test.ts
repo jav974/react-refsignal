@@ -485,6 +485,100 @@ describe('watch', () => {
     signal.update(1);
     expect(listener).not.toHaveBeenCalled();
   });
+
+  describe('watch — timing options', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('throttle: rate-limits the listener', () => {
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+      watch(signal, listener, { throttle: 100 });
+      signal.update(1); // leading
+      signal.update(2);
+      signal.update(3); // trailing pending
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(1);
+      jest.advanceTimersByTime(100);
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(listener).toHaveBeenLastCalledWith(3); // latest value
+    });
+
+    it('debounce: fires after quiet period with latest value', () => {
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+      watch(signal, listener, { debounce: 100 });
+      signal.update(1);
+      signal.update(2);
+      signal.update(3);
+      expect(listener).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(100);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(3);
+    });
+
+    it('rAF: collapses updates into one call per frame', () => {
+      let rafCb: FrameRequestCallback | null = null;
+      const origRAF = globalThis.requestAnimationFrame;
+      globalThis.requestAnimationFrame = (cb) => {
+        rafCb = cb;
+        return 1;
+      };
+      try {
+        const signal = createRefSignal(0);
+        const listener = jest.fn();
+        watch(signal, listener, { rAF: true });
+        signal.update(1);
+        signal.update(2);
+        expect(listener).not.toHaveBeenCalled();
+        rafCb?.(0);
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenCalledWith(2);
+      } finally {
+        globalThis.requestAnimationFrame = origRAF;
+      }
+    });
+
+    it('stop() cancels a pending timer', () => {
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+      const stop = watch(signal, listener, { debounce: 100 });
+      signal.update(1);
+      stop();
+      jest.advanceTimersByTime(200);
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('watch — filter option', () => {
+    it('skips the listener when filter returns false', () => {
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+      watch(signal, listener, { filter: () => signal.current > 5 });
+      signal.update(3); // filtered out
+      expect(listener).not.toHaveBeenCalled();
+      signal.update(10); // passes
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(10);
+    });
+
+    it('filter + throttle: filter runs at fire time', () => {
+      jest.useFakeTimers();
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+      watch(signal, listener, {
+        throttle: 100,
+        filter: () => signal.current > 5,
+      });
+      signal.update(1); // leading — but filter blocks it (signal.current=1 at fire time)
+      expect(listener).not.toHaveBeenCalled();
+      signal.update(10); // trailing pending
+      jest.advanceTimersByTime(100);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(10);
+      jest.useRealTimers();
+    });
+  });
 });
 
 // ─── adapter missing warnings ─────────────────────────────────────────────────

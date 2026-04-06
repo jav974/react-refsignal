@@ -2,7 +2,12 @@
  * @jest-environment jsdom
  */
 
-import { createDebounce, createRAF, createThrottle } from './timing';
+import {
+  applyTimingOptions,
+  createDebounce,
+  createRAF,
+  createThrottle,
+} from './timing';
 
 describe('createThrottle', () => {
   beforeEach(() => jest.useFakeTimers());
@@ -213,5 +218,82 @@ describe('createRAF', () => {
     call();
     rafCallback?.(0);
     expect(fn).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('applyTimingOptions', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('passthrough: calls fn synchronously when no timing option is set', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, {});
+    wrapper.call();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('passthrough: cancel() is a no-op', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, {});
+    expect(() => {
+      wrapper.cancel();
+    }).not.toThrow();
+    wrapper.call();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('throttle: returns a throttle wrapper', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { throttle: 100 });
+    wrapper.call(); // leading
+    wrapper.call(); // trailing queued
+    expect(fn).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(100);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('debounce: returns a debounce wrapper', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { debounce: 100 });
+    wrapper.call();
+    wrapper.call();
+    expect(fn).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(100);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('debounce + maxWait: forwards maxWait', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { debounce: 100, maxWait: 150 });
+    wrapper.call();
+    jest.advanceTimersByTime(80);
+    wrapper.call();
+    jest.advanceTimersByTime(80); // 160ms total — maxWait hit
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('rAF: returns a rAF wrapper', () => {
+    jest.useRealTimers();
+    let rafCb: FrameRequestCallback | null = null;
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafCb = cb;
+      return 1;
+    });
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { rAF: true });
+    wrapper.call();
+    expect(fn).not.toHaveBeenCalled();
+    rafCb?.(0);
+    expect(fn).toHaveBeenCalledTimes(1);
+    jest.restoreAllMocks();
+  });
+
+  it('cancel() delegates to the underlying wrapper', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { debounce: 100 });
+    wrapper.call();
+    wrapper.cancel();
+    jest.advanceTimersByTime(200);
+    expect(fn).not.toHaveBeenCalled();
   });
 });

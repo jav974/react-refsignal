@@ -58,7 +58,7 @@ flowchart TD
 
 ## 3. Reacting to Changes
 
-> Use `watch(signal, listener)` instead of `subscribe`/`unsubscribe` pairs when outside React — it returns a cleanup function.
+> Use `watch(signal, listener, options?)` instead of `subscribe`/`unsubscribe` pairs when outside React — it returns a cleanup function and supports the same timing and filter options as hooks.
 
 ```mermaid
 flowchart TD
@@ -66,7 +66,7 @@ flowchart TD
 
     Q1 -->|"JSX must reflect the value — trigger a re-render"| A["useRefSignalRender(deps, options?)"]
     Q1 -->|"Side effect: canvas, audio, logging, DOM mutation"| B["useRefSignalEffect(effect, deps, options?)"]
-    Q1 -->|"Outside React — non-component code"| C["watch(signal, listener) → cleanup fn"]
+    Q1 -->|"Outside React — non-component code"| C["watch(signal, listener, options?) → cleanup fn"]
 
     A --> Q2{"In a context hook — want plain values + setters?"}
     Q2 -->|Yes| D["renderOn + unwrap: true"]
@@ -76,16 +76,16 @@ flowchart TD
     Q3 -->|"Yes — default"| F[Normal usage]
     Q3 -->|"No — react to changes only"| G["skipMount: true"]
 
-    B --> Q4{"Gate the effect conditionally?"}
+    B & C --> Q4{"Gate the callback conditionally?"}
     Q4 -->|Yes| H["filter: () => boolean"]
-    Q4 -->|No| I[Done]
+    Q4 -->|No| I["Rate limit? → Section 4"]
 ```
 
 ---
 
 ## 4. Rate Limiting
 
-Applies to `useRefSignalEffect`, `useRefSignalRender`, and context hooks. **Options are mutually exclusive** — combining them is a TypeScript error.
+Applies to `watch()`, `useRefSignalEffect`, `useRefSignalRender`, context hooks, persist, and broadcast. **Options are mutually exclusive** — combining them is a TypeScript error.
 
 ```mermaid
 flowchart TD

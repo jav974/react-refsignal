@@ -1,3 +1,6 @@
+import { applyTimingOptions } from './timing';
+import type { TimingOptions, WatchOptions } from './timing';
+
 export type Listener<T = unknown> = (value: T) => void;
 
 export interface DevToolsAdapter {
@@ -309,14 +312,48 @@ export function createComputedSignal<T>(
  * const stop = watch(score, (value) => console.log('score:', value));
  * // later:
  * stop();
+ *
+ * @example
+ * // Throttled — fires at most once per 100 ms
+ * const stop = watch(score, (v) => draw(v), { throttle: 100 });
+ *
+ * @example
+ * // Frame-synced — collapses rapid updates into one call per animation frame
+ * const stop = watch(position, (v) => render(v), { rAF: true });
+ *
+ * @example
+ * // Filtered — only reacts when score is positive
+ * const stop = watch(score, (v) => log(v), { filter: () => score.current > 0 });
  */
 export function watch<T>(
   signal: RefSignal<T>,
   listener: Listener<T>,
+  options?: WatchOptions,
 ): () => void {
-  signal.subscribe(listener);
+  if (!options) {
+    signal.subscribe(listener);
+    return () => {
+      signal.unsubscribe(listener);
+    };
+  }
+
+  const { filter } = options;
+  let latest = signal.current;
+
+  // Cast to TimingOptions — applyTimingOptions only reads timing fields, not filter
+  const wrapper = applyTimingOptions(() => {
+    if (!filter || filter()) listener(latest);
+  }, options as TimingOptions);
+
+  const adapter: Listener<T> = (value) => {
+    latest = value;
+    wrapper.call();
+  };
+
+  signal.subscribe(adapter);
   return () => {
-    signal.unsubscribe(listener);
+    signal.unsubscribe(adapter);
+    wrapper.cancel();
   };
 }
 

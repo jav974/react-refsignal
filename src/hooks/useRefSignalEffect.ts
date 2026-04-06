@@ -1,14 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { isRefSignal } from '../refsignal';
-import { createDebounce, createRAF, createThrottle } from '../timing';
-import type { TimingOptions } from '../timing';
+import { applyTimingOptions } from '../timing';
+import type { WatchOptions } from '../timing';
 
 /**
- * Options for {@link useRefSignalEffect} and {@link useRefSignalRender}.
- * All output mechanisms in react-refsignal (effects, renders, persist, broadcast)
- * extend this type — timing options rate-limit execution, filter gates it entirely.
+ * Options for {@link useRefSignalEffect}.
+ * Extends {@link WatchOptions} (timing + filter) with hook-specific mount behaviour.
  */
-export type EffectOptions = TimingOptions & {
+export type EffectOptions = WatchOptions & {
   /**
    * Skip the effect run when this returns false.
    * Applied to signal-triggered runs only — does not affect the mount run
@@ -105,15 +104,8 @@ export function useRefSignalEffect(
     };
 
     // Create timing wrapper scoped to this subscription lifetime
-    const timed = rAF
-      ? createRAF(runEffect)
-      : throttle !== undefined
-        ? createThrottle(runEffect, throttle)
-        : debounce !== undefined
-          ? createDebounce(runEffect, debounce, maxWait)
-          : null;
-
-    const wrappedEffect = timed ? timed.call : runEffect;
+    const wrapper = applyTimingOptions(runEffect, options ?? {});
+    const wrappedEffect = wrapper.call;
 
     // Subscribe to all RefSignal dependencies
     deps.forEach((dep) => {
@@ -125,7 +117,7 @@ export function useRefSignalEffect(
 
     // Cleanup function — only runs on unmount or deps change
     return () => {
-      timed?.cancel();
+      wrapper.cancel();
       deps.forEach((dep) => {
         if (isRefSignal(dep)) dep.unsubscribe(wrappedEffect);
       });

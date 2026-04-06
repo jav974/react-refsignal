@@ -1,7 +1,7 @@
 import { useCallback, useReducer, useRef, useSyncExternalStore } from 'react';
 import { RefSignal } from '../refsignal';
-import { createDebounce, createRAF, createThrottle } from '../timing';
-import type { EffectOptions } from './useRefSignalEffect';
+import { applyTimingOptions } from '../timing';
+import type { WatchOptions } from '../timing';
 
 /**
  * React hook that forces a component to re-render whenever one or more {@link RefSignal} dependencies update.
@@ -24,7 +24,7 @@ import type { EffectOptions } from './useRefSignalEffect';
  * - The callback is stored in a ref to avoid unnecessary resubscriptions when it changes.
  *
  * @param deps Array of RefSignal objects to watch for changes.
- * @param callbackOrOptions Optional filter callback (legacy) or {@link EffectOptions} object.
+ * @param callbackOrOptions Optional filter callback (legacy) or {@link WatchOptions} object.
  * @returns A function that unconditionally forces a re-render of the component. Bypasses the
  *          `filter` — useful for triggering a render outside of signal updates.
  *
@@ -45,11 +45,11 @@ import type { EffectOptions } from './useRefSignalEffect';
 export function useRefSignalRender(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   deps: RefSignal<any>[],
-  callbackOrOptions?: (() => boolean) | EffectOptions,
+  callbackOrOptions?: (() => boolean) | WatchOptions,
 ): () => void {
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
 
-  const options: EffectOptions =
+  const options: WatchOptions =
     typeof callbackOrOptions === 'function'
       ? { filter: callbackOrOptions }
       : (callbackOrOptions ?? {});
@@ -66,15 +66,8 @@ export function useRefSignalRender(
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       // Create timing wrapper scoped to this subscription lifetime
-      const timed = rAF
-        ? createRAF(onStoreChange)
-        : throttle !== undefined
-          ? createThrottle(onStoreChange, throttle)
-          : debounce !== undefined
-            ? createDebounce(onStoreChange, debounce, maxWait)
-            : null;
-
-      const notify = timed ? timed.call : onStoreChange;
+      const wrapper = applyTimingOptions(onStoreChange, options);
+      const notify = wrapper.call;
 
       const listener = () => {
         // Apply optional filter before scheduling the re-render
@@ -90,7 +83,7 @@ export function useRefSignalRender(
 
       // Return cleanup function
       return () => {
-        timed?.cancel();
+        wrapper.cancel();
         deps.forEach((dep) => {
           dep.unsubscribe(listener);
         });
