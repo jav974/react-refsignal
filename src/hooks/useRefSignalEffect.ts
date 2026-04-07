@@ -9,12 +9,6 @@ import type { WatchOptions } from '../timing';
  */
 export type EffectOptions = WatchOptions & {
   /**
-   * Skip the effect run when this returns false.
-   * Applied to signal-triggered runs only — does not affect the mount run
-   * (use `skipMount` to suppress that).
-   */
-  filter?: () => boolean;
-  /**
    * Skip the effect run on mount. When `true`, the effect only runs on
    * signal-triggered updates — never on the initial render.
    */

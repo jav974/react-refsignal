@@ -459,6 +459,8 @@ The timing options are mutually exclusive — combining them is a type error.
 
 Options for `persist()` and `usePersist()`. All fields from `PersistSignalOptions` are present, plus:
 
+> **`onHydrated` signature differs by level.** Signal-level (`PersistSignalOptions`) calls `onHydrated()` with no arguments — there is no store to pass. Store-level (`PersistOptions`) calls `onHydrated(store)` with the full store object.
+
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `keys` | `Array<keyof TStore>` | all signals | Persist only these signal keys. Non-signal values are always excluded. |
