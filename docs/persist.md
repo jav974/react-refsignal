@@ -17,6 +17,7 @@ Persist signal values across page loads using any async storage backend — `loc
   - [Custom adapter](#custom-adapter)
 - [Versioning and migration](#versioning-and-migration)
 - [Hydration timing](#hydration-timing)
+- [Filtering writes](#filtering-writes)
 - [Rate-limiting writes](#rate-limiting-writes)
 - [Composing with broadcast](#composing-with-broadcast)
 - [API reference](#api-reference)
@@ -292,6 +293,27 @@ persist(factory, {
 
 ---
 
+## Filtering writes
+
+Use `filter` to gate writes conditionally — the write is skipped when `filter` returns `false`. Hydration always runs regardless.
+
+```ts
+// Signal-level — only persist when a valid position is set
+const position = createRefSignal<{ x: number; y: number } | null>(null, {
+  persist: { key: 'cursor', filter: () => position.current !== null },
+});
+
+// Store-level — only persist when the game has actually started
+persist(factory, {
+  key: 'game',
+  filter: (store) => store.level > 0,
+});
+```
+
+`filter` is checked at write time, not at subscription time. When combined with timing options, it is evaluated when the throttle/debounce timer fires — not when the update was scheduled.
+
+---
+
 ## Rate-limiting writes
 
 By default, persist writes to storage on every signal update. At high update frequencies — animation loops, pointer tracking, rapid user input — this can mean dozens of writes per second. Use the timing options to coalesce writes:
@@ -369,6 +391,7 @@ Options for the `persist` field on `createRefSignal` / `useRefSignal`.
 | `migrate` | `(stored: unknown, fromVersion: number) => unknown` | — | Transform stored data when the version changes. Return the migrated value. |
 | `serialize` | `(value: unknown) => string` | `JSON.stringify` | Serialize the envelope to a string before writing. |
 | `deserialize` | `(raw: string) => unknown` | `JSON.parse` | Deserialize the stored string back to an envelope. |
+| `filter` | `() => boolean` | — | Skip the write when this returns `false`. Only gates writes — hydration always runs. |
 | `onHydrated` | `() => void` | — | Called once after hydration completes (including when storage is empty). |
 | `throttle` | `number` | — | At most one write per N ms (leading + trailing). |
 | `debounce` | `number` | — | Write after N ms of quiet. |
@@ -384,6 +407,7 @@ Options for `persist()` and `usePersist()`. All fields from `PersistSignalOption
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `keys` | `Array<keyof TStore>` | all signals | Persist only these signal keys. Non-signal values are always excluded. |
+| `filter` | `(snapshot: StoreSnapshot<TStore>) => boolean` | — | Skip the write when this returns `false`. Receives current signal values unwrapped. Only gates writes — hydration always runs. |
 | `onHydrated` | `(store: TStore) => void` | — | Called once after hydration. Receives the full store object. |
 | `migrate` | `(stored: Record<string, unknown>, fromVersion: number) => Record<string, unknown>` | — | Transform stored snapshot when version changes. |
 

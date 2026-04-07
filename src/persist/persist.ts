@@ -7,8 +7,9 @@ import {
   watch,
 } from '../refsignal';
 import type { PersistOptions, PersistSignalOptions } from './types';
+import type { StoreSnapshot } from '../store/useRefSignalStore';
 import { resolveStorage } from './storage';
-import { applyTimingOptions } from '../timing';
+import { applyTimingOptions, type TimingOptions } from '../timing';
 
 // ─── Stored envelope ──────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ function setupSignalPersist(
 ): () => void {
   const {
     key,
+    filter,
     serialize = JSON.stringify,
     deserialize = JSON.parse,
     version = 1,
@@ -59,6 +61,7 @@ function setupSignalPersist(
   // ── Save on update ─────────────────────────────────────────────────────────
 
   const save = () => {
+    if (filter && !filter()) return;
     storage
       .set(
         key,
@@ -69,7 +72,7 @@ function setupSignalPersist(
       });
   };
 
-  const wrapper = applyTimingOptions(save, options);
+  const wrapper = applyTimingOptions(save, options as TimingOptions);
   const stopWatching = watch(signal, wrapper.call);
 
   return () => {
@@ -87,6 +90,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
   const {
     key,
     keys,
+    filter,
     serialize = JSON.stringify,
     deserialize = JSON.parse,
     version = 1,
@@ -144,6 +148,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
     for (const k of signalKeys) {
       snapshot[k as string] = (store[k] as RefSignal).current;
     }
+    if (filter && !filter(snapshot as StoreSnapshot<TStore>)) return;
     storage
       .set(key, serialize({ v: version, data: snapshot } satisfies Envelope))
       .catch(() => {
@@ -151,7 +156,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
       });
   };
 
-  const wrapper = applyTimingOptions(save, options);
+  const wrapper = applyTimingOptions(save, options as TimingOptions);
   const cleanups = signalKeys.map((k) =>
     watch(store[k] as RefSignal, wrapper.call),
   );

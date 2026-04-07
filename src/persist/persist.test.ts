@@ -1004,6 +1004,224 @@ describe('indexedDBStorage()', () => {
   });
 });
 
+// ─── persist() — filter option ───────────────────────────────────────────────
+
+describe('persist() — filter option', () => {
+  // ── Signal-level ──────────────────────────────────────────────────────────
+
+  it('signal-level: skips write when filter returns false', async () => {
+    const storage = mockStorage();
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig', storage, filter: () => false },
+    });
+    await flush();
+
+    signal.update(42);
+    await flush();
+
+    expect(storage.store['sig']).toBeUndefined();
+  });
+
+  it('signal-level: writes when filter returns true', async () => {
+    const storage = mockStorage();
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig', storage, filter: () => true },
+    });
+    await flush();
+
+    signal.update(7);
+    await flush();
+
+    expect(JSON.parse(storage.store['sig']).data).toBe(7);
+  });
+
+  it('signal-level: filter gate toggles — skip then allow', async () => {
+    const storage = mockStorage();
+    let allow = false;
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig', storage, filter: () => allow },
+    });
+    await flush();
+
+    signal.update(1); // filter false — skip
+    await flush();
+    expect(storage.store['sig']).toBeUndefined();
+
+    allow = true;
+    signal.update(2); // filter true — write
+    await flush();
+    expect(JSON.parse(storage.store['sig']).data).toBe(2);
+  });
+
+  it('signal-level: filter does not block hydration', async () => {
+    const storage = mockStorage();
+    storage.store['sig'] = JSON.stringify({ v: 1, data: 99 });
+
+    const signal = createRefSignal(0, {
+      persist: { key: 'sig', storage, filter: () => false },
+    });
+    await flush();
+
+    expect(signal.current).toBe(99);
+  });
+
+  // ── Store-level ───────────────────────────────────────────────────────────
+
+  it('store-level: skips write when filter returns false', async () => {
+    const storage = mockStorage();
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      filter: () => false,
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(42);
+    await flush();
+
+    expect(storage.store['game']).toBeUndefined();
+  });
+
+  it('store-level: writes when filter returns true', async () => {
+    const storage = mockStorage();
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      filter: () => true,
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(5);
+    await flush();
+
+    expect(JSON.parse(storage.store['game']).data.score).toBe(5);
+  });
+
+  it('store-level: filter receives a snapshot of current signal values', async () => {
+    const storage = mockStorage();
+    const captured: Array<{ score: number }> = [];
+
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      filter: (snap) => {
+        captured.push(snap as { score: number });
+        return true;
+      },
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(9);
+    await flush();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].score).toBe(9);
+  });
+
+  it('store-level: filter gate toggles — skip then allow', async () => {
+    const storage = mockStorage();
+    let allow = false;
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      filter: () => allow,
+    });
+    const store = factory();
+    await flush();
+
+    store.score.update(1); // filter false — skip
+    await flush();
+    expect(storage.store['game']).toBeUndefined();
+
+    allow = true;
+    store.score.update(2); // filter true — write
+    await flush();
+    expect(JSON.parse(storage.store['game']).data.score).toBe(2);
+  });
+
+  it('store-level: filter does not block hydration', async () => {
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 77 } });
+
+    const factory = persist(() => ({ score: createRefSignal(0) }), {
+      key: 'game',
+      storage,
+      filter: () => false,
+    });
+    const store = factory();
+    await flush();
+
+    expect(store.score.current).toBe(77);
+  });
+
+  // ── usePersist ────────────────────────────────────────────────────────────
+
+  it('usePersist: skips write when filter returns false', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    renderHook(() =>
+      usePersist(store, { key: 'game', storage, filter: () => false }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(42);
+    });
+    await flush();
+
+    expect(storage.store['game']).toBeUndefined();
+  });
+
+  // ── filter + timing ───────────────────────────────────────────────────────
+
+  describe('filter + timing — filter is checked at timer-fire time', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('signal-level: leading edge skipped when filter false; trailing writes when filter flips true', async () => {
+      const storage = mockStorage();
+      let allow = false;
+      const signal = createRefSignal(0, {
+        persist: { key: 'sig', storage, throttle: 100, filter: () => allow },
+      });
+      await flush();
+
+      signal.update(1); // leading fires synchronously — filter false → skip
+      expect(storage.store['sig']).toBeUndefined();
+
+      allow = true;
+      signal.update(2); // still in throttle window — trailing scheduled
+      jest.advanceTimersByTime(100); // trailing fires — filter true → write
+      expect(JSON.parse(storage.store['sig']).data).toBe(2);
+    });
+
+    it('store-level: leading edge skipped when filter false; trailing writes when filter flips true', async () => {
+      const storage = mockStorage();
+      let allow = false;
+      const factory = persist(() => ({ score: createRefSignal(0) }), {
+        key: 'game',
+        storage,
+        throttle: 100,
+        filter: () => allow,
+      });
+      const store = factory();
+      await flush();
+
+      store.score.update(1); // leading fires synchronously — filter false → skip
+      expect(storage.store['game']).toBeUndefined();
+
+      allow = true;
+      store.score.update(2); // still in window — trailing scheduled
+      jest.advanceTimersByTime(100); // trailing fires — filter true → write
+      expect(JSON.parse(storage.store['game']).data.score).toBe(2);
+    });
+  });
+});
+
 // ─── storage: 'indexeddb' shorthand ──────────────────────────────────────────
 
 describe("storage: 'indexeddb' shorthand", () => {

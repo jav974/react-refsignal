@@ -1,5 +1,6 @@
 import type { IDBStorageOptions } from './idb';
-import type { TimingOptions } from '../timing';
+import type { TimingOptions, WatchOptions } from '../timing';
+import type { StoreSnapshot } from '../store/useRefSignalStore';
 
 type PersistableKeys<TStore> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,7 +37,7 @@ type BaseSignalOptions = {
   onHydrated?: () => void;
 };
 
-export type PersistSignalOptions = TimingOptions &
+export type PersistSignalOptions = WatchOptions &
   BaseSignalOptions &
   StorageConfig;
 
@@ -61,6 +62,11 @@ type BaseOptions<TStore> = {
   ) => Record<string, unknown>;
   /** Called once hydration from storage completes. */
   onHydrated?: (store: TStore) => void;
+  /**
+   * Skip the write when this returns `false`. Receives a snapshot of current
+   * signal values. Only gates outgoing writes — hydration always runs.
+   */
+  filter?: (snapshot: StoreSnapshot<TStore>) => boolean;
 };
 
 export type PersistOptions<TStore> = TimingOptions &
