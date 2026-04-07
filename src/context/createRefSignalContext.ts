@@ -63,13 +63,12 @@ export const ALL = 'all' as const;
  * const [UserContext, useUserContext] = createRefSignalContextHook<UserStore>('User')
  *
  * function UserProvider({ children, userId }: { children: ReactNode; userId: string }) {
- *   const store = useMemo(() => ({
- *     name: createRefSignal('Alice'),
- *     score: createRefSignal(0),
- *   }), [])
+ *   const name = useRefSignal('Alice');
+ *   const score = useRefSignal(0);
+ *   const store = useMemo(() => ({ name, score }), []);
  *
  *   useEffect(() => {
- *     fetchUser(userId).then(u => { store.name.current = u.name })
+ *     fetchUser(userId).then(u => { name.current = u.name })
  *   }, [userId])
  *
  *   return <UserContext.Provider value={store}>{children}</UserContext.Provider>
