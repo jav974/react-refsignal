@@ -86,7 +86,7 @@ function setupSignalPersist(
 export function setupPersist<TStore extends Record<string, unknown>>(
   store: TStore,
   options: PersistOptions<TStore>,
-): { cleanup: () => void; hydrated: RefSignal<boolean> } {
+): { cleanup: () => void; hydrated: RefSignal<boolean>; flush: () => void } {
   const {
     key,
     keys,
@@ -96,6 +96,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
     version = 1,
     migrate,
     onHydrated,
+    onUnmount,
   } = options;
 
   const storage = resolveStorage(options);
@@ -143,11 +144,28 @@ export function setupPersist<TStore extends Record<string, unknown>>(
 
   // ── Save on any signal update ──────────────────────────────────────────────
 
-  const save = () => {
+  const buildSnapshot = (): Record<string, unknown> => {
     const snapshot: Record<string, unknown> = {};
     for (const k of signalKeys) {
       snapshot[k as string] = (store[k] as RefSignal).current;
     }
+    return snapshot;
+  };
+
+  // Bypasses filter and timing — always writes the current state immediately.
+  const doFlush = () => {
+    storage
+      .set(
+        key,
+        serialize({ v: version, data: buildSnapshot() } satisfies Envelope),
+      )
+      .catch(() => {
+        // write failed — silently skip
+      });
+  };
+
+  const save = () => {
+    const snapshot = buildSnapshot();
     if (filter && !filter(snapshot as StoreSnapshot<TStore>)) return;
     storage
       .set(key, serialize({ v: version, data: snapshot } satisfies Envelope))
@@ -163,12 +181,16 @@ export function setupPersist<TStore extends Record<string, unknown>>(
 
   return {
     cleanup: () => {
+      if (onUnmount) {
+        onUnmount(buildSnapshot() as StoreSnapshot<TStore>, doFlush);
+      }
       wrapper.cancel();
       cleanups.forEach((stop) => {
         stop();
       });
     },
     hydrated,
+    flush: doFlush,
   };
 }
 

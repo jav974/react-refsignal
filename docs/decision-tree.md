@@ -167,7 +167,7 @@ flowchart TD
     Q1 -->|Entire store| Q2{"Provider lifecycle?"}
 
     Q2 -->|"Factory — lives for app lifetime"| B["persist(factory, options) wrapper\npersist(() => ({ ... }), { key: 'x' })"]
-    Q2 -->|Provider mounts and unmounts| C["usePersist(store, options)\nReturns RefSignal&lt;boolean&gt; — true when hydrated"]
+    Q2 -->|Provider mounts and unmounts| C["usePersist(store, options)\nReturns { hydrated: RefSignal&lt;boolean&gt;, flush: () =&gt; void }"]
 
     A & B & C --> Q3{"Which storage backend?"}
     Q3 -->|Default| D["localStorage"]
@@ -180,10 +180,15 @@ flowchart TD
     Q4 -->|No| Q5
 
     Q5{"High-frequency updates? Want to coalesce storage writes?"}
-    Q5 -->|No| I[Done]
+    Q5 -->|No| Q6
     Q5 -->|"At most once per N ms"| J["throttle: N"]
     Q5 -->|"After N ms of quiet"| K["debounce: N\n+ optional maxWait: N"]
     Q5 -->|"One write per animation frame"| L["rAF: true"]
+
+    J & K & L --> Q6{"Need to guarantee write on unmount\n(pending timer would be cancelled)?"}
+    Q6 -->|No| I[Done]
+    Q6 -->|Yes| M["usePersist onUnmount: (_, flush) => flush()"]
+    M --> I
 ```
 
 ---

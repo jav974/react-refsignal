@@ -67,6 +67,16 @@ type BaseOptions<TStore> = {
    * signal values. Only gates outgoing writes — hydration always runs.
    */
   filter?: (snapshot: StoreSnapshot<TStore>) => boolean;
+  /**
+   * Called when the component unmounts (only available via `usePersist`).
+   * Receives the current snapshot and a `flush` function that writes to
+   * storage immediately, bypassing `filter` and any pending timing.
+   * Use to combine a final storage write with a backend save, or to guarantee
+   * a pending debounce/throttle write is not lost on unmount.
+   * @example
+   * onUnmount: (snapshot, flush) => { flush(); saveToServer(snapshot); }
+   */
+  onUnmount?: (snapshot: StoreSnapshot<TStore>, flush: () => void) => void;
 };
 
 export type PersistOptions<TStore> = TimingOptions &

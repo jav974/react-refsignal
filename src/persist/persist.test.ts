@@ -653,9 +653,9 @@ describe('usePersist()', () => {
       usePersist(store, { key: 'game', storage }),
     );
 
-    expect(result.current.current).toBe(false);
+    expect(result.current.hydrated.current).toBe(false);
     await flush();
-    expect(result.current.current).toBe(true);
+    expect(result.current.hydrated.current).toBe(true);
   });
 
   it('returned hydrated signal resets to false when key changes', async () => {
@@ -667,12 +667,12 @@ describe('usePersist()', () => {
       { initialProps: { k: 'key-a' } },
     );
     await flush();
-    expect(result.current.current).toBe(true);
+    expect(result.current.hydrated.current).toBe(true);
 
     rerender({ k: 'key-b' });
-    expect(result.current.current).toBe(false);
+    expect(result.current.hydrated.current).toBe(false);
     await flush();
-    expect(result.current.current).toBe(true);
+    expect(result.current.hydrated.current).toBe(true);
   });
 
   it('returned hydrated signal is stable across re-renders', async () => {
@@ -686,9 +686,9 @@ describe('usePersist()', () => {
     );
     await flush();
 
-    const signalRef = result.current;
+    const signalRef = result.current.hydrated;
     rerender({ extra: 1 });
-    expect(result.current).toBe(signalRef);
+    expect(result.current.hydrated).toBe(signalRef);
   });
 
   it('saves signal updates to storage', async () => {
@@ -1219,6 +1219,263 @@ describe('persist() — filter option', () => {
       jest.advanceTimersByTime(100); // trailing fires — filter true → write
       expect(JSON.parse(storage.store['game']).data.score).toBe(2);
     });
+  });
+});
+
+// ─── usePersist() — flush and onUnmount ──────────────────────────────────────
+
+describe('usePersist() — flush and onUnmount', () => {
+  // ── flush() ───────────────────────────────────────────────────────────────
+
+  it('flush() writes current state to storage immediately', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result } = renderHook(() =>
+      usePersist(store, { key: 'game', storage }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(42);
+      result.current.flush();
+    });
+
+    expect(JSON.parse(storage.store['game']).data.score).toBe(42);
+  });
+
+  it('flush() bypasses filter', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result } = renderHook(() =>
+      usePersist(store, { key: 'game', storage, filter: () => false }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(7);
+      result.current.flush();
+    });
+
+    expect(JSON.parse(storage.store['game']).data.score).toBe(7);
+  });
+
+  it('flush() bypasses pending debounce timer', async () => {
+    jest.useFakeTimers();
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result } = renderHook(() =>
+      usePersist(store, { key: 'game', storage, debounce: 500 }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(99);
+    });
+    expect(storage.store['game']).toBeUndefined(); // debounce pending
+
+    act(() => {
+      result.current.flush();
+    });
+    expect(JSON.parse(storage.store['game']).data.score).toBe(99);
+
+    jest.useRealTimers();
+  });
+
+  it('flush() is stable across re-renders', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result, rerender } = renderHook(
+      ({ extra }: { extra: number }) =>
+        usePersist(store, { key: 'game', storage }),
+      { initialProps: { extra: 0 } },
+    );
+    await flush();
+
+    const flushRef = result.current.flush;
+    rerender({ extra: 1 });
+    expect(result.current.flush).toBe(flushRef);
+  });
+
+  it('flush() silently swallows storage.set rejection', async () => {
+    let shouldFail = false;
+    const storage: PersistStorage = {
+      get: () => Promise.resolve(null),
+      set: () =>
+        shouldFail
+          ? Promise.reject(new Error('write failed'))
+          : Promise.resolve(),
+      remove: () => Promise.resolve(),
+    };
+    const store = { score: createRefSignal(0) };
+
+    const { result } = renderHook(() =>
+      usePersist(store, { key: 'game', storage }),
+    );
+    await flush();
+
+    shouldFail = true;
+    expect(() => {
+      act(() => {
+        result.current.flush();
+      });
+    }).not.toThrow();
+    await flush(); // let rejection settle
+  });
+
+  it('flush() after unmount is a no-op (does not throw)', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result, unmount } = renderHook(() =>
+      usePersist(store, { key: 'game', storage }),
+    );
+    await flush();
+
+    unmount();
+    expect(() => {
+      result.current.flush();
+    }).not.toThrow();
+  });
+
+  it('flush() always calls the latest setup after key change', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result, rerender } = renderHook(
+      ({ k }) => usePersist(store, { key: k, storage }),
+      { initialProps: { k: 'key-a' } },
+    );
+    await flush();
+
+    rerender({ k: 'key-b' });
+    await flush();
+
+    act(() => {
+      store.score.update(5);
+      result.current.flush();
+    });
+
+    expect(storage.store['key-b']).toBeDefined();
+    expect(JSON.parse(storage.store['key-b']).data.score).toBe(5);
+    expect(storage.store['key-a']).toBeUndefined();
+  });
+
+  // ── onUnmount ─────────────────────────────────────────────────────────────
+
+  it('onUnmount is called when the component unmounts', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+    const onUnmount = jest.fn();
+
+    const { unmount } = renderHook(() =>
+      usePersist(store, { key: 'game', storage, onUnmount }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(3);
+    });
+    unmount();
+
+    expect(onUnmount).toHaveBeenCalledTimes(1);
+  });
+
+  it('onUnmount receives a snapshot of current signal values', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+    const snapshots: Array<{ score: number }> = [];
+
+    const { unmount } = renderHook(() =>
+      usePersist(store, {
+        key: 'game',
+        storage,
+        onUnmount: (snap) => snapshots.push(snap as { score: number }),
+      }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(55);
+    });
+    unmount();
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].score).toBe(55);
+  });
+
+  it('onUnmount flush() writes to storage bypassing filter', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { unmount } = renderHook(() =>
+      usePersist(store, {
+        key: 'game',
+        storage,
+        filter: () => false,
+        onUnmount: (_, flushFn) => {
+          flushFn();
+        },
+      }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(42);
+    });
+    unmount();
+
+    expect(JSON.parse(storage.store['game']).data.score).toBe(42);
+  });
+
+  it('onUnmount flush() closes the debounce footgun — pending write survives unmount', async () => {
+    jest.useFakeTimers();
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { unmount } = renderHook(() =>
+      usePersist(store, {
+        key: 'game',
+        storage,
+        debounce: 500,
+        onUnmount: (_, flushFn) => {
+          flushFn();
+        },
+      }),
+    );
+    await flush();
+
+    act(() => {
+      store.score.update(77);
+    });
+    // Timer still pending — unmount triggers onUnmount which calls flush
+    unmount();
+
+    expect(JSON.parse(storage.store['game']).data.score).toBe(77);
+
+    jest.useRealTimers();
+  });
+
+  it('onUnmount is not called during key-change resubscription (only true unmount)', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+    const onUnmount = jest.fn();
+
+    const { rerender, unmount } = renderHook(
+      ({ k }) => usePersist(store, { key: k, storage, onUnmount }),
+      { initialProps: { k: 'key-a' } },
+    );
+    await flush();
+
+    rerender({ k: 'key-b' });
+    await flush();
+    expect(onUnmount).toHaveBeenCalledTimes(1); // effect cleanup on key change
+
+    unmount();
+    expect(onUnmount).toHaveBeenCalledTimes(2); // true unmount
   });
 });
 

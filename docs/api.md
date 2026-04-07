@@ -752,8 +752,10 @@ const { GameProvider, useGameContext } = createRefSignalContext(
   ),
 );
 
-// Hook variant — use inside a custom Provider for lifecycle-aware cleanup
-usePersist(store, { key: 'game', keys: ['score', 'level'] });
+// Hook variant — returns { hydrated, flush }
+const { hydrated, flush } = usePersist(store, { key: 'game', keys: ['score', 'level'] });
+// hydrated: RefSignal<boolean> — true once storage read resolves
+// flush():  write current state immediately, bypassing filter and timing
 ```
 
 **Versioning and migration:**
@@ -772,6 +774,30 @@ persist(factory, {
 persist(factory, { key: 'game', throttle: 200 });       // at most one write per 200ms
 persist(factory, { key: 'game', debounce: 300 });        // write after 300ms quiet
 persist(factory, { key: 'game', rAF: true });            // one write per animation frame
+```
+
+**Filtering writes** — skip writes conditionally without unsubscribing:
+
+```ts
+persist(factory, { key: 'game', filter: (store) => store.level > 0 });
+```
+
+**`onUnmount`** (`usePersist` only) — called on unmount with `(snapshot, flush)`. Closes the debounce footgun or combines a storage write with a backend save:
+
+```ts
+// Guarantee pending debounced write is not lost on unmount
+const { hydrated } = usePersist(store, {
+  key: 'game',
+  debounce: 500,
+  onUnmount: (_, flush) => flush(),
+});
+
+// Persist only on unmount — no automatic writes during the session
+usePersist(store, {
+  key: 'game',
+  filter: () => false,
+  onUnmount: (_, flush) => flush(),
+});
 ```
 
 See the [full reference](persist.md#api-reference) for all options including custom storage adapters, `indexedDBStorage()`, `onHydrated`, `serialize`/`deserialize`, and timing options.

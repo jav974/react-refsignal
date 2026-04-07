@@ -19,6 +19,7 @@ Persist signal values across page loads using any async storage backend — `loc
 - [Hydration timing](#hydration-timing)
 - [Filtering writes](#filtering-writes)
 - [Rate-limiting writes](#rate-limiting-writes)
+- [onUnmount callback](#onunmount-callback)
 - [Composing with broadcast](#composing-with-broadcast)
 - [API reference](#api-reference)
 
@@ -107,6 +108,10 @@ All three signals are stored under a single key as one JSON blob. When the page 
 
 Use this when the Provider mounts and unmounts during the session — for example, a store that belongs to a specific route. Subscriptions are torn down cleanly on unmount so writes stop after the component is gone.
 
+Returns `{ hydrated, flush }`:
+- `hydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes. Use it to gate rendering.
+- `flush` — writes the current store state to storage immediately, bypassing `filter` and any pending throttle/debounce timer.
+
 ```tsx
 import { createRefSignalContextHook, createRefSignal } from 'react-refsignal';
 import { usePersist } from 'react-refsignal/persist';
@@ -121,10 +126,18 @@ function GameProvider({ children }: { children: ReactNode }) {
     score: createRefSignal(0),
   }), []);
 
-  usePersist(store, { key: 'game' });
+  const { hydrated, flush } = usePersist(store, { key: 'game' });
 
   return <GameContext.Provider value={store}>{children}</GameContext.Provider>;
 }
+```
+
+Gate rendering until hydration completes:
+
+```tsx
+const { hydrated } = usePersist(store, { key: 'game' });
+useRefSignalRender([hydrated]);
+if (!hydrated.current) return <Spinner />;
 ```
 
 #### Persisting only a subset of signals
@@ -136,6 +149,15 @@ usePersist(store, {
   key: 'game',
   keys: ['score', 'level'], // xp is ephemeral — not saved
 });
+```
+
+#### Imperative flush
+
+`flush()` writes the current store state immediately — bypasses `filter` and any pending timer. Useful for an explicit save button or ensuring a pending write completes before a navigation:
+
+```tsx
+const { flush } = usePersist(store, { key: 'game', debounce: 500 });
+<button onClick={flush}>Save now</button>
 ```
 
 ---
@@ -342,7 +364,40 @@ const position = createRefSignal({ x: 0, y: 0 }, {
 
 These are the same `TimingOptions` used by `useRefSignalRender`, `useRefSignalEffect`, and `broadcast` — the four options are mutually exclusive.
 
-> **Cleanup:** when using `usePersist`, any pending debounce or throttle timer is cancelled on unmount, so no write fires after the component is gone.
+> **Cleanup:** when using `usePersist`, any pending debounce or throttle timer is cancelled on unmount. Use `onUnmount` with `flush` to guarantee the last update is saved despite cancellation.
+
+---
+
+## onUnmount callback
+
+`onUnmount` runs when the component unmounts. It receives the current store snapshot and a `flush` function that writes to storage immediately, bypassing `filter` and any pending timer.
+
+```ts
+// Close the debounce footgun — pending write survives unmount
+usePersist(store, {
+  key: 'game',
+  debounce: 500,
+  onUnmount: (_, flush) => flush(),
+});
+
+// Combine a final storage write with a backend save
+usePersist(store, {
+  key: 'game',
+  onUnmount: (snapshot, flush) => {
+    flush();
+    saveToServer(snapshot);
+  },
+});
+
+// Persist only on unmount — no automatic writes during the session
+usePersist(store, {
+  key: 'game',
+  filter: () => false,
+  onUnmount: (_, flush) => flush(),
+});
+```
+
+`onUnmount` is only available via `usePersist` — the factory-level `persist()` has no unmount lifecycle.
 
 ---
 
@@ -409,6 +464,7 @@ Options for `persist()` and `usePersist()`. All fields from `PersistSignalOption
 | `keys` | `Array<keyof TStore>` | all signals | Persist only these signal keys. Non-signal values are always excluded. |
 | `filter` | `(snapshot: StoreSnapshot<TStore>) => boolean` | — | Skip the write when this returns `false`. Receives current signal values unwrapped. Only gates writes — hydration always runs. |
 | `onHydrated` | `(store: TStore) => void` | — | Called once after hydration. Receives the full store object. |
+| `onUnmount` | `(snapshot: StoreSnapshot<TStore>, flush: () => void) => void` | — | `usePersist` only. Called on unmount with the current snapshot and a `flush` function that writes immediately, bypassing filter and timing. |
 | `migrate` | `(stored: Record<string, unknown>, fromVersion: number) => Record<string, unknown>` | — | Transform stored snapshot when version changes. |
 
 ### `persist(factory, options)`
@@ -432,10 +488,13 @@ import { usePersist } from 'react-refsignal/persist';
 function usePersist<TStore>(
   store: TStore,
   options: PersistOptions<TStore>,
-): void
+): { hydrated: RefSignal<boolean>; flush: () => void }
 ```
 
 Hook variant. Sets up persist inside a React Provider; tears down subscriptions on unmount. Re-hydrates when `key` changes.
+
+- `hydrated` — becomes `true` once hydration from storage completes.
+- `flush` — writes current state to storage immediately, bypassing `filter` and any pending timer. Stable across re-renders.
 
 ### `indexedDBStorage(options?)`
 
