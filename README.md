@@ -107,7 +107,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 | `useRefSignalEffect` vs `useRefSignalRender` | Imperative side effects vs triggering React re-renders |
 | `notify()` vs `notifyUpdate()` | Fire subscribers without or with bumping `lastUpdated` |
 | `createComputedSignal` / `useRefSignalMemo` | Derived signals — recompute whenever deps change; module-scope or component-scoped |
-| `watch(signal, listener)` | Subscribe outside React and get a cleanup function back — mirrors `useEffect` return pattern |
+| `watch(signal, listener, options?)` | Subscribe outside React and get a cleanup function back — mirrors `useEffect` return pattern; accepts the same `filter` and timing options as the hooks |
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
 | `createRefSignalStore` / `useRefSignalStore` | Provider-free global store — create at module scope, use in any component with `renderOn` opt-in |
 | `createRefSignalContext` | Per-subtree store with auto-generated Provider and hook — for isolated state per route or section |
