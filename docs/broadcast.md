@@ -122,21 +122,20 @@ function LevelUpButton() {
 
 ### `useBroadcast()` — hook variant
 
-Use this when the Provider mounts and unmounts during the session — for example, a store that belongs to a specific route. The broadcast is torn down cleanly on unmount (transport closed, `bye` sent in `one-to-many` mode).
+Use `useBroadcast` when your Provider needs to be a full React component — for example, when the channel name is derived from a prop (`roomId`, route param), or when you need to combine broadcast with other hooks such as data fetching, auth, or persistence. The hook ties the broadcast to the Provider's lifetime: the transport is set up on mount and torn down on unmount (`bye` sent in `one-to-many` mode), so no messages are sent or received after the component leaves the tree.
 
 ```tsx
-import { createRefSignalContextHook, createRefSignal } from 'react-refsignal';
+import { createRefSignalContextHook, useRefSignal } from 'react-refsignal';
 import { useBroadcast } from 'react-refsignal/broadcast';
 import { useMemo, type ReactNode } from 'react';
 
 const [GameContext, useGameContext] = createRefSignalContextHook<GameStore>('Game');
 
 function GameProvider({ children }: { children: ReactNode }) {
-  const store = useMemo(() => ({
-    level: createRefSignal(1),
-    xp:    createRefSignal(0),
-    score: createRefSignal(0),
-  }), []);
+  const level = useRefSignal(1);
+  const xp    = useRefSignal(0);
+  const score = useRefSignal(0);
+  const store  = useMemo(() => ({ level, xp, score }), []);
 
   useBroadcast(store, { channel: 'game' });
 

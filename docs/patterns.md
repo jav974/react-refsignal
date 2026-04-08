@@ -20,7 +20,7 @@
 
 `createRefSignalContext` covers the common case — define a factory, get a Provider. When the Provider needs more: accepting props, running effects, subscribing to external sources — reach for `createRefSignalContextHook` and write the Provider body yourself.
 
-The key rule: **`useMemo` owns signal construction** (empty dependency array — signals are stable across re-renders); **`useEffect` owns side effects** (props in the dependency array — reruns when they change). Mixing these up is the most common mistake.
+The key rule: **`useRefSignal` constructs signals** at the top of the component (stable for its lifetime, like `useRef`); **`useMemo` with empty deps groups them into a stable store object**; **`useEffect` owns side effects** (props in the dependency array — reruns when they change). Mixing `useEffect` with signal construction is the most common mistake.
 
 **Props and async data loading**
 
@@ -29,14 +29,15 @@ A `UserProvider` that accepts a `userId` prop, fetches user data, and writes res
 ```tsx
 import { useMemo, useEffect, type ReactNode } from 'react';
 import {
-  createRefSignal,
+  useRefSignal,
   createRefSignalContextHook,
+  type RefSignal,
 } from 'react-refsignal';
 
 type UserStore = {
-  name: ReturnType<typeof createRefSignal<string>>;
-  score: ReturnType<typeof createRefSignal<number>>;
-  isLoading: ReturnType<typeof createRefSignal<boolean>>;
+  name: RefSignal<string>;
+  score: RefSignal<number>;
+  isLoading: RefSignal<boolean>;
 };
 
 const [UserContext, useUserContext] =
@@ -49,15 +50,12 @@ function UserProvider({
   children: ReactNode;
   userId: string;
 }) {
-  // Empty deps — signals are constructed once and remain stable.
-  const store = useMemo(
-    () => ({
-      name: createRefSignal(''),
-      score: createRefSignal(0),
-      isLoading: createRefSignal(false),
-    }),
-    [],
-  );
+  // useRefSignal is stable across re-renders (same guarantee as useRef).
+  const name      = useRefSignal('');
+  const score     = useRefSignal(0);
+  const isLoading = useRefSignal(false);
+  // useMemo groups the stable signals into a single store object.
+  const store     = useMemo(() => ({ name, score, isLoading }), []);
 
   // userId in deps — re-fetches whenever userId changes.
   // .update() notifies subscribers so components with renderOn see the new values.
@@ -91,11 +89,11 @@ When the data source is long-lived (WebSocket, EventEmitter, `window` events), t
 
 ```tsx
 import { useMemo, useEffect, type ReactNode } from 'react';
-import { createRefSignal, createRefSignalContextHook } from 'react-refsignal';
+import { useRefSignal, createRefSignalContextHook, type RefSignal } from 'react-refsignal';
 
 type MarketStore = {
-  price: ReturnType<typeof createRefSignal<number>>;
-  volume: ReturnType<typeof createRefSignal<number>>;
+  price: RefSignal<number>;
+  volume: RefSignal<number>;
 };
 
 const [MarketContext, useMarketContext] =
@@ -108,13 +106,9 @@ function MarketDataProvider({
   children: ReactNode;
   symbol: string;
 }) {
-  const store = useMemo(
-    () => ({
-      price: createRefSignal(0),
-      volume: createRefSignal(0),
-    }),
-    [],
-  );
+  const price  = useRefSignal(0);
+  const volume = useRefSignal(0);
+  const store  = useMemo(() => ({ price, volume }), []);
 
   useEffect(() => {
     const ws = new WebSocket(`wss://feed.example.com/${symbol}`);
@@ -133,8 +127,6 @@ function MarketDataProvider({
 ```
 
 When `symbol` changes, the old WebSocket is closed and a new one is opened — signals keep their identity, so all subscribers stay connected without re-mounting.
-
-> **`useImperativeHandle`** follows the same pattern: expose signal references through a forwarded ref so parent components can call `.update()` imperatively. The Provider body stays plain React — no new rules apply.
 
 ---
 
@@ -475,27 +467,24 @@ A single audio buffer signal drives three completely independent consumers at th
 ```tsx
 import { useMemo, useEffect, useRef } from 'react';
 import {
-  createRefSignal,
+  useRefSignal,
   createRefSignalContextHook,
   useRefSignalEffect,
+  type RefSignal,
 } from 'react-refsignal';
 
 type AudioStore = {
-  buffer: ReturnType<typeof createRefSignal<Float32Array>>;
-  rms: ReturnType<typeof createRefSignal<number>>;
+  buffer: RefSignal<Float32Array>;
+  rms: RefSignal<number>;
 };
 
 const [AudioContext, useAudioContext] =
   createRefSignalContextHook<AudioStore>('Audio');
 
 function AudioProvider({ children }: { children: React.ReactNode }) {
-  const store = useMemo(
-    () => ({
-      buffer: createRefSignal<Float32Array>(new Float32Array(0)),
-      rms: createRefSignal(0),
-    }),
-    [],
-  );
+  const buffer = useRefSignal<Float32Array>(new Float32Array(0));
+  const rms    = useRefSignal(0);
+  const store  = useMemo(() => ({ buffer, rms }), []);
 
   useEffect(() => {
     // Audio worklet feeds raw PCM many times per second

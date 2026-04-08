@@ -106,25 +106,24 @@ All three signals are stored under a single key as one JSON blob. When the page 
 
 ### `usePersist()` — hook variant
 
-Use this when the Provider mounts and unmounts during the session — for example, a store that belongs to a specific route. Subscriptions are torn down cleanly on unmount so writes stop after the component is gone.
+Use `usePersist` when your Provider needs to be a full React component — for example, when the storage key is derived from a prop (`userId`, `roomId`, route param), when you want to gate rendering until hydration completes, or when you need to combine persistence with other hooks such as data fetching, auth, or a WebSocket subscription. The hook ties persistence to the Provider's lifetime: subscriptions are created on mount and torn down on unmount, so no writes occur after the component leaves the tree.
 
 Returns `{ hydrated, flush }`:
 - `hydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes. Use it to gate rendering.
 - `flush` — writes the current store state to storage immediately, bypassing `filter` and any pending throttle/debounce timer.
 
 ```tsx
-import { createRefSignalContextHook, createRefSignal } from 'react-refsignal';
+import { createRefSignalContextHook, useRefSignal } from 'react-refsignal';
 import { usePersist } from 'react-refsignal/persist';
 import { useMemo, type ReactNode } from 'react';
 
 const [GameContext, useGameContext] = createRefSignalContextHook<GameStore>('Game');
 
 function GameProvider({ children }: { children: ReactNode }) {
-  const store = useMemo(() => ({
-    level: createRefSignal(1),
-    xp:    createRefSignal(0),
-    score: createRefSignal(0),
-  }), []);
+  const level = useRefSignal(1);
+  const xp    = useRefSignal(0);
+  const score = useRefSignal(0);
+  const store  = useMemo(() => ({ level, xp, score }), []);
 
   const { hydrated, flush } = usePersist(store, { key: 'game' });
 
