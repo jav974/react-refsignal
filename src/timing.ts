@@ -1,6 +1,7 @@
 /**
  * Internal timing utilities for throttle, debounce, and rAF-based scheduling.
- * Used by useRefSignalRender and useRefSignalEffect to rate-limit re-renders and effects.
+ * Used by useRefSignalRender, useRefSignalEffect, useRefSignalStore, persist, and broadcast
+ * to rate-limit re-renders, effects, storage writes, and cross-tab messages.
  */
 
 /**

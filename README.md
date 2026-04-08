@@ -160,64 +160,6 @@ const gameStore = createRefSignalStore(
 
 Use `createRefSignalContext` instead when you need per-subtree isolation — a separate store instance per Provider mount (different routes, multiple widget instances).
 
-## Persist
-
-Persist signal values across page loads with `react-refsignal/persist`. Importing the subpath is the only activation step — apps that never import it pay zero cost.
-
-```ts
-import 'react-refsignal/persist';
-import { createRefSignal } from 'react-refsignal';
-
-// Signal-level — survives page reloads via localStorage
-const theme = createRefSignal<'light' | 'dark'>('light', {
-  persist: { key: 'theme' },
-});
-```
-
-Store-level, with versioning and IndexedDB:
-
-```ts
-import { createRefSignalContext, createRefSignal } from 'react-refsignal';
-import { persist } from 'react-refsignal/persist';
-
-const { GameProvider, useGameContext } = createRefSignalContext(
-  'Game',
-  persist(
-    () => ({
-      level: createRefSignal(1),
-      xp:    createRefSignal(0),
-    }),
-    {
-      key: 'game',
-      storage: 'indexeddb',
-      dbName: 'myApp',
-      version: 2,
-      migrate: (stored) => ({ xp: 0, ...stored }),
-    },
-  ),
-);
-```
-
-Signals always start with their default values. Hydration from storage is asynchronous — the signal updates once the read resolves, triggering subscribers and re-renders as normal.
-
-Composes with broadcast — wrap one with the other to get both cross-tab sync and persistence:
-
-```ts
-broadcast(
-  persist(factory, { key: 'game' }),
-  { channel: 'game' },
-)
-```
-
-Rate-limit writes with the same timing options used by `broadcast` and `useRefSignalEffect`:
-
-```ts
-persist(factory, { key: 'game', throttle: 200 }); // at most one write per 200ms
-persist(factory, { key: 'game', rAF: true });      // one write per animation frame
-```
-
-See [Persist](docs/persist.md) for the full reference including `usePersist`, `indexedDBStorage`, custom adapters, migration, and timing options.
-
 ## How it compares
 
 | Library | Escapes render cycle | Subscription model | Opt-in required |
