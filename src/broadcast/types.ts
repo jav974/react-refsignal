@@ -1,5 +1,5 @@
 import type { TimingOptions, WatchOptions } from '../timing';
-import { StoreSnapshot } from '../context/createRefSignalContext';
+import type { StoreSnapshot } from '../store/useRefSignalStore';
 
 export type BroadcastMode = 'many-to-many' | 'one-to-many';
 

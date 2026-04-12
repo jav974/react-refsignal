@@ -4,7 +4,7 @@ import {
   setSignalBroadcastAdapter,
   SignalBroadcastInput,
 } from '../refsignal';
-import { StoreSnapshot } from '../context/createRefSignalContext';
+import { StoreSnapshot } from '../store/useRefSignalStore';
 import { applyTimingOptions } from '../timing';
 import type { BroadcastOptions, BroadcastSignalOptions } from './types';
 import { resolveTransport, Transport } from './transport';
