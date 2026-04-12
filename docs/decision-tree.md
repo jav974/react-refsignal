@@ -167,7 +167,7 @@ flowchart TD
     Q1 -->|Entire store| Q2{"Provider lifecycle?"}
 
     Q2 -->|"Factory — lives for app lifetime"| B["persist(factory, options) wrapper\npersist(() => ({ ... }), { key: 'x' })"]
-    Q2 -->|Provider mounts and unmounts| C["usePersist(store, options)\nReturns { hydrated: RefSignal&lt;boolean&gt;, flush: () =&gt; void }"]
+    Q2 -->|Provider mounts and unmounts| C["usePersist(store, options)\nReturns { isHydrated: RefSignal&lt;boolean&gt;, flush: () =&gt; void }"]
 
     A & B & C --> Q3{"Which storage backend?"}
     Q3 -->|Default| D["localStorage"]

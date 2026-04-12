@@ -1,5 +1,4 @@
 import {
-  createRefSignal,
   isRefSignal,
   RefSignal,
   setSignalPersistAdapter,
@@ -86,7 +85,7 @@ function setupSignalPersist(
 export function setupPersist<TStore extends Record<string, unknown>>(
   store: TStore,
   options: PersistOptions<TStore>,
-): { cleanup: () => void; hydrated: RefSignal<boolean>; flush: () => void } {
+): { cleanup: () => void; flush: () => void } {
   const {
     key,
     keys,
@@ -100,7 +99,6 @@ export function setupPersist<TStore extends Record<string, unknown>>(
   } = options;
 
   const storage = resolveStorage(options);
-  const hydrated = createRefSignal(false);
 
   const signalKeys = (
     keys ?? (Object.keys(store) as Array<keyof TStore>)
@@ -138,7 +136,6 @@ export function setupPersist<TStore extends Record<string, unknown>>(
         // corrupt — ignore, keep defaults
       }
     }
-    hydrated.update(true);
     onHydrated?.(store);
   });
 
@@ -189,7 +186,6 @@ export function setupPersist<TStore extends Record<string, unknown>>(
         stop();
       });
     },
-    hydrated,
     flush: doFlush,
   };
 }

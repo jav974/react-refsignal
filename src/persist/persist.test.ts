@@ -644,7 +644,7 @@ describe('usePersist()', () => {
     expect(store.score.current).toBe(55);
   });
 
-  it('returns a hydrated signal that starts false and becomes true after hydration', async () => {
+  it('returns an isHydrated signal that starts false and becomes true after hydration', async () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 1 } });
     const store = { score: createRefSignal(0) };
@@ -653,12 +653,12 @@ describe('usePersist()', () => {
       usePersist(store, { key: 'game', storage }),
     );
 
-    expect(result.current.hydrated.current).toBe(false);
+    expect(result.current.isHydrated.current).toBe(false);
     await flush();
-    expect(result.current.hydrated.current).toBe(true);
+    expect(result.current.isHydrated.current).toBe(true);
   });
 
-  it('returned hydrated signal resets to false when key changes', async () => {
+  it('returned isHydrated signal resets to false when key changes', async () => {
     const storage = mockStorage();
     const store = { score: createRefSignal(0) };
 
@@ -667,15 +667,15 @@ describe('usePersist()', () => {
       { initialProps: { k: 'key-a' } },
     );
     await flush();
-    expect(result.current.hydrated.current).toBe(true);
+    expect(result.current.isHydrated.current).toBe(true);
 
     rerender({ k: 'key-b' });
-    expect(result.current.hydrated.current).toBe(false);
+    expect(result.current.isHydrated.current).toBe(false);
     await flush();
-    expect(result.current.hydrated.current).toBe(true);
+    expect(result.current.isHydrated.current).toBe(true);
   });
 
-  it('returned hydrated signal is stable across re-renders', async () => {
+  it('returned isHydrated signal is stable across re-renders', async () => {
     const storage = mockStorage();
     const store = { score: createRefSignal(0) };
 
@@ -686,9 +686,9 @@ describe('usePersist()', () => {
     );
     await flush();
 
-    const signalRef = result.current.hydrated;
+    const signalRef = result.current.isHydrated;
     rerender({ extra: 1 });
-    expect(result.current.hydrated).toBe(signalRef);
+    expect(result.current.isHydrated).toBe(signalRef);
   });
 
   it('saves signal updates to storage', async () => {

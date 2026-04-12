@@ -22,7 +22,7 @@ export type StorageConfig =
   | { storage?: 'local' | 'session' | PersistStorage }
   | ({ storage: 'indexeddb' } & IDBStorageOptions);
 
-type BaseSignalOptions = {
+type PersistCommonOptions = {
   /** Storage key. */
   key: string;
   /** Serialize the stored envelope to a string. Default: `JSON.stringify`. */
@@ -31,6 +31,9 @@ type BaseSignalOptions = {
   deserialize?: (raw: string) => unknown;
   /** Current schema version. Stored alongside the value to detect stale data. Default: 1. */
   version?: number;
+};
+
+type BaseSignalOptions = PersistCommonOptions & {
   /** Called when stored version differs from `version`. Return the migrated value. */
   migrate?: (stored: unknown, fromVersion: number) => unknown;
   /** Called once hydration from storage completes (including when no stored value exists). */
@@ -44,17 +47,9 @@ export type PersistSignalOptions = WatchOptions &
 /** String shorthand for signal-level persist — treated as the storage key. */
 export type SignalPersistInput = string | PersistSignalOptions;
 
-type BaseOptions<TStore> = {
-  /** Storage key for the entire store blob. */
-  key: string;
+type BaseOptions<TStore> = PersistCommonOptions & {
   /** Only persist these signal keys. Defaults to all signals in the store. */
   keys?: Array<PersistableKeys<TStore>>;
-  /** Serialize the stored envelope to a string. Default: `JSON.stringify`. */
-  serialize?: (value: unknown) => string;
-  /** Deserialize the stored string back to an envelope. Default: `JSON.parse`. */
-  deserialize?: (raw: string) => unknown;
-  /** Current schema version. Default: 1. */
-  version?: number;
   /** Called when stored version differs from `version`. Return the migrated snapshot. */
   migrate?: (
     stored: Record<string, unknown>,

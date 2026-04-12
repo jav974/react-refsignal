@@ -752,10 +752,10 @@ const { GameProvider, useGameContext } = createRefSignalContext(
   ),
 );
 
-// Hook variant — returns { hydrated, flush }
-const { hydrated, flush } = usePersist(store, { key: 'game', keys: ['score', 'level'] });
-// hydrated: RefSignal<boolean> — true once storage read resolves
-// flush():  write current state immediately, bypassing filter and timing
+// Hook variant — returns { isHydrated, flush }
+const { isHydrated, flush } = usePersist(store, { key: 'game', keys: ['score', 'level'] });
+// isHydrated: RefSignal<boolean> — true once storage read resolves
+// flush():    write current state immediately, bypassing filter and timing
 ```
 
 **Versioning and migration:**
@@ -786,7 +786,7 @@ persist(factory, { key: 'game', filter: (store) => store.level > 0 });
 
 ```ts
 // Guarantee pending debounced write is not lost on unmount
-const { hydrated } = usePersist(store, {
+const { isHydrated } = usePersist(store, {
   key: 'game',
   debounce: 500,
   onUnmount: (_, flush) => flush(),

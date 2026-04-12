@@ -195,6 +195,28 @@ broadcast(factory, {
 
 Non-broadcaster tabs still receive incoming updates — they just don't send any.
 
+#### Restricting localStorage writes to the leader tab
+
+When `persist` and `broadcast` are combined in `one-to-many` mode, all tabs write to storage by default (each tab reacts to the broadcast update and persists it). If you want only the leader to write, use `useBroadcast`'s `isBroadcaster` signal as the `filter` for `usePersist`:
+
+```tsx
+function GameProvider({ children }: { children: ReactNode }) {
+  const store = useMemo(() => ({ score: createRefSignal(0) }), []);
+
+  const { isBroadcaster } = useBroadcast(store, {
+    channel: 'game',
+    mode: 'one-to-many',
+  });
+
+  usePersist(store, {
+    key: 'game',
+    filter: () => isBroadcaster.current, // only the leader writes to storage
+  });
+
+  return <GameContext.Provider value={store}>{children}</GameContext.Provider>;
+}
+```
+
 ---
 
 ## Filtering outgoing updates
@@ -302,10 +324,12 @@ import { useBroadcast } from 'react-refsignal/broadcast';
 function useBroadcast<TStore>(
   store: TStore,
   options: BroadcastOptions<TStore>,
-): void
+): { isBroadcaster: RefSignal<boolean> }
 ```
 
 Hook variant. Sets up broadcast inside a React Provider; tears down on unmount.
+
+- `isBroadcaster` — a `RefSignal<boolean>` that is `true` when this tab is currently sending updates. Always `true` in `many-to-many` mode. In `one-to-many` mode starts `false` and becomes `true` once this tab wins the leader election.
 
 ---
 

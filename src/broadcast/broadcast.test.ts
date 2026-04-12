@@ -415,6 +415,123 @@ describe('useBroadcast()', () => {
 
     bc.close();
   });
+
+  // ── isBroadcaster return value ───────────────────────────────────────────────
+
+  it('isBroadcaster starts true in many-to-many mode', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, { channel: 'is-bc-m2m' }),
+    );
+    expect(result.current.isBroadcaster.current).toBe(true);
+  });
+
+  it('isBroadcaster is false when a lower-ID tab holds broadcaster status', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'is-bc-o2m-false',
+        mode: 'one-to-many',
+        heartbeatInterval: 1000,
+      }),
+    );
+
+    // Tab wins election immediately as sole tab, then a lower-ID tab claims it
+    act(() => {
+      deliverFromOtherTab('is-bc-o2m-false', {
+        type: 'broadcaster-claim',
+        tabId: '0000', // lower ID → this tab yields
+      });
+    });
+
+    expect(result.current.isBroadcaster.current).toBe(false);
+  });
+
+  it('isBroadcaster becomes true when tab wins election', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'is-bc-elect',
+        mode: 'one-to-many',
+        heartbeatInterval: 1000,
+      }),
+    );
+
+    // Simulate broadcaster-claim arriving from a tab with a higher TAB_ID
+    // (so this tab keeps broadcaster status via the election logic)
+    act(() => {
+      deliverFromOtherTab('is-bc-elect', {
+        type: 'broadcaster-claim',
+        tabId: 'zzz-higher-id', // higher than TAB_ID → this tab remains broadcaster
+      });
+    });
+
+    // After receiving a claim from a higher ID, this tab asserts itself
+    expect(result.current.isBroadcaster.current).toBe(true);
+  });
+
+  it('isBroadcaster signal is correct across channel and mode changes', () => {
+    const store = { score: createRefSignal(0) };
+    let channel = 'is-bc-ch1';
+    let mode: 'many-to-many' | 'one-to-many' = 'many-to-many';
+
+    const { result, rerender } = renderHook(() =>
+      useBroadcast(store, { channel, mode, heartbeatInterval: 1000 }),
+    );
+
+    expect(result.current.isBroadcaster.current).toBe(true); // many-to-many — always true
+
+    // Switch to one-to-many — sole tab wins election immediately
+    channel = 'is-bc-ch2';
+    mode = 'one-to-many';
+    rerender();
+
+    expect(result.current.isBroadcaster.current).toBe(true); // won election as sole tab
+
+    // A lower-ID competitor arrives — this tab yields
+    act(() => {
+      deliverFromOtherTab('is-bc-ch2', {
+        type: 'broadcaster-claim',
+        tabId: '0000',
+      });
+    });
+
+    expect(result.current.isBroadcaster.current).toBe(false);
+  });
+
+  it('isBroadcaster signal is stable across re-renders', () => {
+    const store = { score: createRefSignal(0) };
+    const { result, rerender } = renderHook(() =>
+      useBroadcast(store, { channel: 'is-bc-stable' }),
+    );
+
+    const signalRef = result.current.isBroadcaster;
+    rerender();
+    expect(result.current.isBroadcaster).toBe(signalRef);
+  });
+
+  it('user onBroadcasterChange is still called when isBroadcaster signal is returned', () => {
+    const store = { score: createRefSignal(0) };
+    const onChange = jest.fn();
+
+    renderHook(() =>
+      useBroadcast(store, {
+        channel: 'is-bc-callback',
+        mode: 'one-to-many',
+        heartbeatInterval: 1000,
+        onBroadcasterChange: onChange,
+      }),
+    );
+
+    act(() => {
+      deliverFromOtherTab('is-bc-callback', {
+        type: 'broadcaster-claim',
+        tabId: 'zzz-higher-id',
+      });
+    });
+
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
 });
 
 // ─── localStorage fallback ────────────────────────────────────────────────────

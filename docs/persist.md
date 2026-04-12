@@ -108,8 +108,8 @@ All three signals are stored under a single key as one JSON blob. When the page 
 
 Use `usePersist` when your Provider needs to be a full React component — for example, when the storage key is derived from a prop (`userId`, `roomId`, route param), when you want to gate rendering until hydration completes, or when you need to combine persistence with other hooks such as data fetching, auth, or a WebSocket subscription. The hook ties persistence to the Provider's lifetime: subscriptions are created on mount and torn down on unmount, so no writes occur after the component leaves the tree.
 
-Returns `{ hydrated, flush }`:
-- `hydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes. Use it to gate rendering.
+Returns `{ isHydrated, flush }`:
+- `isHydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes. Use it to gate rendering.
 - `flush` — writes the current store state to storage immediately, bypassing `filter` and any pending throttle/debounce timer.
 
 ```tsx
@@ -125,7 +125,7 @@ function GameProvider({ children }: { children: ReactNode }) {
   const score = useRefSignal(0);
   const store  = useMemo(() => ({ level, xp, score }), []);
 
-  const { hydrated, flush } = usePersist(store, { key: 'game' });
+  const { isHydrated, flush } = usePersist(store, { key: 'game' });
 
   return <GameContext.Provider value={store}>{children}</GameContext.Provider>;
 }
@@ -134,9 +134,9 @@ function GameProvider({ children }: { children: ReactNode }) {
 Gate rendering until hydration completes:
 
 ```tsx
-const { hydrated } = usePersist(store, { key: 'game' });
-useRefSignalRender([hydrated]);
-if (!hydrated.current) return <Spinner />;
+const { isHydrated } = usePersist(store, { key: 'game' });
+useRefSignalRender([isHydrated]);
+if (!isHydrated.current) return <Spinner />;
 ```
 
 #### Persisting only a subset of signals
@@ -489,12 +489,12 @@ import { usePersist } from 'react-refsignal/persist';
 function usePersist<TStore>(
   store: TStore,
   options: PersistOptions<TStore>,
-): { hydrated: RefSignal<boolean>; flush: () => void }
+): { isHydrated: RefSignal<boolean>; flush: () => void }
 ```
 
 Hook variant. Sets up persist inside a React Provider; tears down subscriptions on unmount. Re-hydrates when `key` changes.
 
-- `hydrated` — becomes `true` once hydration from storage completes.
+- `isHydrated` — becomes `true` once hydration from storage completes.
 - `flush` — writes current state to storage immediately, bypassing `filter` and any pending timer. Stable across re-renders.
 
 ### `indexedDBStorage(options?)`
