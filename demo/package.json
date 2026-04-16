@@ -1,0 +1,25 @@
+{
+  "name": "react-refsignal-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local benchmark playground — not published. See /docs/benchmark.md.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "jotai": "^2.19.1",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.8",
+    "zustand": "^5.0.12"
+  }
+}
