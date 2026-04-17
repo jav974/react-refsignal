@@ -1,4 +1,5 @@
 import {
+  batch,
   isRefSignal,
   RefSignal,
   setSignalPersistAdapter,
@@ -147,15 +148,21 @@ export function setupPersist<TStore extends Record<string, unknown>>(
           data = migrate(data, envelope.v);
         }
 
-        for (const k of signalKeys) {
-          const sk = k as string;
-          if (
-            sk in data &&
-            (store[k] as RefSignal).lastUpdated === countersAtSetup.get(k)
-          ) {
-            (store[k] as RefSignal).update(data[sk]);
+        // Batch the per-signal updates so subscribers observing the whole
+        // store (notably broadcast) see the fully-hydrated snapshot when
+        // they fire — not a stream of partial states that could be echoed
+        // back into the tab and revert still-hydrating signals.
+        batch(() => {
+          for (const k of signalKeys) {
+            const sk = k as string;
+            if (
+              sk in data &&
+              (store[k] as RefSignal).lastUpdated === countersAtSetup.get(k)
+            ) {
+              (store[k] as RefSignal).update(data[sk]);
+            }
           }
-        }
+        });
       } catch {
         // corrupt — ignore, keep defaults
       }

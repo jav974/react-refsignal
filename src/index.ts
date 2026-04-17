@@ -37,6 +37,8 @@ export type {
   UnwrappedStore,
   StoreSnapshot,
   SignalStoreOptions,
+  SignalStoreOptionsPlain,
+  SignalStoreOptionsUnwrapped,
 } from './store/useRefSignalStore';
 export type { EffectOptions } from './hooks/useRefSignalEffect';
 export type { TimingOptions, WatchOptions } from './timing';

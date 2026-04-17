@@ -69,7 +69,13 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
 
   const tabsLastSeen = new Map<string, number>();
 
-  function electBroadcaster() {
+  // `allowClaim` controls whether this election can promote the current tab
+  // to broadcaster. Yields are always allowed — if a lower-ID tab appears
+  // mid-cycle we should step down immediately. Claims, however, only happen
+  // on heartbeat ticks (full synchronized view of peers); triggering a claim
+  // on a single `bye` message leads to transient self-election that has to
+  // be undone when a concurrent `hello` arrives — user-visible flickering.
+  function electBroadcaster(allowClaim = true) {
     const now = Date.now();
     for (const [id, ts] of tabsLastSeen) {
       if (now - ts >= heartbeatTimeout) tabsLastSeen.delete(id);
@@ -78,7 +84,7 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
 
     const shouldBe = [...tabsLastSeen.keys()].sort()[0] === TAB_ID;
 
-    if (shouldBe && !isBroadcaster) {
+    if (shouldBe && !isBroadcaster && allowClaim) {
       isBroadcaster = true;
       onBroadcasterChange?.(true);
       transport.post({
@@ -113,13 +119,18 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
       case 'hello':
         if (mode === 'one-to-many') {
           tabsLastSeen.set(msg.tabId, msg.ts);
-          electBroadcaster();
+          // Yield-only election — if a lower-ID tab announced itself we
+          // step down immediately. Claims wait for the heartbeat tick so
+          // we don't transiently self-elect during a bye+hello crossover.
+          electBroadcaster(false);
         }
         break;
       case 'bye':
         if (mode === 'one-to-many') {
           tabsLastSeen.delete(msg.tabId);
-          electBroadcaster();
+          // Yield-only — losing a peer never justifies claiming here; the
+          // next tick decides with a settled view of remaining peers.
+          electBroadcaster(false);
         }
         break;
       case 'state-handoff':
@@ -146,13 +157,32 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     }
   });
 
-  // ── Heartbeat (one-to-many only) ────────────────────────────────────────────
+  // ── Heartbeat + visibility handling (one-to-many only) ─────────────────────
 
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let hasStartedOnce = false;
 
-  if (mode === 'one-to-many') {
+  const startHeartbeat = () => {
+    if (heartbeatTimer !== null) return;
     tabsLastSeen.set(TAB_ID, Date.now());
-    electBroadcaster(); // immediate first election
+    // First mount: elect immediately so a solitary tab becomes broadcaster
+    // without waiting `heartbeatInterval`. On a resume from hidden, skip
+    // the immediate election — peers may have been pruned from
+    // `tabsLastSeen` while we were throttled, so claiming now would
+    // incorrectly self-elect ahead of still-alive peers (causing the
+    // resuming tab to flicker into "broadcaster" for one tick).
+    if (!hasStartedOnce) {
+      electBroadcaster();
+      hasStartedOnce = true;
+    } else {
+      // Announce presence so peers add us back to their tabsLastSeen;
+      // our next heartbeat tick runs the election with a fresh view.
+      transport.post({
+        type: 'hello',
+        tabId: TAB_ID,
+        ts: Date.now(),
+      } satisfies Msg<never>);
+    }
     heartbeatTimer = setInterval(() => {
       transport.post({
         type: 'hello',
@@ -161,6 +191,51 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
       } satisfies Msg<never>);
       electBroadcaster();
     }, heartbeatInterval);
+  };
+
+  const stopHeartbeat = () => {
+    if (heartbeatTimer !== null) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  };
+
+  // Hidden tabs have their timers throttled by the browser (often to ≥1s),
+  // which causes hello heartbeats to miss aggressive `heartbeatTimeout`
+  // windows, triggering leadership flapping. Treat a hidden tab as "temporarily
+  // absent": stop the heartbeat, yield broadcaster role, and send `bye` so
+  // other tabs elect cleanly. Resume on `visible` — election runs again.
+  const hasDocument = typeof document !== 'undefined';
+  let onVisibilityChange: (() => void) | null = null;
+
+  if (mode === 'one-to-many') {
+    const yieldRole = () => {
+      if (isBroadcaster) {
+        isBroadcaster = false;
+        onBroadcasterChange?.(false);
+      }
+      stopHeartbeat();
+      tabsLastSeen.delete(TAB_ID);
+      transport.post({ type: 'bye', tabId: TAB_ID } satisfies Msg<never>);
+    };
+
+    if (hasDocument && document.visibilityState === 'visible') {
+      startHeartbeat();
+    } else if (!hasDocument) {
+      // No visibility API (e.g. older environment) — fall back to always-on.
+      startHeartbeat();
+    }
+
+    if (hasDocument) {
+      onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          startHeartbeat();
+        } else {
+          yieldRole();
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
   }
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────
@@ -170,8 +245,11 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     signals.forEach((s) => {
       s.unsubscribe(wrapper.call);
     });
-    if (heartbeatTimer !== null) {
-      clearInterval(heartbeatTimer);
+    if (hasDocument && onVisibilityChange) {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+    if (mode === 'one-to-many') {
+      stopHeartbeat();
       transport.post({ type: 'bye', tabId: TAB_ID } satisfies Msg<never>);
     }
     stopListening();

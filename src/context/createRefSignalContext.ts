@@ -10,6 +10,8 @@ import {
 import {
   useRefSignalStore,
   type SignalStoreOptions,
+  type SignalStoreOptionsPlain,
+  type SignalStoreOptionsUnwrapped,
   type UnwrappedStore,
 } from '../store/useRefSignalStore';
 
@@ -23,11 +25,14 @@ export type {
 
 // ─── Context-specific types ────────────────────────────────────────────────────
 
-export type ContextHook<TStore> = <
-  TOptions extends SignalStoreOptions<TStore> | undefined = undefined,
->(
-  options?: TOptions,
-) => TOptions extends { unwrap: true } ? UnwrappedStore<TStore> : TStore;
+// Overloaded call signatures — mirror `useRefSignalStore` so inline
+// `{ unwrap: true, renderOn: [...] }` narrows to `UnwrappedStore<TStore>`
+// without the caller needing `as const` / `satisfies` workarounds.
+export interface ContextHook<TStore> {
+  (options: SignalStoreOptionsUnwrapped<TStore>): UnwrappedStore<TStore>;
+  (options?: SignalStoreOptionsPlain<TStore>): TStore;
+  (options?: SignalStoreOptions<TStore>): TStore | UnwrappedStore<TStore>;
+}
 
 export type RefSignalContextType<TName extends string, TStore> = {
   [K in `${Capitalize<TName>}Provider`]: FC<{ children: ReactNode }>;
@@ -84,19 +89,28 @@ export function createRefSignalContextHook<
   const hookName = `use${capitalizedName}Context`;
   const providerName = `${capitalizedName}Provider`;
 
-  function useContextHook<
-    TOptions extends SignalStoreOptions<TStore> | undefined = undefined,
-  >(
-    options?: TOptions,
-  ): TOptions extends { unwrap: true } ? UnwrappedStore<TStore> : TStore {
+  // Implementation signature; the callable overloads come from
+  // `ContextHook<TStore>` — we cast once at the return so TS honors them.
+  // `useRefSignalStore` is re-typed here to its union-overload shape so
+  // overload resolution is unambiguous on a union-typed `options`
+  // argument (some IDEs report the first-overload failure instead of
+  // falling through to the matching one).
+  const callUseStore = useRefSignalStore as (
+    store: TStore,
+    options?: SignalStoreOptions<TStore>,
+  ) => TStore | UnwrappedStore<TStore>;
+
+  function useContextHookImpl(
+    options?: SignalStoreOptions<TStore>,
+  ): TStore | UnwrappedStore<TStore> {
     const store = useContext(context);
     if (store === null) {
       throw new Error(`${hookName} must be used within a ${providerName}`);
     }
-    return useRefSignalStore(store, options);
+    return callUseStore(store, options);
   }
 
-  return [context, useContextHook];
+  return [context, useContextHookImpl as ContextHook<TStore>];
 }
 
 // ─── createRefSignalContext ───────────────────────────────────────────────────
