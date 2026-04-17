@@ -10,9 +10,10 @@
 - [4. Rate Limiting](#4-rate-limiting)
 - [5. Batching](#5-batching)
 - [6. Derived Values](#6-derived-values)
-- [7. Context / Shared State](#7-context--shared-state)
-- [8. Persistence](#8-persistence)
-- [9. Cross-tab Broadcast](#9-cross-tab-broadcast)
+- [7. Dynamic Signal Identity](#7-dynamic-signal-identity)
+- [8. Context / Shared State](#8-context--shared-state)
+- [9. Persistence](#9-persistence)
+- [10. Cross-tab Broadcast](#10-cross-tab-broadcast)
 
 ---
 
@@ -59,6 +60,8 @@ flowchart TD
 ## 3. Reacting to Changes
 
 > Use `watch(signal, listener, options?)` instead of `subscribe`/`unsubscribe` pairs when outside React — it returns a cleanup function and supports the same timing and filter options as hooks.
+>
+> For high-frequency imperative renderers (Pixi / Canvas / WebGL / Web Audio), see [Imperative renderers](imperative-renderers.md) — the canonical pattern is `useRefSignalEffect` + `{ rAF: true }` mutating a `ref`-held handle.
 
 ```mermaid
 flowchart TD
@@ -75,6 +78,10 @@ flowchart TD
     B --> Q3{"Should the effect run on mount?"}
     Q3 -->|"Yes — default"| F[Normal usage]
     Q3 -->|"No — react to changes only"| G["skipMount: true"]
+
+    B --> Q3b{"Driving an imperative renderer at frame rate?"}
+    Q3b -->|"Yes — collapse multiple fires per frame"| Ga["Use { rAF: true } — see Imperative renderers doc"]
+    Q3b -->|No| F
 
     A & B & C --> Q4{"Gate the callback conditionally?"}
     Q4 -->|Yes| H["filter: () => boolean"]
@@ -119,17 +126,51 @@ flowchart TD
 flowchart TD
     Q1{"Where do you need the derived value?"}
 
-    Q1 -->|Inside a React component| A["useRefSignalMemo(factory, deps)\nTied to component lifetime\nDeps can mix signals and non-signals (props, state)"]
+    Q1 -->|Inside a React component| A["useRefSignalMemo(factory, deps, options?)\nTied to component lifetime\nDeps can mix signals and non-signals (props, state)"]
     Q1 -->|"Outside React — module scope, context factory"| B["createComputedSignal(compute, deps)\nDeps must be RefSignals\nReturns read-only ComputedSignal with .dispose()"]
+
+    A --> Q3{"Need to rate-limit, filter, or follow dynamic signals?"}
+    Q3 -->|Rate-limit the recompute| E["Add throttle / debounce / rAF — see Section 4"]
+    Q3 -->|Skip recompute conditionally| F["options.filter: () => boolean"]
+    Q3 -->|"Factor resolves through another signal's value"| G["options.trackSignals — see Section 7"]
+    Q3 -->|No| H[Done]
 
     B --> Q2{"Created dynamically and discarded later?"}
     Q2 -->|Yes| C["Call .dispose() to unsubscribe from deps and allow GC"]
     Q2 -->|"No — app lifetime"| D[No cleanup needed]
 ```
 
+> **Polymorphic props pattern** — when writing a component that should accept either a `RefSignal<T>` or a plain `T` for the same prop:
+> ```ts
+> const stable = useRefSignalMemo(
+>   () => (isRefSignal(input) ? input.current : input),
+>   [input],
+> );
+> ```
+> Normalizes into a single downstream shape. See [Imperative renderers](imperative-renderers.md#polymorphic-refsignalt--t-props).
+
 ---
 
-## 7. Context / Shared State
+## 7. Dynamic Signal Identity
+
+> When the signal you want to react to is resolved *through another signal's current value* — e.g., `nodes.current.get(id)` inside a `RefSignal<Map<id, RefSignal<V>>>`. The inner signal's *identity* can change at runtime (added, removed, replaced) and your subscription must follow.
+
+```mermaid
+flowchart TD
+    Q1{"Is the target signal's identity stable at hook call time?"}
+    Q1 -->|"Yes — from props, state, or a stable ref"| A["Normal deps array\nuseRefSignalEffect(fn, [sig])\nuseRefSignalMemo(fn, [sig])\nuseRefSignalRender([sig])"]
+    Q1 -->|"No — resolved through another signal's current value"| Q2
+
+    Q2{"What shape do you need?"}
+    Q2 -->|"A stable RefSignal I can pass downstream as a normal dep"| B["useRefSignalFollow(() => getter(), deps)\n→ RefSignal<T | undefined>\nShorthand for the single-signal case"]
+    Q2 -->|"React to N dynamic signals in one effect or render"| C["options.trackSignals: () => signals[]\non useRefSignalEffect / useRefSignalMemo / useRefSignalRender"]
+
+    B & C --> D["Diff-subscribed on every static-dep fire.\nRef-equal + content-equal shortcuts skip the diff when the returned array is stable."]
+```
+
+---
+
+## 8. Context / Shared State
 
 ```mermaid
 flowchart TD
@@ -155,7 +196,7 @@ flowchart TD
 
 ---
 
-## 8. Persistence
+## 9. Persistence
 
 > Activation: add `import 'react-refsignal/persist'` to your entry point. Safe to import in SSR environments.
 
@@ -167,7 +208,7 @@ flowchart TD
     Q1 -->|Entire store| Q2{"Provider lifecycle?"}
 
     Q2 -->|"Factory — lives for app lifetime"| B["persist(factory, options) wrapper\npersist(() => ({ ... }), { key: 'x' })"]
-    Q2 -->|Provider mounts and unmounts| C["usePersist(store, options)\nReturns { isHydrated: RefSignal&lt;boolean&gt;, flush: () =&gt; void }"]
+    Q2 -->|Provider mounts and unmounts| C["usePersist(store, options)\nReturns { isHydrated, flush, clear }\nflush / clear are async (Promise<void>)"]
 
     A & B & C --> Q3{"Which storage backend?"}
     Q3 -->|Default| D["localStorage"]
@@ -180,20 +221,34 @@ flowchart TD
     Q4 -->|No| Q5
 
     Q5{"High-frequency updates? Want to coalesce storage writes?"}
-    Q5 -->|No| Q6
+    Q5 -->|No| Qf
     Q5 -->|"At most once per N ms"| J["throttle: N"]
     Q5 -->|"After N ms of quiet"| K["debounce: N\n+ optional maxWait: N"]
     Q5 -->|"One write per animation frame"| L["rAF: true"]
 
-    J & K & L --> Q6{"Need to guarantee write on unmount\n(pending timer would be cancelled)?"}
+    J & K & L --> Qf
+    Qf{"Skip writes conditionally?\n(e.g., not logged in, paused, offline)"}
+    Qf -->|Yes| Fi["filter: (snapshot) => boolean\nStore-level receives the snapshot\nOnly gates outgoing writes — hydration always runs"]
+    Qf -->|No| Q6
+
+    Q6{"Need to guarantee write on unmount\n(pending timer would be cancelled)?"}
     Q6 -->|No| I[Done]
-    Q6 -->|Yes| M["usePersist onUnmount: (_, flush) => flush()"]
+    Q6 -->|Yes| M["usePersist onUnmount: (snapshot, flush) => flush()\nflush is Promise<void> but React cleanup is sync — fire-and-forget is fine"]
     M --> I
+```
+
+### Clearing persisted data
+
+```mermaid
+flowchart TD
+    QC{"Need to wipe the stored value\n(logout, reset, recovery)?"}
+    QC -->|"You have a setupPersist / usePersist controller"| CA["controller.clear(): Promise<void>\nCancels pending timers, resets signals to defaults,\nremoves storage key — race-free"]
+    QC -->|"Signal-level persist or just want to remove by key"| CB["clearPersistedStorage(key, storage?)\nOnly removes storage — does NOT reset in-memory signals,\nand may race with an active persist's queued timer.\nDefaults to localStorage; accepts 'session', 'indexeddb', or a custom adapter."]
 ```
 
 ---
 
-## 9. Cross-tab Broadcast
+## 10. Cross-tab Broadcast
 
 > Activation: add `import 'react-refsignal/broadcast'` to your entry point. Safe to import in SSR environments.
 
@@ -205,15 +260,20 @@ flowchart TD
     Q1 -->|Entire store| Q2{"Provider lifecycle?"}
 
     Q2 -->|"Factory — lives for app lifetime"| B["broadcast(factory, options) wrapper"]
-    Q2 -->|Provider mounts and unmounts| C["useBroadcast(store, options)"]
+    Q2 -->|Provider mounts and unmounts| C["useBroadcast(store, options)\nReturns { isBroadcaster: RefSignal<boolean> }"]
 
     A & B & C --> Q3{"How should tabs coordinate?"}
     Q3 -->|"All tabs send and receive equally — default"| D["mode: 'many-to-many'"]
     Q3 -->|"One elected tab sends, others receive only"| E["mode: 'one-to-many'"]
 
     E --> Q4{"Need to react when this tab is elected broadcaster?"}
-    Q4 -->|Yes| F["onBroadcasterChange: (isBroadcaster) => void"]
+    Q4 -->|"In JSX — read it like any signal"| F1["Use useBroadcast's isBroadcaster signal\n(subscribe with useRefSignalRender to re-render)"]
+    Q4 -->|"Imperative callback on transition"| F2["onBroadcasterChange: (isBroadcaster) => void"]
     Q4 -->|No| G[Done]
+
+    F1 & F2 --> Q5{"Compose with persist so only the broadcaster writes?"}
+    Q5 -->|Yes| P["usePersist(store, { key, filter: () => isBroadcaster.current })\nAvoids N tabs competing to write the same value"]
+    Q5 -->|No| G
 
     B --> H["Compose with persist:\nbroadcast(persist(factory, persistOpts), broadcastOpts)"]
 ```
