@@ -1,6 +1,6 @@
 # Concepts
 
-← [Back to README](../README.md) · [API Reference](api.md) · [Patterns](patterns.md) · [Broadcast](broadcast.md)
+← [Back to README](../README.md) · [API Reference](api.md) · [Patterns](patterns.md) · [Imperative renderers](imperative-renderers.md) · [Broadcast](broadcast.md)
 
 ---
 

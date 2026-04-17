@@ -94,6 +94,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 - [Concepts](docs/concepts.md) — signals, notify vs notifyUpdate, effect vs render, signal lifetime
 - [API Reference](docs/api.md) — full API with examples for every hook and function
 - [Patterns](docs/patterns.md) — draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders
+- [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation
 - [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`
 - [Persist](docs/persist.md) — persist signals across page loads with `react-refsignal/persist`
 - [Decision Tree](docs/decision-tree.md) — pick the right API for any scenario

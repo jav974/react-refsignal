@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { renderHook } from '@testing-library/react';
 import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
@@ -527,5 +527,64 @@ describe('useRefSignalEffect — trackSignals option', () => {
     });
 
     expect(effect).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRefSignalEffect — StrictMode', () => {
+  // React 18+ StrictMode double-invokes effects (mount → cleanup → mount) to
+  // surface non-idempotent setup code. Our subscription plumbing must stay
+  // coherent across that cycle: no listener leaks, no duplicated fires.
+
+  it('signal fires after StrictMode remount trigger the effect exactly once (no listener leak)', () => {
+    const signal = createRefSignal(0);
+    const effect = jest.fn();
+
+    renderHook(
+      () => {
+        useRefSignalEffect(effect, [signal], { skipMount: true });
+      },
+      { wrapper: StrictMode },
+    );
+
+    // skipMount=true — no mount run. Effect should only fire on signal updates.
+    effect.mockClear();
+
+    act(() => {
+      signal.update(1);
+    });
+
+    // If the first mount's listener had leaked past cleanup, this would be 2.
+    expect(effect).toHaveBeenCalledTimes(1);
+  });
+
+  it('dynamic trackSignals subscription survives the StrictMode cycle without leaking', () => {
+    const outer = createRefSignal(0);
+    const inner = createRefSignal('a');
+    const effect = jest.fn();
+
+    const { unmount } = renderHook(
+      () => {
+        useRefSignalEffect(effect, [outer], {
+          trackSignals: () => [inner],
+          skipMount: true,
+        });
+      },
+      { wrapper: StrictMode },
+    );
+
+    effect.mockClear();
+
+    act(() => {
+      inner.update('b');
+    });
+    expect(effect).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    act(() => {
+      inner.update('c');
+    });
+    // Fully unsubscribed after unmount — dynamic listener did not leak.
+    expect(effect).toHaveBeenCalledTimes(1);
   });
 });

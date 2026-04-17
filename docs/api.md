@@ -1,6 +1,6 @@
 # API Reference
 
-← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Broadcast](broadcast.md) · [Persist](persist.md)
+← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Imperative renderers](imperative-renderers.md) · [Broadcast](broadcast.md) · [Persist](persist.md)
 
 ---
 
