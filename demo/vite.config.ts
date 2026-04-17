@@ -6,6 +6,13 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      // Order matters — longer prefixes must come first so Vite matches them
+      // before the bare 'react-refsignal' entry.
+      'react-refsignal/persist': resolve(__dirname, '../src/persist/index.ts'),
+      'react-refsignal/broadcast': resolve(
+        __dirname,
+        '../src/broadcast/index.ts',
+      ),
       'react-refsignal': resolve(__dirname, '../src/index.ts'),
     },
     // Force a single React instance — react-refsignal source lives at ../src

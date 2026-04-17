@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Local benchmark playground — not published. See /docs/benchmark.md.",
+  "description": "Local demos — graph benchmark and cross-tab theme sync (persist + broadcast). Not published.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

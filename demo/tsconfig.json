@@ -11,7 +11,9 @@
     "strict": true,
     "noEmit": true,
     "paths": {
-      "react-refsignal": ["../src/index.ts"]
+      "react-refsignal": ["../src/index.ts"],
+      "react-refsignal/persist": ["../src/persist/index.ts"],
+      "react-refsignal/broadcast": ["../src/broadcast/index.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"]
