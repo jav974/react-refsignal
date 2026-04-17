@@ -61,58 +61,76 @@ One scene redraw per frame regardless of how many of those four signals fire in 
 
 ---
 
-## Driving a retained renderer (Pixi, Three.js, WebGL)
+## Driving a retained renderer (Pixi via `@pixi/react`, Three.js, WebGL)
 
-"Retained" renderers keep their own scene graph — you don't clear-and-redraw each frame, you mutate graphics objects in place. The shape is the same, you just call setters:
+"Retained" renderers keep their own scene graph — you don't clear-and-redraw each frame, you mutate graphics objects in place. The cleanest way to combine them with React is a thin React wrapper that declares the scene *structure* in JSX (so React owns mount / unmount / wiring) and exposes the underlying imperative handle via a ref. Signals then drive the handle directly, no re-renders needed.
+
+For Pixi, [`@pixi/react`](https://pixijs.io/pixi-react/) (v8) is that wrapper. The root is `<Application>`; Pixi classes are registered for JSX with `useExtend`, then rendered as lowercase tags like `<pixiGraphics>`:
 
 ```tsx
-import { Application, Graphics } from 'pixi.js';
-import { useRef, useEffect } from 'react';
+import { Application, useExtend, type PixiReactElementProps } from '@pixi/react';
+import { Graphics } from 'pixi.js';
+import { useCallback, useRef } from 'react';
 import { useRefSignalEffect, type RefSignal } from 'react-refsignal';
 
+// Thin wrapper: a <pixiGraphics> whose draw is driven by signals, not props.
+interface SignalGraphicsProps extends PixiReactElementProps<typeof Graphics> {
+  draw: (g: Graphics) => void;
+  drawDeps?: unknown[];
+}
+
+function SignalGraphics({ draw, drawDeps = [], ...props }: SignalGraphicsProps) {
+  useExtend({ Graphics });
+
+  const ref = useRef<Graphics>(null);
+  // Empty draw prop on the JSX element — prevents @pixi/react from redrawing
+  // on every React render. The ref-driven useRefSignalEffect owns the draw.
+  const emptyDraw = useCallback(() => {}, []);
+
+  useRefSignalEffect(() => {
+    const g = ref.current;
+    if (g) draw(g);
+  }, [draw, ...drawDeps], { rAF: true });
+
+  return <pixiGraphics ref={ref} draw={emptyDraw} {...props} />;
+}
+
+// Usage: values come from signals, structure stays in JSX.
 type Point = { x: number; y: number };
 
-function PixiCircle({
+function Scene({
   center,
   radius,
 }: {
   center: RefSignal<Point>;
   radius: RefSignal<number>;
 }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const graphicsRef = useRef<Graphics | null>(null);
-
-  // React handles mount / unmount of the Pixi application
-  useEffect(() => {
-    const host = hostRef.current!;
-    const app = new Application({ width: 400, height: 300 });
-    host.appendChild(app.view as HTMLCanvasElement);
-    const g = new Graphics();
-    app.stage.addChild(g);
-    graphicsRef.current = g;
-    return () => {
-      app.destroy(true, { children: true });
-      graphicsRef.current = null;
-    };
-  }, []);
-
-  // Signals drive the draw — no React re-renders
-  useRefSignalEffect(() => {
-    const g = graphicsRef.current;
-    if (!g) return;
-    g.clear();
-    g.beginFill(0x4a9eff);
-    g.drawCircle(center.current.x, center.current.y, radius.current);
-    g.endFill();
-  }, [center, radius], { rAF: true });
-
-  return <div ref={hostRef} />;
+  return (
+    <Application width={400} height={300}>
+      <SignalGraphics
+        draw={(g) => {
+          g.clear();
+          g.beginFill(0x4a9eff);
+          g.drawCircle(center.current.x, center.current.y, radius.current);
+          g.endFill();
+        }}
+        drawDeps={[center, radius]}
+      />
+    </Application>
+  );
 }
 ```
 
-The `useEffect` mounts the renderer (React's job — it owns lifecycle). The `useRefSignalEffect` drives the scene graph (signals' job — they own values). These two effects coexist cleanly because they operate on different concerns.
+**Two things to notice:**
 
-Same shape works for Three.js meshes, WebGL uniforms, Web Audio nodes — anywhere you have a handle you can mutate.
+1. **`useExtend({ Graphics })`** registers the Pixi class with `@pixi/react`'s JSX reconciler, enabling the `<pixiGraphics>` tag. `useExtend` runs per component that uses a given class — call it wherever the class is first referenced in JSX.
+2. **`draw={emptyDraw}`** on the JSX element is intentional. `@pixi/react` would otherwise call the `draw` prop on every React render; the empty callback no-ops that path, leaving `useRefSignalEffect` as the sole driver of the `Graphics` instance. This is what buys you the "no React in the hot path" property.
+
+**The split:**
+- **React (via `@pixi/react`) owns structure and lifecycle** — `<Application>` mounts the Pixi app; JSX defines what's in the scene; unmount is automatic.
+- **Signals own values** — where things are, what color, how big. Delivered directly through refs with no reconciliation in the middle.
+
+Same shape works with **[`@react-three/fiber`](https://r3f.docs.pmnd.rs/)** for Three.js (ref a mesh, mutate `position` / `material.uniforms` inside `useRefSignalEffect`), or with any React binding that exposes refs to its imperative nodes — WebGL shader uniforms, Web Audio graph, etc.
 
 ---
 
