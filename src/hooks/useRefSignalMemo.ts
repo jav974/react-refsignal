@@ -1,7 +1,7 @@
 import { DependencyList, useEffect, useMemo, useRef } from 'react';
 import { RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
-import { createSubscription } from '../subscription';
+import { watchSignals } from '../watchSignals';
 import { useWatchArgs } from './useWatchArgs';
 import type { WatchOptions } from '../timing';
 
@@ -71,7 +71,7 @@ export function useRefSignalMemo<T>(
   const factoryRef = useRef(factory);
   factoryRef.current = factory;
 
-  const { filterRef, subscriptionOptions } = useWatchArgs(options);
+  const { filterRef, watchOptions } = useWatchArgs(options);
 
   // Sync signal when non-signal deps cause a React re-render.
   // memo is already up-to-date from useMemo above — no redundant factory() call.
@@ -85,19 +85,19 @@ export function useRefSignalMemo<T>(
 
   // Subscribe to signal deps (static) and optional dynamic set via trackSignals.
   useEffect(() => {
-    const sub = createSubscription({
+    const sub = watchSignals(
       deps,
-      onFire: () => {
+      () => {
         if (filterRef.current && !filterRef.current()) return;
         value.update(factoryRef.current());
       },
-      options: subscriptionOptions,
-    });
+      watchOptions,
+    );
     return () => {
       sub.dispose();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; subscriptionOptions covers timing changes
-  }, [...deps, subscriptionOptions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; watchOptions covers timing changes
+  }, [...deps, watchOptions]);
 
   return value;
 }

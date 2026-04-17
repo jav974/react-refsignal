@@ -69,7 +69,8 @@ flowchart TD
 
     Q1 -->|"JSX must reflect the value — trigger a re-render"| A["useRefSignalRender(deps, options?)"]
     Q1 -->|"Side effect: canvas, audio, logging, DOM mutation"| B["useRefSignalEffect(effect, deps, options?)"]
-    Q1 -->|"Outside React — non-component code"| C["watch(signal, listener, options?) → cleanup fn"]
+    Q1 -->|"Outside React — one signal, need its value"| C["watch(signal, listener, options?) → cleanup fn"]
+    Q1 -->|"Outside React — multi-signal or dynamic tracking"| CS["watchSignals(deps, onFire, options?) → WatchHandle\nSame semantics as the React hooks, including trackSignals"]
 
     A --> Q2{"In a context hook — want plain values + setters?"}
     Q2 -->|Yes| D["renderOn + unwrap: true"]
@@ -83,7 +84,7 @@ flowchart TD
     Q3b -->|"Yes — collapse multiple fires per frame"| Ga["Use { rAF: true } — see Imperative renderers doc"]
     Q3b -->|No| F
 
-    A & B & C --> Q4{"Gate the callback conditionally?"}
+    A & B & C & CS --> Q4{"Gate the callback conditionally?"}
     Q4 -->|Yes| H["filter: () => boolean"]
     Q4 -->|No| I["Rate limit? → Section 4"]
 ```
@@ -163,7 +164,7 @@ flowchart TD
 
     Q2{"What shape do you need?"}
     Q2 -->|"A stable RefSignal I can pass downstream as a normal dep"| B["useRefSignalFollow(() => getter(), deps)\n→ RefSignal<T | undefined>\nShorthand for the single-signal case"]
-    Q2 -->|"React to N dynamic signals in one effect or render"| C["options.trackSignals: () => signals[]\non useRefSignalEffect / useRefSignalMemo / useRefSignalRender"]
+    Q2 -->|"React to N dynamic signals in one effect or render"| C["options.trackSignals: () => signals[]\non useRefSignalEffect / useRefSignalMemo / useRefSignalRender\n(outside React: watchSignals with the same option)"]
 
     B & C --> D["Diff-subscribed on every static-dep fire.\nRef-equal + content-equal shortcuts skip the diff when the returned array is stable."]
 ```

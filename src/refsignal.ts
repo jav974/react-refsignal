@@ -328,7 +328,10 @@ export function createComputedSignal<T>(
 export function watch<T>(
   signal: RefSignal<T>,
   listener: Listener<T>,
-  options?: WatchOptions,
+  // `trackSignals` is excluded here — `watch()` is single-signal and cannot
+  // express "fire my value-delivering listener when a different signal updates"
+  // cleanly. Use `watchSignals([...], onFire, { trackSignals })` for that.
+  options?: Omit<WatchOptions, 'trackSignals'>,
 ): () => void {
   if (!options) {
     signal.subscribe(listener);

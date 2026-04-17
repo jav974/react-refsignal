@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createSubscription } from '../subscription';
+import { watchSignals } from '../watchSignals';
 import { useWatchArgs } from './useWatchArgs';
 import type { WatchOptions } from '../timing';
 
@@ -88,18 +88,18 @@ export function useRefSignalEffect(
   const effectRef = useRef(effect);
   effectRef.current = effect;
 
-  const { filterRef, subscriptionOptions } = useWatchArgs(options);
+  const { filterRef, watchOptions } = useWatchArgs(options);
   const { skipMount } = options ?? {};
 
   useEffect(() => {
-    const sub = createSubscription({
+    const sub = watchSignals(
       deps,
-      onFire: () => {
+      () => {
         if (filterRef.current && !filterRef.current()) return;
         effectRef.current();
       },
-      options: subscriptionOptions,
-    });
+      watchOptions,
+    );
 
     // Mount run — synchronous and unconditional, unless skipMount is true.
     // Bypasses timing and filter so users can count on setup-time side effects.
@@ -111,6 +111,6 @@ export function useRefSignalEffect(
         destructor();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; subscriptionOptions covers timing changes
-  }, [...deps, subscriptionOptions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; watchOptions covers timing changes
+  }, [...deps, watchOptions]);
 }

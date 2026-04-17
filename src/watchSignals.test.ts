@@ -3,16 +3,16 @@
  */
 
 import { createRefSignal, RefSignal } from './refsignal';
-import { createSubscription } from './subscription';
+import { watchSignals } from './watchSignals';
 
-describe('createSubscription', () => {
+describe('watchSignals', () => {
   // ─── Static subscriptions ────────────────────────────────────────────────
 
   it('fires onFire when a static RefSignal in deps updates', () => {
     const onFire = jest.fn();
     const signal = createRefSignal(0);
 
-    const sub = createSubscription({ deps: [signal], onFire });
+    const sub = watchSignals([signal], onFire);
     signal.update(1);
 
     expect(onFire).toHaveBeenCalledTimes(1);
@@ -23,10 +23,10 @@ describe('createSubscription', () => {
     const onFire = jest.fn();
     const signal = createRefSignal(0);
 
-    const sub = createSubscription({
-      deps: [signal, 'not a signal', 42, null, undefined, {}],
+    const sub = watchSignals(
+      [signal, 'not a signal', 42, null, undefined, {}],
       onFire,
-    });
+    );
     signal.update(1);
 
     expect(onFire).toHaveBeenCalledTimes(1);
@@ -37,7 +37,7 @@ describe('createSubscription', () => {
     const onFire = jest.fn();
     const signal = createRefSignal(0);
 
-    const sub = createSubscription({ deps: [signal], onFire });
+    const sub = watchSignals([signal], onFire);
 
     expect(onFire).not.toHaveBeenCalled();
     sub.dispose();
@@ -50,10 +50,8 @@ describe('createSubscription', () => {
     const outer = createRefSignal(0);
     const inner = createRefSignal('a');
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals: () => [inner] },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals: () => [inner],
     });
 
     inner.update('b');
@@ -69,10 +67,8 @@ describe('createSubscription', () => {
     const innerB = createRefSignal('b');
     let active = innerA;
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals: () => [active] },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals: () => [active],
     });
 
     // Initially subscribed to innerA
@@ -102,11 +98,7 @@ describe('createSubscription', () => {
     const inner = createRefSignal('a');
 
     const trackSignals = jest.fn(() => [inner]);
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals },
-    });
+    const sub = watchSignals([outer], onFire, { trackSignals });
 
     // Called once at setup
     expect(trackSignals).toHaveBeenCalledTimes(1);
@@ -134,10 +126,8 @@ describe('createSubscription', () => {
     const unsub_spy = jest.spyOn(inner, 'unsubscribe');
 
     const cached = [inner];
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals: () => cached },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals: () => cached,
     });
 
     // Initial subscribe happened
@@ -162,11 +152,9 @@ describe('createSubscription', () => {
     const sub_spy = jest.spyOn(inner, 'subscribe');
     const unsub_spy = jest.spyOn(inner, 'unsubscribe');
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
+    const sub = watchSignals([outer], onFire, {
       // New array each call, same contents
-      options: { trackSignals: () => [inner] },
+      trackSignals: () => [inner],
     });
 
     const subCallsAfterSetup = sub_spy.mock.calls.length;
@@ -193,10 +181,8 @@ describe('createSubscription', () => {
     const cSub = jest.spyOn(c, 'subscribe');
 
     let set: RefSignal<string>[] = [a, b];
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals: () => set },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals: () => set,
     });
 
     // Change set: drop `a`, keep `b`, add `c`
@@ -223,10 +209,9 @@ describe('createSubscription', () => {
     const aUnsub = jest.spyOn(innerA, 'unsubscribe');
     const bSub = jest.spyOn(innerB, 'subscribe');
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals, filter: () => false },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals,
+      filter: () => false,
     });
 
     // Swap active + static fire
@@ -249,13 +234,9 @@ describe('createSubscription', () => {
     const inner = createRefSignal('a');
     let allow = false;
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: {
-        trackSignals: () => [inner],
-        filter: () => allow,
-      },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals: () => [inner],
+      filter: () => allow,
     });
 
     outer.update(1);
@@ -280,10 +261,8 @@ describe('createSubscription', () => {
     const outerUnsub = jest.spyOn(outer, 'unsubscribe');
     const innerUnsub = jest.spyOn(inner, 'unsubscribe');
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals: () => [inner] },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals: () => [inner],
     });
 
     sub.dispose();
@@ -305,10 +284,8 @@ describe('createSubscription', () => {
     const outerUnsub = jest.spyOn(outer, 'unsubscribe');
     const innerUnsub = jest.spyOn(inner, 'unsubscribe');
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire,
-      options: { trackSignals: () => [inner] },
+    const sub = watchSignals([outer], onFire, {
+      trackSignals: () => [inner],
     });
 
     sub.dispose();
@@ -325,11 +302,7 @@ describe('createSubscription', () => {
       const onFire = jest.fn();
       const signal = createRefSignal(0);
 
-      const sub = createSubscription({
-        deps: [signal],
-        onFire,
-        options: { throttle: 100 },
-      });
+      const sub = watchSignals([signal], onFire, { throttle: 100 });
 
       signal.update(1); // leading fires
       expect(onFire).toHaveBeenCalledTimes(1);
@@ -355,10 +328,9 @@ describe('createSubscription', () => {
       const inner = createRefSignal('a');
       const trackSignals = jest.fn(() => [inner]);
 
-      const sub = createSubscription({
-        deps: [outer],
-        onFire,
-        options: { throttle: 100, trackSignals },
+      const sub = watchSignals([outer], onFire, {
+        throttle: 100,
+        trackSignals,
       });
 
       // Burst of mixed fires within the throttle window
@@ -390,12 +362,9 @@ describe('createSubscription', () => {
     const calls: number[] = [];
     const signal = createRefSignal(0);
 
-    const sub = createSubscription({
-      deps: [signal],
-      onFire: () => {
-        calls.push(signal.current);
-        if (signal.current < 3) signal.update(signal.current + 1);
-      },
+    const sub = watchSignals([signal], () => {
+      calls.push(signal.current);
+      if (signal.current < 3) signal.update(signal.current + 1);
     });
 
     signal.update(1);
@@ -411,14 +380,14 @@ describe('createSubscription', () => {
     const outer = createRefSignal(0);
     const inner = createRefSignal(0);
 
-    const sub = createSubscription({
-      deps: [outer],
-      onFire: () => {
+    const sub = watchSignals(
+      [outer],
+      () => {
         calls.push(inner.current);
         if (inner.current < 3) inner.update(inner.current + 1);
       },
-      options: { trackSignals: () => [inner] },
-    });
+      { trackSignals: () => [inner] },
+    );
 
     inner.update(1); // kicks off cascade: 1 → 2 → 3, then stops
     expect(calls).toEqual([1, 2, 3]);
@@ -432,10 +401,8 @@ describe('createSubscription', () => {
     const onFire = jest.fn();
     const signal = createRefSignal(0);
 
-    const sub = createSubscription({
-      deps: [signal],
-      onFire,
-      options: { trackSignals: () => [signal] },
+    const sub = watchSignals([signal], onFire, {
+      trackSignals: () => [signal],
     });
 
     // One update fires both listeners (static + dynamic); onFire called twice
@@ -456,7 +423,7 @@ describe('createSubscription', () => {
     const a = createRefSignal(0);
     const b = createRefSignal(0);
 
-    const sub = createSubscription({ deps: [a, b], onFire });
+    const sub = watchSignals([a, b], onFire);
 
     a.update(1);
     b.update(1);
@@ -470,7 +437,7 @@ describe('createSubscription', () => {
 
   it('empty deps and no trackSignals is a valid no-op subscription', () => {
     const onFire = jest.fn();
-    const sub = createSubscription({ deps: [], onFire });
+    const sub = watchSignals([], onFire);
 
     expect(() => {
       sub.dispose();

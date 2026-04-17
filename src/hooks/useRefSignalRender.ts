@@ -1,6 +1,6 @@
 import { useCallback, useReducer, useRef, useSyncExternalStore } from 'react';
 import { RefSignal } from '../refsignal';
-import { createSubscription, SubscriptionHandle } from '../subscription';
+import { watchSignals, WatchHandle } from '../watchSignals';
 import { useWatchArgs } from './useWatchArgs';
 import type { WatchOptions } from '../timing';
 
@@ -59,32 +59,32 @@ export function useRefSignalRender(
       ? { filter: callbackOrOptions }
       : (callbackOrOptions ?? {});
 
-  const { filterRef, subscriptionOptions } = useWatchArgs(options);
+  const { filterRef, watchOptions } = useWatchArgs(options);
 
   // Holds the active subscription so getSnapshot can read its tracked set
   // to sum dynamic signals' lastUpdated alongside static deps.
-  const subRef = useRef<SubscriptionHandle | null>(null);
+  const subRef = useRef<WatchHandle | null>(null);
 
   // Subscribe function for useSyncExternalStore.
-  // Identity changes with deps or subscriptionOptions (timing), triggering resubscription.
+  // Identity changes with deps or watchOptions (timing), triggering resubscription.
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      const sub = createSubscription({
+      const sub = watchSignals(
         deps,
-        onFire: () => {
+        () => {
           if (filterRef.current && !filterRef.current()) return;
           onStoreChange();
         },
-        options: subscriptionOptions,
-      });
+        watchOptions,
+      );
       subRef.current = sub;
       return () => {
         sub.dispose();
         subRef.current = null;
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; subscriptionOptions covers timing changes
-    [...deps, subscriptionOptions],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; watchOptions covers timing changes
+    [...deps, watchOptions],
   );
 
   // Snapshot: sum of lastUpdated across static deps + currently-tracked dynamic

@@ -19,6 +19,8 @@
 - [`useRefSignalFollow<T>(getter, deps, options?)`](#userefsignalfollowt-getter-deps-options)
 - [`createComputedSignal<T>(compute, deps)`](#createcomputedsignalt-compute-deps)
 - [`watch<T>(signal, listener, options?)`](#watcht-signal-listener-options)
+- [`watchSignals(deps, onFire, options?)`](#watchsignalsdeps-onfire-options)
+- [`WatchHandle`](#watchhandle)
 - [`batch(callback, deps?)`](#batchcallback-deps)
 - [`createRefSignalStore<TStore>(factory)`](#createrefsignalstoretstore-factory)
 - [`useRefSignalStore<TStore>(store, options?)`](#userefsignalstoretstore-store-options)
@@ -415,11 +417,78 @@ const stop = watch(score, (v) => sync(v), {
 });
 ```
 
-**`options`** — accepts [`WatchOptions`](#watchoptions): `filter`, `throttle`, `debounce`, `maxWait`, `rAF`. Timing options are mutually exclusive.
+**`options`** — accepts [`WatchOptions`](#watchoptions) *minus* `trackSignals`. Supports `filter`, `throttle`, `debounce`, `maxWait`, `rAF`. Timing options are mutually exclusive.
 
 When timing is active, `listener` receives the **latest captured value** at the moment the timer fires — intermediate values between fires are not replayed.
 
 `stop()` also cancels any pending timer or animation frame so the listener never fires after unsubscribing.
+
+> **Why no `trackSignals`?** `watch()` is single-signal — the listener receives `T`, the type of the one watched signal. Dynamic tracking means "fire when *other* signals change", which doesn't have a clean value to pass. Use [`watchSignals`](#watchsignalsdeps-onfire-options) for the multi-signal and dynamic-identity cases.
+
+---
+
+### `watchSignals(deps, onFire, options?)`
+
+The non-React primitive for watching a set of signals — including dynamically-resolved ones. Returns a [`WatchHandle`](#watchhandle). The React hooks (`useRefSignalEffect`, `useRefSignalMemo`, `useRefSignalRender`) use this internally, so semantics are identical in and out of React.
+
+```ts
+import { createRefSignal, watchSignals } from 'react-refsignal';
+
+// Multi-signal — fires when anything in deps updates
+const a = createRefSignal(0);
+const b = createRefSignal(0);
+const sub = watchSignals([a, b], () => {
+  console.log('a =', a.current, 'b =', b.current);
+});
+a.update(1); // logs — a fired
+b.update(1); // logs — b fired
+sub.dispose();
+
+// Dynamic identity — the "inner" signal is resolved through an outer one
+const nodes = createRefSignal(new Map<string, RefSignal<number>>());
+const id = 'x';
+
+const sub2 = watchSignals(
+  [nodes],
+  () => {
+    const s = nodes.current.get(id);
+    render(s?.current ?? 0);
+  },
+  {
+    trackSignals: () => {
+      const s = nodes.current.get(id);
+      return s ? [s] : [];
+    },
+    rAF: true,
+  },
+);
+```
+
+**Static vs dynamic:**
+
+- `deps: ReadonlyArray<unknown>` — static set. Subscribed once at setup. Non-signal values in the array are silently ignored. Static-dep fires reconcile the dynamic set before `onFire` runs.
+- `options.trackSignals: () => RefSignal<any>[]` — dynamic set. Re-resolved on every coalesced static fire (never on dynamic fires). Signals entering the set are subscribed, signals leaving are unsubscribed. Ref-equal and content-equal shortcuts make repeated identical returns free.
+
+**`onFire`** takes no arguments — read whatever signals you need via `.current` inside. This is different from `watch()`'s value-delivering listener; it's what allows `watchSignals` to bind to many signals of different types.
+
+**`options`** — full [`WatchOptions`](#watchoptions): `filter`, `throttle`, `debounce`, `maxWait`, `rAF`, and `trackSignals`.
+
+**Returns** a [`WatchHandle`](#watchhandle):
+- `dispose()` — cancels pending timers, unsubscribes all static + dynamic signals. Idempotent.
+- `trackedSignals()` — snapshot of the currently-subscribed dynamic set (static deps not included). Used internally by `useRefSignalRender` for concurrent-safe snapshotting; exposed for advanced users who need similar hashing.
+
+---
+
+### `WatchHandle`
+
+Returned by `watchSignals`. See [`watchSignals`](#watchsignalsdeps-onfire-options) above for field semantics.
+
+```ts
+interface WatchHandle {
+  dispose(): void;
+  trackedSignals(): RefSignal<any>[];
+}
+```
 
 ---
 

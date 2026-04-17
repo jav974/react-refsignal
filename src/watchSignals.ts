@@ -1,12 +1,14 @@
 /**
- * Shared subscription primitive used by React hooks (useRefSignalEffect,
- * useRefSignalMemo, useRefSignalRender) to bind a callback to a set of
- * RefSignals with consistent semantics around timing, filtering, and
- * dynamic (nested-signal) tracking.
+ * `watchSignals` — the non-React primitive for watching a set of RefSignals
+ * with consistent semantics around timing, filtering, and dynamic
+ * (nested-signal) tracking. The React hooks (`useRefSignalEffect`,
+ * `useRefSignalMemo`, `useRefSignalRender`) consume this primitive under the
+ * hood so behavior is identical whether you are in a component or not.
  *
- * Factoring this out of each hook avoids code duplication and guarantees
- * behavior parity across the hooks — adding a new hook later gets the
- * right behavior "for free" by consuming this primitive.
+ * For the single-signal case prefer `watch()` — it returns a cleanup function
+ * and delivers the new value to the listener. `watchSignals` is for multiple
+ * signals and for the dynamic-identity case where the set of signals to watch
+ * is resolved from another signal's current value (via `options.trackSignals`).
  *
  * See `WatchOptions` in `./timing` for option semantics.
  */
@@ -18,16 +20,16 @@ import {
   type WatchOptions,
 } from './timing';
 
-export interface SubscriptionHandle {
+export interface WatchHandle {
   /**
    * Cancels any pending timing-wrapped flush and unsubscribes all
-   * currently-subscribed static and dynamic signals. Idempotent —
+   * currently-watched static and dynamic signals. Idempotent —
    * subsequent calls are no-ops.
    */
   dispose(): void;
 
   /**
-   * Snapshot of signals currently subscribed via `options.trackSignals`.
+   * Snapshot of signals currently watched via `options.trackSignals`.
    * Static deps are NOT included — the caller already has those.
    * Returns an empty array when no dynamic tracking is configured or the
    * set is currently empty. Intended for `useSyncExternalStore`
@@ -39,7 +41,7 @@ export interface SubscriptionHandle {
 }
 
 /**
- * Subscribes `onFire` to the set of RefSignals derived from `deps` (static)
+ * Watches `onFire` on the set of RefSignals derived from `deps` (static)
  * and `options.trackSignals` (dynamic). Returns a handle whose `dispose()`
  * tears down the subscription.
  *
@@ -71,20 +73,33 @@ export interface SubscriptionHandle {
  * `options.filter` gates `onFire` only. Reconcile always runs on static
  * fires so the dynamic subscription set does not go stale under filtering.
  *
- * # Not a hook
+ * @example
+ * // Static multi-signal watch
+ * const sub = watchSignals([a, b, c], () => {
+ *   console.log('something changed');
+ * });
+ * // later:
+ * sub.dispose();
  *
- * This is a plain function. Call it inside a `useEffect` setup; pass your
- * `deps` array into the enclosing `useEffect`'s deps so React identity
- * changes tear down the subscription via `dispose()` and re-create it with
- * a fresh call to `createSubscription` — mirroring the existing pattern in
- * useRefSignalEffect.
+ * @example
+ * // Dynamic-identity: outer is a RefSignal<Map<id, RefSignal<V>>>
+ * const sub = watchSignals(
+ *   [outer],
+ *   () => render(outer.current.get(id)?.current),
+ *   {
+ *     trackSignals: () => {
+ *       const s = outer.current.get(id);
+ *       return s ? [s] : [];
+ *     },
+ *     rAF: true,
+ *   },
+ * );
  */
-export function createSubscription(args: {
-  deps: ReadonlyArray<unknown>;
-  onFire: () => void;
-  options?: WatchOptions;
-}): SubscriptionHandle {
-  const { deps, onFire, options } = args;
+export function watchSignals(
+  deps: ReadonlyArray<unknown>,
+  onFire: () => void,
+  options?: WatchOptions,
+): WatchHandle {
   const trackSignals = options?.trackSignals;
   const filter = options?.filter;
 

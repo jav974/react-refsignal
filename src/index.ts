@@ -40,3 +40,5 @@ export type {
 } from './store/useRefSignalStore';
 export type { EffectOptions } from './hooks/useRefSignalEffect';
 export type { TimingOptions, WatchOptions } from './timing';
+export { watchSignals } from './watchSignals';
+export type { WatchHandle } from './watchSignals';
