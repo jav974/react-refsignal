@@ -2,6 +2,7 @@ export * from './hooks/useRefSignal';
 export * from './hooks/useRefSignalEffect';
 export * from './hooks/useRefSignalMemo';
 export * from './hooks/useRefSignalRender';
+export * from './hooks/useRefSignalFollow';
 export type {
   Listener,
   RefSignal,

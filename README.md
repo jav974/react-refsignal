@@ -162,15 +162,18 @@ Use `createRefSignalContext` instead when you need per-subtree isolation — a s
 
 ## How it compares
 
-| Library | Escapes render cycle | Subscription model | Opt-in required |
+| Library | Subscribe without re-render | Subscription model | Default reactivity |
 |---|---|---|---|
-| react-refsignal | Yes — via `useRefSignalEffect` | Yes | Yes — explicit per component |
-| @preact/signals-react | Yes — patches React internals | Yes | No — automatic |
-| Valtio | No | Proxy-based snapshots | No |
-| Zustand | No | Selector-based | Partial |
-| MobX | No | Observable / reaction | No — `observer()` wrapper |
-| Redux | No | Selector-based | Partial |
-| `useRef` (plain React) | Yes | None | N/A |
+| react-refsignal | Yes — via `useRefSignalEffect` | Direct listeners | Off — opt in via `useRefSignalRender` |
+| @preact/signals-react | Yes — patches React internals | Auto-tracked | On — any signal read in render |
+| Jotai | No | Atom-based | On — `useAtom` triggers re-renders |
+| Zustand | No | Selector-based | Narrowable via selector, but always renders |
+| MobX | No | Observable graph | On within `observer()` wrapper |
+| Valtio | No | Proxy snapshots | On — proxy auto-tracks |
+| Redux | No | Selector-based | Narrowable via selector, but always renders |
+| `useRef` (plain React) | N/A | None | No subscription possible |
+
+react-refsignal is the only entry that can subscribe to a value via a stable React API and not re-render at all.
 
 **The closest alternative is @preact/signals-react.** Both libraries let you update values outside React's render cycle and subscribe to those updates. The difference is how:
 

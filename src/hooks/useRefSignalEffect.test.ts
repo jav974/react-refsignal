@@ -4,6 +4,7 @@
 
 import { act } from 'react';
 import { renderHook } from '@testing-library/react';
+import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalEffect } from './useRefSignalEffect';
 import { useState } from 'react';
@@ -437,5 +438,94 @@ describe('useRefSignalEffect — filter option', () => {
 
     expect(effect).toHaveBeenCalledTimes(2); // mount + leading edge only
     jest.useRealTimers();
+  });
+});
+
+describe('useRefSignalEffect — trackSignals option', () => {
+  it('fires effect when a dynamically-tracked signal updates', () => {
+    const inner = createRefSignal('a');
+    const outer = createRefSignal(0);
+    const effect = jest.fn();
+
+    renderHook(() => {
+      useRefSignalEffect(effect, [outer], {
+        trackSignals: () => [inner],
+        skipMount: true,
+      });
+    });
+
+    act(() => {
+      inner.update('b');
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1);
+  });
+
+  it('swaps dynamic subscription when the static dep fires', () => {
+    const innerA = createRefSignal(0);
+    const innerB = createRefSignal(100);
+    const nodes = createRefSignal(
+      new Map<string, RefSignal<number>>([['a', innerA]]),
+    );
+    const seen: number[] = [];
+
+    renderHook(() => {
+      useRefSignalEffect(
+        () => {
+          seen.push(nodes.current.get('a')?.current ?? -1);
+        },
+        [nodes],
+        {
+          trackSignals: () => {
+            const s = nodes.current.get('a');
+            return s ? [s] : [];
+          },
+          skipMount: true,
+        },
+      );
+    });
+
+    // Swap the tracked inner — triggers reconcile AND effect body via static fire
+    act(() => {
+      const m = new Map(nodes.current);
+      m.set('a', innerB);
+      nodes.update(m);
+    });
+
+    expect(seen).toEqual([100]);
+
+    // innerA no longer drives the effect
+    act(() => {
+      innerA.update(999);
+    });
+    expect(seen).toEqual([100]);
+
+    // innerB does
+    act(() => {
+      innerB.update(42);
+    });
+    expect(seen).toEqual([100, 42]);
+  });
+
+  it('cleanup unsubscribes from dynamically-tracked signals on unmount', () => {
+    const inner = createRefSignal(0);
+    const outer = createRefSignal(0);
+    const effect = jest.fn();
+
+    const { unmount } = renderHook(() => {
+      useRefSignalEffect(effect, [outer], {
+        trackSignals: () => [inner],
+        skipMount: true,
+      });
+    });
+
+    unmount();
+
+    // Post-unmount inner fire must not reach the effect
+    act(() => {
+      inner.update(1);
+    });
+
+    expect(effect).not.toHaveBeenCalled();
   });
 });

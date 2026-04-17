@@ -14,7 +14,8 @@
 - [`WatchOptions`](#watchoptions)
 - [`EffectOptions`](#effectoptions)
 - [`SignalStoreOptions<TStore>`](#signalstoreoptionststore)
-- [`useRefSignalMemo<T>(factory, deps)`](#userefsignalmemot-factory-deps)
+- [`useRefSignalMemo<T>(factory, deps, options?)`](#userefsignalmemot-factory-deps-options)
+- [`useRefSignalFollow<T>(getter, deps, options?)`](#userefsignalfollowt-getter-deps-options)
 - [`createComputedSignal<T>(compute, deps)`](#createcomputedsignalt-compute-deps)
 - [`watch<T>(signal, listener, options?)`](#watcht-signal-listener-options)
 - [`batch(callback, deps?)`](#batchcallback-deps)
@@ -228,17 +229,18 @@ forceUpdate();
 
 ### `WatchOptions`
 
-The options type accepted by `watch()`, `useRefSignalRender`, and as the base for all other options types. Extends [`TimingOptions`](#timingoptions) with a filter gate.
+The options type accepted by `watch()`, `useRefSignalRender`, `useRefSignalMemo`, and as the base for all other options types. Extends [`TimingOptions`](#timingoptions) with a filter gate and dynamic-signal tracking.
 
 ```
 TimingOptions
-  └── WatchOptions       = TimingOptions & { filter? }    ← watch(), useRefSignalRender
-        └── EffectOptions = WatchOptions & { skipMount? }  ← useRefSignalEffect
+  └── WatchOptions       = TimingOptions & { filter?, trackSignals? }  ← watch(), useRefSignalMemo, useRefSignalRender
+        └── EffectOptions = WatchOptions & { skipMount? }               ← useRefSignalEffect
 ```
 
 | Option | Type | Description |
 |---|---|---|
-| `filter` | `() => boolean` | Skip the callback when this returns `false`. |
+| `filter` | `() => boolean` | Skip the callback when this returns `false`. Does not gate the dynamic-tracking reconcile pass — the subscription set stays consistent regardless of filter state. |
+| `trackSignals` | `() => ReadonlyArray<RefSignal<unknown>>` | Resolves additional signals to subscribe to dynamically. Re-evaluated only on fires of static `deps` signals (not on fires of the returned set itself). The diff runs with ref-equal and content-equal shortcuts, so returning a memoized array or the same content each call costs nothing. Use for nested-signal traversal where an inner signal's identity comes from another signal's current value. Prefer [`useRefSignalFollow`](#userefsignalfollowt-getter-deps-options) for the common single-signal case. |
 | `throttle` / `debounce` / `maxWait` / `rAF` | — | See [`TimingOptions`](#timingoptions). |
 
 ---
@@ -307,7 +309,7 @@ useRefSignalStore(gameStore, {
 
 ---
 
-### `useRefSignalMemo<T>(factory, deps)`
+### `useRefSignalMemo<T>(factory, deps, options?)`
 
 Creates a derived signal whose value is computed by `factory` and kept in sync with `deps`.
 
@@ -324,6 +326,27 @@ const result = useRefSignalMemo(
 - Signal deps trigger `factory()` via direct subscription — no React re-render needed.
 - Non-signal deps trigger a React re-render → `factory` is called exactly once via `useMemo`.
 - The returned signal can be subscribed to like any other signal.
+- `options` is a [`WatchOptions`](#watchoptions) — timing, filter, and `trackSignals` for dynamic-signal traversal.
+
+---
+
+### `useRefSignalFollow<T>(getter, deps, options?)`
+
+Produces a stable signal whose value tracks another signal resolved dynamically through `getter`. The inner signal's **identity** may change over time — when any static dep fires, `getter` is re-evaluated and the subscription swaps.
+
+```tsx
+// nodes: RefSignal<Map<string, RefSignal<NodeData>>>
+const node = useRefSignalFollow(
+  () => nodes.current.get(focusedId),
+  [nodes, focusedId],
+);
+// node: RefSignal<NodeData | undefined>
+```
+
+Shorthand for a [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) that reads `getter()?.current` while auto-tracking `getter()` as a dynamic signal. Use it whenever you would otherwise write a memo + matching `trackSignals` pair by hand.
+
+- `getter` may return `null` or `undefined` — the followed signal's value is then `undefined`, no crash.
+- `options` accepts timing and filter from [`WatchOptions`](#watchoptions); `trackSignals` is managed internally and reserved.
 
 ---
 

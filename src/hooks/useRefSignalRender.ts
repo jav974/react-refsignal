@@ -1,6 +1,7 @@
 import { useCallback, useReducer, useRef, useSyncExternalStore } from 'react';
 import { RefSignal } from '../refsignal';
-import { applyTimingOptions } from '../timing';
+import { createSubscription, SubscriptionHandle } from '../subscription';
+import { useWatchArgs } from './useWatchArgs';
 import type { WatchOptions } from '../timing';
 
 /**
@@ -17,11 +18,15 @@ import type { WatchOptions } from '../timing';
  * - The component will re-render whenever any of the signals are updated via `.update()`, `.notifyUpdate()`,
  *   or `.reset()` (which goes through `.update()` internally).
  *   Calling `.notify()` alone does NOT trigger a re-render — it fires listeners but does not change the
- *   snapshot (`lastUpdated` is unchanged), so `useSyncExternalStore` sees no difference.
+ *   snapshot (`lastUpdated` is unchanged), so `useSyncExternalStore` sees no difference. This holds for
+ *   both static deps and dynamically-tracked signals (see `trackSignals`).
  * - If the optional `callback` is specified, a re-render will only occur if it returns `true`.
  *   Note: the callback filter applies to signal-triggered re-renders only. The returned `forceUpdate`
  *   function always re-renders unconditionally, bypassing the callback.
  * - The callback is stored in a ref to avoid unnecessary resubscriptions when it changes.
+ * - `options.trackSignals` enables **nested-signal traversal**: return signals whose identity
+ *   depends on another signal's current value, and the hook will diff-subscribe to them on every
+ *   static dep fire. See {@link WatchOptions} for full semantics.
  *
  * @param deps Array of RefSignal objects to watch for changes.
  * @param callbackOrOptions Optional filter callback (legacy) or {@link WatchOptions} object.
@@ -54,48 +59,45 @@ export function useRefSignalRender(
       ? { filter: callbackOrOptions }
       : (callbackOrOptions ?? {});
 
-  const { filter, throttle, debounce, maxWait, rAF } = options;
+  const { filterRef, subscriptionOptions } = useWatchArgs(options);
 
-  // Store filter in ref to avoid resubscription when it changes
-  const filterRef = useRef(filter);
-  filterRef.current = filter;
+  // Holds the active subscription so getSnapshot can read its tracked set
+  // to sum dynamic signals' lastUpdated alongside static deps.
+  const subRef = useRef<SubscriptionHandle | null>(null);
 
-  // Subscribe function for useSyncExternalStore
-  // IMPORTANT: deps + timing values must be in useCallback deps array so subscribe
-  // identity changes when they change, triggering useSyncExternalStore to resubscribe
+  // Subscribe function for useSyncExternalStore.
+  // Identity changes with deps or subscriptionOptions (timing), triggering resubscription.
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      // Create timing wrapper scoped to this subscription lifetime
-      const wrapper = applyTimingOptions(onStoreChange, options);
-      const notify = wrapper.call;
-
-      const listener = () => {
-        // Apply optional filter before scheduling the re-render
-        if (!filterRef.current || filterRef.current()) {
-          notify();
-        }
-      };
-
-      // Subscribe to all signals
-      deps.forEach((dep) => {
-        dep.subscribe(listener);
+      const sub = createSubscription({
+        deps,
+        onFire: () => {
+          if (filterRef.current && !filterRef.current()) return;
+          onStoreChange();
+        },
+        options: subscriptionOptions,
       });
-
-      // Return cleanup function
+      subRef.current = sub;
       return () => {
-        wrapper.cancel();
-        deps.forEach((dep) => {
-          dep.unsubscribe(listener);
-        });
+        sub.dispose();
+        subRef.current = null;
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps array + timing values: new identity triggers resubscription
-    [...deps, throttle, debounce, maxWait, rAF],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; subscriptionOptions covers timing changes
+    [...deps, subscriptionOptions],
   );
 
-  // Snapshot function: returns a value that changes when any signal updates
+  // Snapshot: sum of lastUpdated across static deps + currently-tracked dynamic
+  // signals. Unchanged on `.notify()` since it does not bump lastUpdated —
+  // avoids spurious re-renders for both static and dynamic sources.
   const getSnapshot = useCallback(() => {
-    return deps.reduce((sum, dep) => sum + dep.lastUpdated, 0);
+    let sum = 0;
+    for (const dep of deps) sum += dep.lastUpdated;
+    const tracked = subRef.current?.trackedSignals();
+    if (tracked) {
+      for (const t of tracked) sum += t.lastUpdated;
+    }
+    return sum;
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps -- deps array is the dependency: new array identity recomputes snapshot
 
   // Server snapshot function for SSR compatibility

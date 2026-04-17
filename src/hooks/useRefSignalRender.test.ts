@@ -4,7 +4,7 @@
 
 import { act } from 'react';
 import { renderHook } from '@testing-library/react';
-import { createRefSignal } from '../refsignal';
+import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalRender } from './useRefSignalRender';
 
@@ -439,5 +439,113 @@ describe('useRefSignalRender — timing options', () => {
     act(() => {
       jest.advanceTimersByTime(200);
     });
+  });
+});
+
+describe('useRefSignalRender — trackSignals option', () => {
+  it('re-renders when a dynamically-tracked signal updates', () => {
+    const outer = createRefSignal(0);
+    const inner = createRefSignal('a');
+    let renderCount = 0;
+
+    renderHook(() => {
+      renderCount++;
+      useRefSignalRender([outer], { trackSignals: () => [inner] });
+    });
+
+    expect(renderCount).toBe(1); // mount
+
+    act(() => {
+      inner.update('b');
+    });
+
+    expect(renderCount).toBe(2);
+  });
+
+  it('swaps dynamic subscription when static dep fires', () => {
+    const innerA = createRefSignal(0);
+    const innerB = createRefSignal(100);
+    const nodes = createRefSignal(
+      new Map<string, RefSignal<number>>([['a', innerA]]),
+    );
+    let renderCount = 0;
+
+    renderHook(() => {
+      renderCount++;
+      useRefSignalRender([nodes], {
+        trackSignals: () => {
+          const s = nodes.current.get('a');
+          return s ? [s] : [];
+        },
+      });
+    });
+
+    expect(renderCount).toBe(1);
+
+    // Swap inner — static fire reconciles, also triggers re-render
+    act(() => {
+      const m = new Map(nodes.current);
+      m.set('a', innerB);
+      nodes.update(m);
+    });
+    expect(renderCount).toBe(2);
+
+    // innerA no longer drives re-renders
+    act(() => {
+      innerA.update(999);
+    });
+    expect(renderCount).toBe(2);
+
+    // innerB does
+    act(() => {
+      innerB.update(42);
+    });
+    expect(renderCount).toBe(3);
+  });
+
+  it('does NOT re-render on .notify() of a dynamically-tracked signal', () => {
+    const outer = createRefSignal(0);
+    const inner = createRefSignal('a');
+    let renderCount = 0;
+
+    renderHook(() => {
+      renderCount++;
+      useRefSignalRender([outer], { trackSignals: () => [inner] });
+    });
+
+    expect(renderCount).toBe(1);
+
+    act(() => {
+      inner.notify(); // fires listeners but does not bump lastUpdated
+    });
+
+    // Snapshot sums inner.lastUpdated (unchanged) → no re-render
+    expect(renderCount).toBe(1);
+
+    // Sanity: .update() DOES re-render
+    act(() => {
+      inner.update('b');
+    });
+    expect(renderCount).toBe(2);
+  });
+
+  it('cleanup unsubscribes from dynamically-tracked signals on unmount', () => {
+    const outer = createRefSignal(0);
+    const inner = createRefSignal('a');
+    let renderCount = 0;
+
+    const { unmount } = renderHook(() => {
+      renderCount++;
+      useRefSignalRender([outer], { trackSignals: () => [inner] });
+    });
+
+    unmount();
+
+    act(() => {
+      inner.update('b');
+    });
+
+    // No further renders after unmount
+    expect(renderCount).toBe(1);
   });
 });

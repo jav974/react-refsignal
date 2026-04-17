@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { isRefSignal } from '../refsignal';
-import { applyTimingOptions } from '../timing';
+import { createSubscription } from '../subscription';
+import { useWatchArgs } from './useWatchArgs';
 import type { WatchOptions } from '../timing';
 
 /**
  * Options for {@link useRefSignalEffect}.
- * Extends {@link WatchOptions} (timing + filter) with hook-specific mount behaviour.
+ * Extends {@link WatchOptions} (timing + filter + trackSignals) with hook-specific mount behaviour.
  */
 export type EffectOptions = WatchOptions & {
   /**
@@ -35,9 +35,13 @@ export type EffectOptions = WatchOptions & {
  * - If the effect function changes between renders (due to captured props/state), the new function
  *   will be used the next time a signal triggers it.
  *
+ * `options.trackSignals` enables **nested-signal traversal**: return signals whose identity
+ * depends on another signal's current value, and the hook will diff-subscribe to them on every
+ * static dep fire. See {@link WatchOptions} for full semantics.
+ *
  * @param effect A function to run when any dependency signal changes.
  * @param deps An array of RefSignal objects (and optionally other values) to watch for changes.
- * @param options Optional {@link EffectOptions} to rate-limit or gate signal-triggered effect runs.
+ * @param options Optional {@link EffectOptions} to rate-limit, gate, or dynamically track signal-triggered effect runs.
  *   The initial mount run is always synchronous and unconditional regardless of timing or filter options.
  *
  * @example
@@ -81,44 +85,32 @@ export function useRefSignalEffect(
   deps: ReadonlyArray<unknown>,
   options?: EffectOptions,
 ) {
-  // Store effect in ref to avoid stale closures when effect function changes
   const effectRef = useRef(effect);
   effectRef.current = effect;
 
-  const { throttle, debounce, maxWait, rAF, filter, skipMount } = options ?? {};
-
-  // Store filter in ref so changes don't trigger resubscription
-  const filterRef = useRef(filter);
-  filterRef.current = filter;
+  const { filterRef, subscriptionOptions } = useWatchArgs(options);
+  const { skipMount } = options ?? {};
 
   useEffect(() => {
-    const runEffect = () => {
-      if (filterRef.current && !filterRef.current()) return;
-      effectRef.current();
-    };
-
-    // Create timing wrapper scoped to this subscription lifetime
-    const wrapper = applyTimingOptions(runEffect, options ?? {});
-    const wrappedEffect = wrapper.call;
-
-    // Subscribe to all RefSignal dependencies
-    deps.forEach((dep) => {
-      if (isRefSignal(dep)) dep.subscribe(wrappedEffect);
+    const sub = createSubscription({
+      deps,
+      onFire: () => {
+        if (filterRef.current && !filterRef.current()) return;
+        effectRef.current();
+      },
+      options: subscriptionOptions,
     });
 
-    // Mount run — synchronous and unconditional, unless skipMount is true
+    // Mount run — synchronous and unconditional, unless skipMount is true.
+    // Bypasses timing and filter so users can count on setup-time side effects.
     const destructor = skipMount ? undefined : effectRef.current();
 
-    // Cleanup function — only runs on unmount or deps change
     return () => {
-      wrapper.cancel();
-      deps.forEach((dep) => {
-        if (isRefSignal(dep)) dep.unsubscribe(wrappedEffect);
-      });
+      sub.dispose();
       if (typeof destructor === 'function') {
         destructor();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; timing primitives trigger resubscription on change
-  }, [...deps, throttle, debounce, maxWait, rAF]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps forwarded from caller; subscriptionOptions covers timing changes
+  }, [...deps, subscriptionOptions]);
 }

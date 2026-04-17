@@ -4,7 +4,7 @@
 
 import { act } from 'react';
 import { renderHook } from '@testing-library/react';
-import { createRefSignal } from '../refsignal';
+import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalMemo } from './useRefSignalMemo';
 
@@ -124,5 +124,97 @@ describe('useRefSignalMemo', () => {
     expect(listener).toHaveBeenCalledWith(8);
 
     result.current.unsubscribe(listener);
+  });
+
+  // ─── trackSignals — nested-signal traversal ────────────────────────────
+
+  it('follows a dynamically-tracked signal via trackSignals', () => {
+    const inner = createRefSignal(10);
+    const nodes = createRefSignal(new Map([['a', inner]]));
+
+    const { result } = renderHook(() =>
+      useRefSignalMemo(() => nodes.current.get('a')?.current ?? 0, [nodes], {
+        trackSignals: () => {
+          const s = nodes.current.get('a');
+          return s ? [s] : [];
+        },
+      }),
+    );
+
+    expect(result.current.current).toBe(10);
+
+    act(() => {
+      inner.update(20);
+    });
+
+    expect(result.current.current).toBe(20);
+  });
+
+  it('swaps dynamic subscription when the static dep fires (identity swap)', () => {
+    const innerA = createRefSignal(1);
+    const innerB = createRefSignal(100);
+    const nodes = createRefSignal(
+      new Map<string, RefSignal<number>>([['a', innerA]]),
+    );
+
+    const { result } = renderHook(() =>
+      useRefSignalMemo(() => nodes.current.get('a')?.current ?? 0, [nodes], {
+        trackSignals: () => {
+          const s = nodes.current.get('a');
+          return s ? [s] : [];
+        },
+      }),
+    );
+
+    expect(result.current.current).toBe(1);
+
+    // Swap inner signal — fire static dep so reconcile picks up the new identity
+    act(() => {
+      const m = new Map(nodes.current);
+      m.set('a', innerB);
+      nodes.update(m);
+    });
+
+    expect(result.current.current).toBe(100);
+
+    // innerA should no longer drive updates
+    act(() => {
+      innerA.update(999);
+    });
+    expect(result.current.current).toBe(100);
+
+    // innerB now drives updates
+    act(() => {
+      innerB.update(42);
+    });
+    expect(result.current.current).toBe(42);
+  });
+
+  it('filter skips the factory recompute but keeps dynamic tracking consistent', () => {
+    const signal = createRefSignal(1);
+    const factory = jest.fn(() => signal.current * 10);
+    let allow = false;
+
+    const { result } = renderHook(() =>
+      useRefSignalMemo(factory, [signal], { filter: () => allow }),
+    );
+
+    expect(result.current.current).toBe(10); // mount
+    expect(factory).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      signal.update(2);
+    });
+
+    // filter=false → value unchanged, factory NOT called for the fire
+    expect(result.current.current).toBe(10);
+    expect(factory).toHaveBeenCalledTimes(1);
+
+    allow = true;
+    act(() => {
+      signal.update(3);
+    });
+    expect(result.current.current).toBe(30);
+    expect(factory).toHaveBeenCalledTimes(2);
   });
 });

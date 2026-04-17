@@ -4,6 +4,9 @@
  * to rate-limit re-renders, effects, storage writes, and cross-tab messages.
  */
 
+// Type-only import — avoids a runtime circular dep with `refsignal.ts`.
+import type { RefSignal } from './refsignal';
+
 /**
  * Discriminated union of mutually exclusive timing strategies.
  * Prevents invalid combinations such as `throttle + debounce`, `rAF + throttle`,
@@ -29,15 +32,28 @@ export interface TimingWrapper {
 
 /**
  * Options accepted by {@link watch} and all React hooks that subscribe to signals.
- * Extends {@link TimingOptions} with an optional filter gate.
+ * Extends {@link TimingOptions} with an optional filter gate and dynamic-tracking hook.
  *
- * - `filter` — skip the callback when this returns `false`
+ * - `filter` — skip the callback when this returns `false`. Does NOT gate
+ *   the dynamic-tracking reconcile pass — subscription state stays consistent
+ *   regardless of filter state.
  * - timing fields — rate-limit how often the callback fires
+ * - `trackSignals` — resolves additional RefSignals to subscribe to dynamically.
+ *   Re-evaluated only on fires of RefSignals in the static `deps` array (static
+ *   fires), never on fires of the dynamic set itself. The subscription diffs
+ *   the returned array against the previously-tracked set and performs delta
+ *   subscribe/unsubscribe. Two built-in shortcuts avoid wasteful work:
+ *     1. Ref-equal — returning the same array reference skips the diff entirely.
+ *     2. Content-equal — same length + same elements in same order skips the
+ *        diff. Safe to build a fresh array per call; stable content is rewarded.
+ *   Keep this function cheap — it runs synchronously in the static-dep fire path.
  *
  * {@link EffectOptions} extends this with `skipMount` for hook mount semantics.
  */
 export type WatchOptions = TimingOptions & {
   filter?: () => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches `createComputedSignal` / `batch` signal-array conventions
+  trackSignals?: () => ReadonlyArray<RefSignal<any>>;
 };
 
 /**
