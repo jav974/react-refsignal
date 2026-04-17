@@ -54,11 +54,25 @@ type BaseStoreOptions<TStore> = TimingOptions & {
   filter?: (store: StoreSnapshot<TStore>) => boolean;
 };
 
-export type SignalStoreOptions<TStore> = BaseStoreOptions<TStore> &
-  (
-    | { renderOn?: Array<RefSignalKeys<TStore>> | 'all'; unwrap?: false }
-    | { renderOn: Array<RefSignalKeys<TStore>> | 'all'; unwrap: true }
-  );
+/**
+ * Options accepted by `useRefSignalStore`. Shape depends on `unwrap`:
+ * - `unwrap: true` (Unwrapped variant) requires `renderOn` — there's no way
+ *   to produce setters for signals React isn't subscribed to.
+ * - `unwrap` omitted/false (Plain variant) makes `renderOn` optional.
+ */
+export type SignalStoreOptionsUnwrapped<TStore> = BaseStoreOptions<TStore> & {
+  renderOn: Array<RefSignalKeys<TStore>> | 'all';
+  unwrap: true;
+};
+
+export type SignalStoreOptionsPlain<TStore> = BaseStoreOptions<TStore> & {
+  renderOn?: Array<RefSignalKeys<TStore>> | 'all';
+  unwrap?: false;
+};
+
+export type SignalStoreOptions<TStore> =
+  | SignalStoreOptionsPlain<TStore>
+  | SignalStoreOptionsUnwrapped<TStore>;
 
 // ─── Internal helper ───────────────────────────────────────────────────────────
 
@@ -101,13 +115,29 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * // Rate-limit re-renders
  * const store = useRefSignalStore(gameStore, { renderOn: ['score'], throttle: 100 });
  */
-export function useRefSignalStore<
-  TStore extends Record<string, unknown>,
-  TOptions extends SignalStoreOptions<TStore> | undefined = undefined,
->(
+// Overloads: TS overload resolution preserves literal types in inline object
+// literals better than a single signature with a conditional return type —
+// avoids the "unwrap: true is widened to boolean" footgun across IDEs.
+// Order matters: the two literal-narrowed overloads come first so inline
+// `{ unwrap: true, renderOn: [...] }` resolves to the unwrapped return type.
+// The union overload is the fallback for callers that hold a pre-typed
+// `SignalStoreOptions<TStore>` variable (e.g. context-hook wrappers).
+export function useRefSignalStore<TStore extends Record<string, unknown>>(
   store: TStore,
-  options?: TOptions,
-): TOptions extends { unwrap: true } ? UnwrappedStore<TStore> : TStore {
+  options: SignalStoreOptionsUnwrapped<TStore>,
+): UnwrappedStore<TStore>;
+export function useRefSignalStore<TStore extends Record<string, unknown>>(
+  store: TStore,
+  options?: SignalStoreOptionsPlain<TStore>,
+): TStore;
+export function useRefSignalStore<TStore extends Record<string, unknown>>(
+  store: TStore,
+  options?: SignalStoreOptions<TStore>,
+): TStore | UnwrappedStore<TStore>;
+export function useRefSignalStore<TStore extends Record<string, unknown>>(
+  store: TStore,
+  options?: SignalStoreOptions<TStore>,
+): TStore | UnwrappedStore<TStore> {
   // ── Resolve which signals to subscribe to ─────────────────────────────────
   let signals: RefSignal[];
   if (options?.renderOn === 'all') {
@@ -172,9 +202,5 @@ export function useRefSignalStore<
     [store, settersMap, snapshot],
   );
 
-  return (options?.unwrap ? unwrappedProxy : store) as TOptions extends {
-    unwrap: true;
-  }
-    ? UnwrappedStore<TStore>
-    : TStore;
+  return options?.unwrap ? unwrappedProxy : store;
 }
