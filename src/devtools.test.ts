@@ -210,6 +210,60 @@ describe('DevTools', () => {
     }
   });
 
+  it('refuses to connect to Redux DevTools in production builds', () => {
+    // Avoid state leakage into prod bundles — if `reduxDevTools: true` is
+    // left enabled by accident, the config is ignored and a warning is logged.
+    const mockConnect = jest.fn();
+    const originalExtension = (window as any).__REDUX_DEVTOOLS_EXTENSION__;
+    (window as any).__REDUX_DEVTOOLS_EXTENSION__ = { connect: mockConnect };
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      devtools.reset();
+      configureDevTools({ reduxDevTools: true });
+
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Redux DevTools is disabled in production'),
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      warnSpy.mockRestore();
+      (window as any).__REDUX_DEVTOOLS_EXTENSION__ = originalExtension;
+    }
+  });
+
+  it('connects to Redux DevTools in non-production environments', () => {
+    // Sanity check — the NODE_ENV guard only triggers on 'production'.
+    const mockInit = jest.fn();
+    const mockSubscribe = jest.fn();
+    const mockConnect = jest.fn(() => ({
+      init: mockInit,
+      subscribe: mockSubscribe,
+      send: jest.fn(),
+    }));
+    const originalExtension = (window as any).__REDUX_DEVTOOLS_EXTENSION__;
+    (window as any).__REDUX_DEVTOOLS_EXTENSION__ = { connect: mockConnect };
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+
+    try {
+      devtools.reset();
+      configureDevTools({ reduxDevTools: true });
+
+      expect(mockConnect).toHaveBeenCalled();
+      expect(mockInit).toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      (window as any).__REDUX_DEVTOOLS_EXTENSION__ = originalExtension;
+    }
+  });
+
   it('should include timestamps in update history', () => {
     const signal = createRefSignal(0);
     const beforeUpdate = Date.now();

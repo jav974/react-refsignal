@@ -13,6 +13,7 @@
 - [`useRefSignalRender(deps, options?)`](#userefsignalrender-deps-options)
 - [`WatchOptions`](#watchoptions)
 - [`EffectOptions`](#effectoptions)
+- [`TimingOptions`](#timingoptions)
 - [`SignalStoreOptions<TStore>`](#signalstoreoptionststore)
 - [`useRefSignalMemo<T>(factory, deps, options?)`](#userefsignalmemot-factory-deps-options)
 - [`useRefSignalFollow<T>(getter, deps, options?)`](#userefsignalfollowt-getter-deps-options)

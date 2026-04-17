@@ -628,6 +628,76 @@ describe('persist() — edge cases', () => {
   });
 });
 
+// ─── Envelope structural validation ──────────────────────────────────────────
+
+describe('persist() — envelope validation', () => {
+  const invalidPayloads: { label: string; raw: string }[] = [
+    { label: 'null', raw: 'null' },
+    { label: 'number primitive', raw: '42' },
+    { label: 'string primitive', raw: '"hello"' },
+    { label: 'boolean primitive', raw: 'true' },
+    { label: 'object missing v', raw: JSON.stringify({ data: { score: 5 } }) },
+    { label: 'object missing data', raw: JSON.stringify({ v: 1 }) },
+    {
+      label: 'v is a string, not a number',
+      raw: JSON.stringify({ v: '1', data: { score: 5 } }),
+    },
+    { label: 'array at top level', raw: JSON.stringify([1, 2, 3]) },
+  ];
+
+  for (const { label, raw } of invalidPayloads) {
+    it(`signal-level: rejects ${label} and keeps default`, async () => {
+      const storage = mockStorage();
+      storage.store['sig'] = raw;
+
+      const signal = createRefSignal(0, {
+        persist: { key: 'sig', storage },
+      });
+      await flush();
+
+      expect(signal.current).toBe(0);
+    });
+
+    it(`store-level: rejects ${label} and keeps defaults`, async () => {
+      const storage = mockStorage();
+      storage.store['game'] = raw;
+
+      const factory = persist(() => ({ score: createRefSignal(0) }), {
+        key: 'game',
+        storage,
+      });
+      const store = factory();
+      await flush();
+
+      expect(store.score.current).toBe(0);
+    });
+  }
+
+  // Store-level additionally requires data to be a non-null object, since it
+  // reads `sk in data` to pick out per-signal values.
+  const invalidStoreData: { label: string; data: unknown }[] = [
+    { label: 'data is null', data: null },
+    { label: 'data is a number', data: 42 },
+    { label: 'data is a string', data: 'hello' },
+  ];
+
+  for (const { label, data } of invalidStoreData) {
+    it(`store-level: rejects envelope where ${label} and keeps defaults`, async () => {
+      const storage = mockStorage();
+      storage.store['game'] = JSON.stringify({ v: 1, data });
+
+      const factory = persist(() => ({ score: createRefSignal(0) }), {
+        key: 'game',
+        storage,
+      });
+      const store = factory();
+      await flush();
+
+      expect(store.score.current).toBe(0);
+    });
+  }
+});
+
 // ─── usePersist() ─────────────────────────────────────────────────────────────
 
 describe('usePersist()', () => {

@@ -47,8 +47,20 @@ class DevTools implements DevToolsAdapter {
   configure(config: Partial<DevToolsConfig>): void {
     this.config = { ...this.config, ...config };
 
-    // Initialize Redux DevTools if enabled
+    // Initialize Redux DevTools if enabled.
+    // Production guard: every signal update is forwarded to the attached
+    // DevTools extension, so leaving this enabled in a prod build would
+    // leak application state. Refuse to connect and warn the user.
     if (this.config.reduxDevTools && typeof window !== 'undefined') {
+      if (
+        typeof process !== 'undefined' &&
+        process.env.NODE_ENV === 'production'
+      ) {
+        console.warn(
+          '[react-refsignal] Redux DevTools is disabled in production builds to avoid leaking signal state. Gate `reduxDevTools: true` behind a dev-only check.',
+        );
+        return;
+      }
       const ext = (
         window as unknown as {
           __REDUX_DEVTOOLS_EXTENSION__?: ReduxDevToolsExtension;

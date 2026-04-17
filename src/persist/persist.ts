@@ -14,6 +14,22 @@ import { applyTimingOptions, type TimingOptions } from '../timing';
 
 type Envelope = { v: number; data: unknown };
 
+/**
+ * Structural guard for deserialized payloads. Any storage value that does not
+ * pass this check is treated as corrupt — protects against partial writes,
+ * key collisions with other apps, and custom deserializers returning the
+ * wrong shape.
+ */
+function isEnvelope(x: unknown): x is Envelope {
+  return (
+    typeof x === 'object' &&
+    x !== null &&
+    'v' in x &&
+    typeof (x as { v: unknown }).v === 'number' &&
+    'data' in x
+  );
+}
+
 // ─── Signal-level setup ───────────────────────────────────────────────────────
 
 function setupSignalPersist(
@@ -43,8 +59,8 @@ function setupSignalPersist(
   void storage.get(key).then((raw) => {
     if (raw !== null && signal.lastUpdated === counterAtSetup) {
       try {
-        const envelope = deserialize(raw) as Envelope;
-        if (!('data' in (envelope as object))) throw new Error('corrupt');
+        const envelope: unknown = deserialize(raw);
+        if (!isEnvelope(envelope)) throw new Error('corrupt');
         const value =
           migrate && envelope.v !== version
             ? migrate(envelope.data, envelope.v)
@@ -116,7 +132,11 @@ export function setupPersist<TStore extends Record<string, unknown>>(
   void storage.get(key).then((raw) => {
     if (raw !== null) {
       try {
-        const envelope = deserialize(raw) as Envelope;
+        const envelope: unknown = deserialize(raw);
+        if (!isEnvelope(envelope)) throw new Error('corrupt');
+        if (typeof envelope.data !== 'object' || envelope.data === null) {
+          throw new Error('corrupt');
+        }
         let data = envelope.data as Record<string, unknown>;
 
         if (migrate && envelope.v !== version) {

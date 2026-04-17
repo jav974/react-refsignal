@@ -357,3 +357,15 @@ No configuration needed. The fallback is transparent.
 **`one-to-many` and page reload.** If the broadcaster tab reloads, the remaining tabs re-elect within one `heartbeatTimeout`. During this window, no outgoing updates are sent. Size `heartbeatTimeout` accordingly for your use case.
 
 **Persist + broadcast composition.** When `persist` and `broadcast` are composed on the same store, hydration and state-handoff are safe to use together. Persist snapshots each signal's update counter at setup time — if a `state-handoff` (or any other update) arrives before the storage read resolves, hydration is skipped for that signal and the in-memory state is preserved.
+
+## Threat model
+
+Broadcast's trust boundary is the browser origin. `BroadcastChannel` and the `localStorage` fallback transport are both same-origin-only, and the library does not authenticate or sign messages — any same-origin script can emit a message and have it applied.
+
+**In practice this means:**
+
+- **Do not broadcast security-sensitive state** that a compromised same-origin script shouldn't be able to modify. Examples to avoid: auth/session flags, permission states, signed identifiers consumed by server calls.
+- **Only broadcast UI state** and data whose worst-case cross-tab injection is a UI glitch (theme, sidebar width, draft text, in-flight workflow state).
+- If a same-origin tab is compromised (XSS, malicious browser extension with content-script access), the attacker can already do far more than broadcast tampering — but broadcast amplifies their reach into other tabs on the same origin.
+
+This is the same threat model as `localStorage`, `sessionStorage`, and `BroadcastChannel` themselves. The library adds no extra protection over what the browser provides.
