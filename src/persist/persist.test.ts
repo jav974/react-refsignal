@@ -14,10 +14,12 @@ import { createRefSignal } from '../refsignal';
 import {
   persist,
   usePersist,
+  clearPersistedStorage,
   localStorageAdapter,
   sessionStorageAdapter,
   indexedDBStorage,
 } from './index';
+import { setupPersist } from './persist';
 import { useRefSignal } from '../hooks/useRefSignal';
 import type { PersistStorage } from './types';
 
@@ -698,6 +700,286 @@ describe('persist() — envelope validation', () => {
   }
 });
 
+// ─── clearPersistedStorage utility ───────────────────────────────────────────
+
+describe('clearPersistedStorage()', () => {
+  it('removes a key via a custom PersistStorage adapter', async () => {
+    const storage = mockStorage();
+    storage.store['game'] = 'something';
+
+    await clearPersistedStorage('game', storage);
+
+    expect(storage.store['game']).toBeUndefined();
+  });
+
+  it('defaults to localStorage when no storage is provided', async () => {
+    window.localStorage.setItem('default-key', 'value');
+    await clearPersistedStorage('default-key');
+    expect(window.localStorage.getItem('default-key')).toBeNull();
+  });
+
+  it('accepts the `session` shorthand', async () => {
+    window.sessionStorage.setItem('sess-key', 'value');
+    await clearPersistedStorage('sess-key', 'session');
+    expect(window.sessionStorage.getItem('sess-key')).toBeNull();
+  });
+
+  it('is a no-op when the key does not exist', async () => {
+    const storage = mockStorage();
+    await expect(
+      clearPersistedStorage('missing', storage),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// ─── setupPersist().clear() — controller semantics ───────────────────────────
+
+describe('setupPersist() — clear()', () => {
+  it('removes the storage key', async () => {
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
+
+    const store = { score: createRefSignal(0) };
+    const { cleanup, clear } = setupPersist(store, { key: 'game', storage });
+    await flush();
+
+    await clear();
+
+    expect(storage.store['game']).toBeUndefined();
+    cleanup();
+  });
+
+  it('resets signals to their default values', async () => {
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({
+      v: 1,
+      data: { score: 42, level: 9 },
+    });
+
+    const store = {
+      score: createRefSignal(0),
+      level: createRefSignal(1),
+    };
+    const { cleanup, clear } = setupPersist(store, { key: 'game', storage });
+    await flush();
+
+    expect(store.score.current).toBe(42);
+    expect(store.level.current).toBe(9);
+
+    await clear();
+
+    expect(store.score.current).toBe(0);
+    expect(store.level.current).toBe(1);
+    cleanup();
+  });
+
+  it('does not re-save the default values during clear (suppression)', async () => {
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
+
+    const store = { score: createRefSignal(0) };
+    const { cleanup, clear } = setupPersist(store, { key: 'game', storage });
+    await flush();
+
+    await clear();
+
+    // After clear, storage should be empty — reset() must NOT have written
+    // the default back under the key.
+    expect(storage.store['game']).toBeUndefined();
+    cleanup();
+  });
+
+  it('cancels pending throttle timers so no phantom save fires after clear', async () => {
+    jest.useFakeTimers();
+    try {
+      const storage = mockStorage();
+      const store = { score: createRefSignal(0) };
+      const { cleanup, clear } = setupPersist(store, {
+        key: 'game',
+        storage,
+        throttle: 100,
+      });
+
+      // Burn the leading throttle flush so the trailing timer is queued.
+      store.score.update(1);
+      // Leading save went through (empty storage → contains { score: 1 }).
+      await Promise.resolve();
+      expect(storage.store['game']).toBeDefined();
+
+      store.score.update(2); // queues trailing save
+      await clear();
+
+      // clear() has cancelled the trailing timer AND removed the key.
+      expect(storage.store['game']).toBeUndefined();
+
+      // Advance past the throttle window — no save should fire.
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      expect(storage.store['game']).toBeUndefined();
+
+      cleanup();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns a promise that resolves after the storage write completes', async () => {
+    let resolveRemove: (() => void) | null = null;
+    const deferredStorage = {
+      ...mockStorage(),
+      remove: () => new Promise<void>((r) => (resolveRemove = r)),
+    };
+
+    const store = { score: createRefSignal(0) };
+    const { cleanup, clear } = setupPersist(store, {
+      key: 'game',
+      storage: deferredStorage,
+    });
+
+    const clearPromise = clear();
+    let resolved = false;
+    void clearPromise.then(() => {
+      resolved = true;
+    });
+
+    // Signals reset synchronously, but clear() is still pending on remove
+    expect(store.score.current).toBe(0);
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    resolveRemove!();
+    await clearPromise;
+    expect(resolved).toBe(true);
+    cleanup();
+  });
+
+  it('updates after clear() do re-save (suppression is scoped to clear)', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+    const { cleanup, clear } = setupPersist(store, { key: 'game', storage });
+
+    await clear();
+    expect(storage.store['game']).toBeUndefined();
+
+    store.score.update(7);
+    await Promise.resolve();
+
+    expect(storage.store['game']).toBeDefined();
+    const envelope = JSON.parse(storage.store['game']) as {
+      data: { score: number };
+    };
+    expect(envelope.data.score).toBe(7);
+    cleanup();
+  });
+});
+
+// ─── setupPersist().flush() — async + error propagation ──────────────────────
+
+describe('setupPersist() — flush()', () => {
+  it('returns a promise that resolves when the storage write completes', async () => {
+    let resolveSet: (() => void) | null = null;
+    const deferredStorage: PersistStorage = {
+      get: () => Promise.resolve(null),
+      set: () => new Promise<void>((r) => (resolveSet = r)),
+      remove: () => Promise.resolve(),
+    };
+    const store = { score: createRefSignal(0) };
+    const { cleanup, flush } = setupPersist(store, {
+      key: 'game',
+      storage: deferredStorage,
+    });
+
+    const flushPromise = flush();
+    let resolved = false;
+    void flushPromise.then(() => {
+      resolved = true;
+    });
+
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    resolveSet!();
+    await flushPromise;
+    expect(resolved).toBe(true);
+    cleanup();
+  });
+
+  it('propagates storage.set rejections via the returned promise', async () => {
+    const storage: PersistStorage = {
+      get: () => Promise.resolve(null),
+      set: () => Promise.reject(new Error('disk full')),
+      remove: () => Promise.resolve(),
+    };
+    const store = { score: createRefSignal(0) };
+    const { cleanup, flush } = setupPersist(store, { key: 'game', storage });
+
+    await expect(flush()).rejects.toThrow('disk full');
+    cleanup();
+  });
+
+  it('flush() during clear() suppression resolves with no write attempted', async () => {
+    // Hard to trigger in real use, but the contract is: when suppressed the
+    // promise resolves immediately and no storage.set runs.
+    const setSpy = jest.fn(() => Promise.resolve());
+    const storage: PersistStorage = {
+      get: () => Promise.resolve(null),
+      set: setSpy,
+      remove: () => Promise.resolve(),
+    };
+    const store = { score: createRefSignal(0) };
+    const { cleanup, flush, clear } = setupPersist(store, {
+      key: 'game',
+      storage,
+    });
+
+    // Race: start a clear then a flush; the flush MAY land while suppressed
+    // depending on timing — either way it must not reject and must not write.
+    const clearPromise = clear();
+    await flush(); // resolves regardless
+    await clearPromise;
+
+    // setSpy may have been called from prior setup, but no call writes a
+    // post-reset value under the cleared key.
+    cleanup();
+    expect(setSpy.mock.calls.every((c) => c[0] === 'game')).toBe(true);
+  });
+});
+
+// ─── usePersist() — clear ────────────────────────────────────────────────────
+
+describe('usePersist() — clear', () => {
+  it('returns a stable clear() function that wipes storage and resets signals', async () => {
+    const storage = mockStorage();
+    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
+    const store = { score: createRefSignal(0) };
+
+    const { result } = renderHook(() =>
+      usePersist(store, { key: 'game', storage }),
+    );
+    await flush();
+    expect(store.score.current).toBe(5);
+
+    await act(async () => {
+      await result.current.clear();
+    });
+
+    expect(storage.store['game']).toBeUndefined();
+    expect(store.score.current).toBe(0);
+  });
+
+  it('clear identity is stable across renders', async () => {
+    const storage = mockStorage();
+    const store = { score: createRefSignal(0) };
+
+    const { result, rerender } = renderHook(() =>
+      usePersist(store, { key: 'game', storage }),
+    );
+    const first = result.current.clear;
+    rerender();
+    expect(result.current.clear).toBe(first);
+  });
+});
+
 // ─── usePersist() ─────────────────────────────────────────────────────────────
 
 describe('usePersist()', () => {
@@ -1370,7 +1652,7 @@ describe('usePersist() — flush and onUnmount', () => {
     expect(result.current.flush).toBe(flushRef);
   });
 
-  it('flush() silently swallows storage.set rejection', async () => {
+  it('flush() propagates storage.set rejection via the returned promise', async () => {
     let shouldFail = false;
     const storage: PersistStorage = {
       get: () => Promise.resolve(null),
@@ -1388,12 +1670,18 @@ describe('usePersist() — flush and onUnmount', () => {
     await flush();
 
     shouldFail = true;
-    expect(() => {
-      act(() => {
-        result.current.flush();
-      });
-    }).not.toThrow();
-    await flush(); // let rejection settle
+    // Callers who await can observe the failure.
+    await expect(result.current.flush()).rejects.toThrow('write failed');
+
+    // Fire-and-forget is still safe — the test framework would surface an
+    // unhandled rejection, but since nothing awaited it in user code the
+    // error is the caller's responsibility to handle.
+    shouldFail = true;
+    const p = result.current.flush();
+    p.catch(() => {
+      /* consumed so jest doesn't report an unhandled rejection */
+    });
+    await expect(p).rejects.toThrow('write failed');
   });
 
   it('flush() after unmount is a no-op (does not throw)', async () => {

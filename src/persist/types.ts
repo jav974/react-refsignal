@@ -68,10 +68,18 @@ type BaseOptions<TStore> = PersistCommonOptions & {
    * storage immediately, bypassing `filter` and any pending timing.
    * Use to combine a final storage write with a backend save, or to guarantee
    * a pending debounce/throttle write is not lost on unmount.
+   *
+   * `flush` returns a `Promise<void>` that resolves when the write completes
+   * and rejects if the storage adapter throws. React cleanup functions
+   * cannot be async, so it is safe to call `flush()` fire-and-forget here.
+   *
    * @example
    * onUnmount: (snapshot, flush) => { flush(); saveToServer(snapshot); }
    */
-  onUnmount?: (snapshot: StoreSnapshot<TStore>, flush: () => void) => void;
+  onUnmount?: (
+    snapshot: StoreSnapshot<TStore>,
+    flush: () => Promise<void>,
+  ) => void;
 };
 
 export type PersistOptions<TStore> = TimingOptions &

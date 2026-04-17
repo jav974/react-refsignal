@@ -9,5 +9,9 @@ export type {
   SignalPersistInput,
   StorageConfig,
 } from './types';
-export { localStorageAdapter, sessionStorageAdapter } from './storage';
+export {
+  clearPersistedStorage,
+  localStorageAdapter,
+  sessionStorageAdapter,
+} from './storage';
 export { usePersist } from './usePersist';

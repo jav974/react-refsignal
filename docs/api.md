@@ -776,10 +776,11 @@ const { GameProvider, useGameContext } = createRefSignalContext(
   ),
 );
 
-// Hook variant — returns { isHydrated, flush }
-const { isHydrated, flush } = usePersist(store, { key: 'game', keys: ['score', 'level'] });
-// isHydrated: RefSignal<boolean> — true once storage read resolves
-// flush():    write current state immediately, bypassing filter and timing
+// Hook variant — returns { isHydrated, flush, clear }
+const { isHydrated, flush, clear } = usePersist(store, { key: 'game', keys: ['score', 'level'] });
+// isHydrated: RefSignal<boolean>    — true once storage read resolves
+// flush():    () => Promise<void>    — write current state immediately; awaitable; rejects on adapter failure
+// clear():    () => Promise<void>    — wipe storage + reset all signals to defaults
 ```
 
 **Versioning and migration:**
@@ -822,6 +823,22 @@ usePersist(store, {
   filter: () => false,
   onUnmount: (_, flush) => flush(),
 });
+```
+
+**Clearing persisted data:**
+
+```ts
+// Controller-level (recommended when you have a usePersist / setupPersist handle)
+const { clear } = usePersist(store, { key: 'game' });
+await clear(); // cancels pending timers, resets signals, wipes storage key
+
+// Low-level (for signal-level persist or anywhere you only have the key)
+import { clearPersistedStorage } from 'react-refsignal/persist';
+await clearPersistedStorage('game');                    // localStorage (default)
+await clearPersistedStorage('user', 'session');          // shorthand
+await clearPersistedStorage('data', myAdapter);          // custom
+// Note: only touches storage. Does not reset in-memory signals, and if
+// persist is active a queued timer could re-populate the key right after.
 ```
 
 See the [full reference](persist.md#api-reference) for all options including custom storage adapters, `indexedDBStorage()`, `onHydrated`, `serialize`/`deserialize`, and timing options.

@@ -101,7 +101,11 @@ function setupSignalPersist(
 export function setupPersist<TStore extends Record<string, unknown>>(
   store: TStore,
   options: PersistOptions<TStore>,
-): { cleanup: () => void; flush: () => void } {
+): {
+  cleanup: () => void;
+  flush: () => Promise<void>;
+  clear: () => Promise<void>;
+} {
   const {
     key,
     keys,
@@ -169,19 +173,24 @@ export function setupPersist<TStore extends Record<string, unknown>>(
     return snapshot;
   };
 
+  // Suppression flag used by `clear()` to short-circuit saves during the
+  // reset pass, so the default values do not get written back to storage.
+  let suppressed = false;
+
   // Bypasses filter and timing — always writes the current state immediately.
-  const doFlush = () => {
-    storage
-      .set(
-        key,
-        serialize({ v: version, data: buildSnapshot() } satisfies Envelope),
-      )
-      .catch(() => {
-        // write failed — silently skip
-      });
+  // Returns the underlying storage promise so callers can await completion
+  // and catch write failures. Fire-and-forget is still fine (unhandled
+  // rejections from silent adapters stay silent to the caller).
+  const doFlush = (): Promise<void> => {
+    if (suppressed) return Promise.resolve();
+    return storage.set(
+      key,
+      serialize({ v: version, data: buildSnapshot() } satisfies Envelope),
+    );
   };
 
   const save = () => {
+    if (suppressed) return;
     const snapshot = buildSnapshot();
     if (filter && !filter(snapshot as StoreSnapshot<TStore>)) return;
     storage
@@ -196,6 +205,30 @@ export function setupPersist<TStore extends Record<string, unknown>>(
     watch(store[k] as RefSignal, wrapper.call),
   );
 
+  const doClear = async (): Promise<void> => {
+    // Preventing a re-save during clear requires three barriers — each handles
+    // a different save path:
+    //   1. `suppressed = true` stops synchronous saves (no-timing, throttle
+    //      leading edge) from writing defaults as reset() fires.
+    //   2. `wrapper.cancel()` BEFORE reset drops any previously-queued
+    //      throttle/debounce timer.
+    //   3. `wrapper.cancel()` AFTER reset drops any NEW timer that reset()
+    //      itself queued (debounce always does; throttle does if still
+    //      within the window).
+    // The storage remove runs last so no write can race after it.
+    suppressed = true;
+    try {
+      wrapper.cancel();
+      for (const k of signalKeys) {
+        (store[k] as RefSignal).reset();
+      }
+      wrapper.cancel();
+    } finally {
+      suppressed = false;
+    }
+    await storage.remove(key);
+  };
+
   return {
     cleanup: () => {
       if (onUnmount) {
@@ -207,6 +240,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
       });
     },
     flush: doFlush,
+    clear: doClear,
   };
 }
 

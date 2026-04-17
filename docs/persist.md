@@ -108,9 +108,10 @@ All three signals are stored under a single key as one JSON blob. When the page 
 
 Use `usePersist` when your Provider needs to be a full React component — for example, when the storage key is derived from a prop (`userId`, `roomId`, route param), when you want to gate rendering until hydration completes, or when you need to combine persistence with other hooks such as data fetching, auth, or a WebSocket subscription. The hook ties persistence to the Provider's lifetime: subscriptions are created on mount and torn down on unmount, so no writes occur after the component leaves the tree.
 
-Returns `{ isHydrated, flush }`:
+Returns `{ isHydrated, flush, clear }`:
 - `isHydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes. Use it to gate rendering.
-- `flush` — writes the current store state to storage immediately, bypassing `filter` and any pending throttle/debounce timer.
+- `flush` — writes the current store state to storage immediately, bypassing `filter` and any pending throttle/debounce timer. Returns a `Promise<void>` that resolves when the write completes; rejects if the storage adapter throws. Fire-and-forget is still valid — the returned promise is only interesting for callers that need to await completion (e.g., before navigation) or detect write failures.
+- `clear` — removes the storage key and resets all persisted signals to their defaults. Cancels pending timers and suppresses the save-on-reset cycle so storage stays empty. Returns a `Promise<void>` that resolves once the storage write is complete.
 
 ```tsx
 import { createRefSignalContextHook, useRefSignal } from 'react-refsignal';
@@ -152,11 +153,50 @@ usePersist(store, {
 
 #### Imperative flush
 
-`flush()` writes the current store state immediately — bypasses `filter` and any pending timer. Useful for an explicit save button or ensuring a pending write completes before a navigation:
+`flush()` writes the current store state immediately — bypasses `filter` and any pending timer. Returns a promise you can await before navigation, and that rejects on adapter failure if you want to surface storage errors:
 
 ```tsx
 const { flush } = usePersist(store, { key: 'game', debounce: 500 });
-<button onClick={flush}>Save now</button>
+
+// Fire-and-forget — simplest case
+<button onClick={() => flush()}>Save now</button>
+
+// Awaited — guarantee the write landed before navigating
+<button onClick={async () => { await flush(); router.push('/next'); }}>
+  Save and continue
+</button>
+
+// Error-aware — for IndexedDB or custom adapters that can fail
+<button onClick={async () => {
+  try { await flush(); }
+  catch (e) { toast.error('Could not save: ' + e.message); }
+}}>Save</button>
+```
+
+#### Clearing persisted data
+
+`clear()` wipes storage and resets all persisted signals to their defaults in one atomic step. Use it for logout, a "reset progress" button, or recovering from a bad-state bug.
+
+```tsx
+const { clear } = usePersist(store, { key: 'game' });
+<button onClick={() => clear()}>Reset game</button>
+```
+
+Under the hood it cancels any pending throttle/debounce timer, suppresses the save path while each signal's `.reset()` fires, and calls `storage.remove(key)` last. No phantom save can race back into the cleared key.
+
+For **signal-level** persistence (`createRefSignal({ persist: ... })`) where you don't have a `usePersist`/`setupPersist` controller, use the low-level `clearPersistedStorage(key, storage?)` utility exported from `react-refsignal/persist`:
+
+```ts
+import { clearPersistedStorage } from 'react-refsignal/persist';
+
+await clearPersistedStorage('user');                    // defaults to localStorage
+await clearPersistedStorage('draft', 'session');         // shorthand
+await clearPersistedStorage('data', myCustomAdapter);    // custom PersistStorage
+
+// Note: this only removes the storage key. The in-memory signal is
+// not reset, and if persist is currently active, an already-queued
+// throttle/debounce timer could fire right after and re-populate the
+// key. For active-persist state, prefer the controller `clear()` above.
 ```
 
 ---
