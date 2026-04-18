@@ -8,112 +8,98 @@ import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalRender } from './useRefSignalRender';
 
+// ─── Test helpers ────────────────────────────────────────────────────────────
+
+type RenderDeps = Parameters<typeof useRefSignalRender>[0];
+type RenderOptions = Parameters<typeof useRefSignalRender>[1];
+
+/**
+ * Mount a component that uses `useRefSignalRender` with pre-created signals.
+ * Returns `result` (the forceUpdate fn), a counter accessor, and lifecycle.
+ */
+function renderWithSignals(deps: RenderDeps, options?: RenderOptions) {
+  let count = 0;
+  const { result, rerender, unmount } = renderHook(() => {
+    count++;
+    return useRefSignalRender(deps, options);
+  });
+  return {
+    renders: () => count,
+    forceUpdate: result,
+    rerender,
+    unmount,
+  };
+}
+
+// ─── Core behavior ───────────────────────────────────────────────────────────
+
 describe('useRefSignalRender', () => {
   it('should not re-render on initial mount', () => {
-    let renderCount = 0;
-
-    renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(1);
-      useRefSignalRender([signal]);
-      return signal;
-    });
-
-    expect(renderCount).toBe(1);
+    const signal = createRefSignal(1);
+    const { renders } = renderWithSignals([signal]);
+    expect(renders()).toBe(1);
   });
 
   it('should re-render when signal value changes', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(1);
-      useRefSignalRender([signal]);
-      return signal;
-    });
+    const signal = createRefSignal(1);
+    const { renders } = renderWithSignals([signal]);
 
     act(() => {
-      result.current.update(2);
+      signal.update(2);
     });
 
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 
   it('should re-render only if callback returns true', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], () => signal.current >= 2);
-      return signal;
-    });
+    const signal = createRefSignal(0);
+    const { renders } = renderWithSignals([signal], () => signal.current >= 2);
 
     act(() => {
-      result.current.update(1);
+      signal.update(1);
     });
-
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
 
     act(() => {
-      result.current.update(2);
+      signal.update(2);
     });
-
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 
-  it('should re-render when calling the render function of useRefSignalRender manually', () => {
-    let renderCount = 0;
+  it('should re-render when calling the returned forceUpdate', () => {
+    const signal = createRefSignal(0);
+    const { renders, forceUpdate } = renderWithSignals([signal]);
 
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      return useRefSignalRender([signal]);
-    });
-
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
 
     act(() => {
-      result.current();
+      forceUpdate.current();
     });
 
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 
   describe('notify() vs notifyUpdate()', () => {
     it('should not re-render when notify() is called — snapshot unchanged', () => {
       const signal = createRefSignal(0);
-      let renderCount = 0;
+      const { renders } = renderWithSignals([signal]);
 
-      renderHook(() => {
-        renderCount++;
-        useRefSignalRender([signal]);
-      });
-
-      const initial = renderCount;
       act(() => {
         signal.notify();
       });
 
-      // notify() does not bump lastUpdated — getSnapshot returns same value — no re-render
-      expect(renderCount).toBe(initial);
+      expect(renders()).toBe(1);
     });
 
     it('should re-render when notifyUpdate() is called — snapshot changes', () => {
       const signal = createRefSignal(0);
-      let renderCount = 0;
+      const { renders } = renderWithSignals([signal]);
 
-      renderHook(() => {
-        renderCount++;
-        useRefSignalRender([signal]);
-      });
-
-      const initial = renderCount;
       act(() => {
         signal.notifyUpdate();
       });
 
-      expect(renderCount).toBeGreaterThan(initial);
+      expect(renders()).toBe(2);
     });
 
     it('notify() still fires useRefSignalEffect listeners', () => {
@@ -131,6 +117,8 @@ describe('useRefSignalRender', () => {
   });
 
   it('should resubscribe when deps array changes', () => {
+    // Keeps its own mount scaffolding because it uses `useRefSignal` inside
+    // the hook plus a props-based rerender — doesn't fit the shared helper.
     let renderCount = 0;
 
     const { result, rerender } = renderHook(
@@ -138,10 +126,7 @@ describe('useRefSignalRender', () => {
         renderCount++;
         const signalA = useRefSignal(0);
         const signalB = useRefSignal(0);
-
-        // Dynamically switch which signal to listen to
         useRefSignalRender(useSignalA ? [signalA] : [signalB]);
-
         return { signalA, signalB };
       },
       { initialProps: { useSignalA: true } },
@@ -149,202 +134,150 @@ describe('useRefSignalRender', () => {
 
     expect(renderCount).toBe(1);
 
-    // Update signalA - should trigger re-render
     act(() => {
       result.current.signalA.update(1);
     });
-
     expect(renderCount).toBe(2);
 
-    // Switch to listening to signalB instead
     rerender({ useSignalA: false });
-
     expect(renderCount).toBe(3);
 
-    // Update signalA - should NOT trigger re-render anymore
     act(() => {
       result.current.signalA.update(2);
     });
+    expect(renderCount).toBe(3); // no change
 
-    expect(renderCount).toBe(3); // No change
-
-    // Update signalB - should NOW trigger re-render
     act(() => {
       result.current.signalB.update(1);
     });
-
     expect(renderCount).toBe(4);
   });
 });
+
+// ─── Timing options ──────────────────────────────────────────────────────────
 
 describe('useRefSignalRender — timing options', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
   it('legacy callback API still works', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], () => signal.current >= 2);
-      return signal;
-    });
+    const signal = createRefSignal(0);
+    const { renders } = renderWithSignals([signal], () => signal.current >= 2);
 
     act(() => {
-      result.current.update(1);
+      signal.update(1);
     });
-    expect(renderCount).toBe(1); // filter blocked
+    expect(renders()).toBe(1);
 
     act(() => {
-      result.current.update(2);
+      signal.update(2);
     });
-    expect(renderCount).toBe(2); // filter passed
+    expect(renders()).toBe(2);
   });
 
   it('throttle: rapid updates produce at most leading + one trailing render', () => {
-    let renderCount = 0;
+    const signal = createRefSignal(0);
+    const { renders } = renderWithSignals([signal], { throttle: 100 });
 
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { throttle: 100 });
-      return signal;
-    });
+    expect(renders()).toBe(1);
 
-    expect(renderCount).toBe(1);
-
-    // First update fires immediately (leading)
     act(() => {
-      result.current.update(1);
+      signal.update(1);
     });
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2); // leading
 
-    // Subsequent updates within the window are throttled
     act(() => {
-      result.current.update(2);
+      signal.update(2);
+      signal.update(3);
+      signal.update(4);
     });
-    act(() => {
-      result.current.update(3);
-    });
-    act(() => {
-      result.current.update(4);
-    });
-    expect(renderCount).toBe(2); // still throttled
+    expect(renders()).toBe(2); // throttled
 
-    // Trailing call fires after the window
     act(() => {
       jest.advanceTimersByTime(100);
     });
-    expect(renderCount).toBe(3);
+    expect(renders()).toBe(3); // trailing
   });
 
   it('throttle: updates after the window fire immediately again', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { throttle: 100 });
-      return signal;
-    });
+    const signal = createRefSignal(0);
+    const { renders } = renderWithSignals([signal], { throttle: 100 });
 
     act(() => {
-      result.current.update(1);
-    }); // leading
-    expect(renderCount).toBe(2);
+      signal.update(1);
+    });
+    expect(renders()).toBe(2);
 
     act(() => {
       jest.advanceTimersByTime(100);
-    }); // window expires, no trailing needed
+    });
     act(() => {
-      result.current.update(2);
-    }); // leading again
-    expect(renderCount).toBe(3);
+      signal.update(2);
+    });
+    expect(renders()).toBe(3);
   });
 
   it('debounce: rapid updates produce one render after quiet period', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { debounce: 100 });
-      return signal;
-    });
+    const signal = createRefSignal(0);
+    const { renders } = renderWithSignals([signal], { debounce: 100 });
 
     act(() => {
-      result.current.update(1);
+      signal.update(1);
+      signal.update(2);
+      signal.update(3);
     });
-    act(() => {
-      result.current.update(2);
-    });
-    act(() => {
-      result.current.update(3);
-    });
-    expect(renderCount).toBe(1); // nothing yet
+    expect(renders()).toBe(1);
 
     act(() => {
       jest.advanceTimersByTime(100);
     });
-    expect(renderCount).toBe(2); // one render after quiet
+    expect(renders()).toBe(2);
   });
 
   it('debounce: resets timer on each update', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { debounce: 100 });
-      return signal;
-    });
+    const signal = createRefSignal(0);
+    const { renders } = renderWithSignals([signal], { debounce: 100 });
 
     act(() => {
-      result.current.update(1);
+      signal.update(1);
     });
     act(() => {
       jest.advanceTimersByTime(50);
-    }); // halfway
+    });
     act(() => {
-      result.current.update(2);
-    }); // reset timer
+      signal.update(2);
+    });
     act(() => {
       jest.advanceTimersByTime(50);
-    }); // halfway again — should not fire yet
-    expect(renderCount).toBe(1);
+    });
+    expect(renders()).toBe(1);
 
     act(() => {
       jest.advanceTimersByTime(50);
-    }); // now 100ms since last update
-    expect(renderCount).toBe(2);
+    });
+    expect(renders()).toBe(2);
   });
 
   it('debounce + maxWait: guarantees flush even if signal keeps firing', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { debounce: 100, maxWait: 250 });
-      return signal;
+    const signal = createRefSignal(0);
+    const { renders } = renderWithSignals([signal], {
+      debounce: 100,
+      maxWait: 250,
     });
 
-    // Keep firing every 50ms — debounce timer never settles
     for (let i = 1; i <= 5; i++) {
       act(() => {
-        result.current.update(i);
+        signal.update(i);
       });
       act(() => {
         jest.advanceTimersByTime(50);
       });
     }
 
-    // 250ms have passed — maxWait should have flushed once
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 
-  it('rAF: update defers render to next animation frame', () => {
+  it('rAF: coalesces any number of updates per frame into one render', () => {
     let rafCallback: FrameRequestCallback | null = null;
     jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
       rafCallback = cb;
@@ -352,114 +285,82 @@ describe('useRefSignalRender — timing options', () => {
     });
     jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
 
-    let renderCount = 0;
+    try {
+      const signal = createRefSignal(0);
+      const { renders } = renderWithSignals([signal], { rAF: true });
+      const fireFrame = () => {
+        act(() => {
+          rafCallback?.(0);
+        });
+      };
 
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { rAF: true });
-      return signal;
-    });
+      // Single update — render deferred until the frame fires
+      act(() => {
+        signal.update(1);
+      });
+      expect(renders()).toBe(1);
+      fireFrame();
+      expect(renders()).toBe(2);
 
-    act(() => {
-      result.current.update(1);
-    });
-    expect(renderCount).toBe(1); // not rendered yet
-
-    // Fire the rAF callback
-    act(() => {
-      rafCallback?.(0);
-    });
-    expect(renderCount).toBe(2);
-
-    jest.restoreAllMocks();
-  });
-
-  it('rAF: multiple updates within one frame produce one render', () => {
-    let rafCallback: FrameRequestCallback | null = null;
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafCallback = cb;
-      return 1;
-    });
-    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
-
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { rAF: true });
-      return signal;
-    });
-
-    act(() => {
-      result.current.update(1);
-      result.current.update(2);
-      result.current.update(3);
-    });
-    expect(renderCount).toBe(1);
-
-    act(() => {
-      rafCallback?.(0);
-    });
-    expect(renderCount).toBe(2); // exactly one render
-
-    jest.restoreAllMocks();
+      // Burst of updates in one frame — still exactly one render
+      act(() => {
+        signal.update(2);
+        signal.update(3);
+        signal.update(4);
+      });
+      expect(renders()).toBe(2);
+      fireFrame();
+      expect(renders()).toBe(3);
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('forceUpdate bypasses timing options', () => {
-    let renderCount = 0;
-
-    const { result } = renderHook(() => {
-      renderCount++;
-      const signal = useRefSignal(0);
-      return useRefSignalRender([signal], { debounce: 1000 });
+    const signal = createRefSignal(0);
+    const { renders, forceUpdate } = renderWithSignals([signal], {
+      debounce: 1000,
     });
 
-    // forceUpdate fires immediately, no debounce
     act(() => {
-      result.current();
+      forceUpdate.current();
     });
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 
   it('cleanup cancels pending timer on unmount', () => {
-    const { result, unmount } = renderHook(() => {
-      const signal = useRefSignal(0);
-      useRefSignalRender([signal], { debounce: 100 });
-      return signal;
-    });
+    const signal = createRefSignal(0);
+    const { unmount } = renderWithSignals([signal], { debounce: 100 });
 
     act(() => {
-      result.current.update(1);
-    }); // starts debounce timer
-    unmount(); // should cancel the timer
+      signal.update(1);
+    });
+    unmount();
 
-    // No error if timer would have fired after unmount
+    // No error if the timer would have fired after unmount
     act(() => {
       jest.advanceTimersByTime(200);
     });
   });
 });
 
+// ─── Dynamic signal tracking ─────────────────────────────────────────────────
+
 describe('useRefSignalRender — trackSignals option', () => {
   it('re-renders when a dynamically-tracked signal updates', () => {
     const outer = createRefSignal(0);
     const inner = createRefSignal('a');
-    let renderCount = 0;
-
-    renderHook(() => {
-      renderCount++;
-      useRefSignalRender([outer], { trackSignals: () => [inner] });
+    const { renders } = renderWithSignals([outer], {
+      trackSignals: () => [inner],
     });
 
-    expect(renderCount).toBe(1); // mount
+    expect(renders()).toBe(1);
 
     act(() => {
       inner.update('b');
     });
 
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 
   it('swaps dynamic subscription when static dep fires', () => {
@@ -468,19 +369,14 @@ describe('useRefSignalRender — trackSignals option', () => {
     const nodes = createRefSignal(
       new Map<string, RefSignal<number>>([['a', innerA]]),
     );
-    let renderCount = 0;
-
-    renderHook(() => {
-      renderCount++;
-      useRefSignalRender([nodes], {
-        trackSignals: () => {
-          const s = nodes.current.get('a');
-          return s ? [s] : [];
-        },
-      });
+    const { renders } = renderWithSignals([nodes], {
+      trackSignals: () => {
+        const s = nodes.current.get('a');
+        return s ? [s] : [];
+      },
     });
 
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
 
     // Swap inner — static fire reconciles, also triggers re-render
     act(() => {
@@ -488,55 +384,46 @@ describe('useRefSignalRender — trackSignals option', () => {
       m.set('a', innerB);
       nodes.update(m);
     });
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
 
     // innerA no longer drives re-renders
     act(() => {
       innerA.update(999);
     });
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
 
     // innerB does
     act(() => {
       innerB.update(42);
     });
-    expect(renderCount).toBe(3);
+    expect(renders()).toBe(3);
   });
 
   it('does NOT re-render on .notify() of a dynamically-tracked signal', () => {
     const outer = createRefSignal(0);
     const inner = createRefSignal('a');
-    let renderCount = 0;
-
-    renderHook(() => {
-      renderCount++;
-      useRefSignalRender([outer], { trackSignals: () => [inner] });
+    const { renders } = renderWithSignals([outer], {
+      trackSignals: () => [inner],
     });
 
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
 
     act(() => {
-      inner.notify(); // fires listeners but does not bump lastUpdated
+      inner.notify();
     });
+    expect(renders()).toBe(1);
 
-    // Snapshot sums inner.lastUpdated (unchanged) → no re-render
-    expect(renderCount).toBe(1);
-
-    // Sanity: .update() DOES re-render
     act(() => {
       inner.update('b');
     });
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 
   it('cleanup unsubscribes from dynamically-tracked signals on unmount', () => {
     const outer = createRefSignal(0);
     const inner = createRefSignal('a');
-    let renderCount = 0;
-
-    const { unmount } = renderHook(() => {
-      renderCount++;
-      useRefSignalRender([outer], { trackSignals: () => [inner] });
+    const { renders, unmount } = renderWithSignals([outer], {
+      trackSignals: () => [inner],
     });
 
     unmount();
@@ -545,7 +432,6 @@ describe('useRefSignalRender — trackSignals option', () => {
       inner.update('b');
     });
 
-    // No further renders after unmount
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
   });
 });

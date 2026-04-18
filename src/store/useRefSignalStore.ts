@@ -56,8 +56,10 @@ type BaseStoreOptions<TStore> = TimingOptions & {
 
 /**
  * Options accepted by `useRefSignalStore`. Shape depends on `unwrap`:
- * - `unwrap: true` (Unwrapped variant) requires `renderOn` — there's no way
- *   to produce setters for signals React isn't subscribed to.
+ * - `unwrap: true` (Unwrapped variant) requires `renderOn` — unwrapping
+ *   produces plain values; without `renderOn` the component would never
+ *   re-render on signal changes, so the plain values would be stale
+ *   immediately. Enforced at the type level to prevent this foot-gun.
  * - `unwrap` omitted/false (Plain variant) makes `renderOn` optional.
  */
 export type SignalStoreOptionsUnwrapped<TStore> = BaseStoreOptions<TStore> & {

@@ -21,7 +21,9 @@ import {
 } from './index';
 import { setupPersist } from './persist';
 import { useRefSignal } from '../hooks/useRefSignal';
-import type { PersistStorage } from './types';
+import type { PersistOptions, PersistStorage } from './types';
+import type { RefSignal } from '../refsignal';
+import type { StoreSnapshot } from '../store/useRefSignalStore';
 
 // ─── Mock storage ─────────────────────────────────────────────────────────────
 
@@ -56,16 +58,27 @@ const flushIDB = async () => {
   }
 };
 
+// ─── Common single-signal store shape ────────────────────────────────────────
+
+type ScoreStore = { score: RefSignal<number> };
+
+/** Canonical score-store factory used in many tests. */
+const scoreFactory = (): ScoreStore => ({ score: createRefSignal(0) });
+
+/** Wrap `scoreFactory` with persist and invoke, returning the store. */
+function mountScoreStore(options: PersistOptions<ScoreStore>): ScoreStore {
+  return persist(scoreFactory, options)();
+}
+
 // ─── persist() — factory wrapper ─────────────────────────────────────────────
 
 describe('persist() — basic hydration and saving', () => {
   it('starts with default value when storage is empty', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
     });
-    const store = factory();
     await flush();
     expect(store.score.current).toBe(0);
   });
@@ -74,22 +87,20 @@ describe('persist() — basic hydration and saving', () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 42 } });
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
     });
-    const store = factory();
     await flush();
     expect(store.score.current).toBe(42);
   });
 
   it('saves to storage when a signal updates', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
     });
-    const store = factory();
     await flush();
 
     store.score.update(99);
@@ -101,12 +112,11 @@ describe('persist() — basic hydration and saving', () => {
 
   it('stores version in envelope', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       version: 3,
     });
-    const store = factory();
     await flush();
 
     store.score.update(1);
@@ -137,14 +147,13 @@ describe('persist() — basic hydration and saving', () => {
   it('calls onHydrated after hydration completes', async () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 7 } });
-    const onHydrated = jest.fn();
+    const onHydrated = jest.fn((_store: ScoreStore) => {});
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    mountScoreStore({
       key: 'game',
       storage,
       onHydrated,
     });
-    factory();
     await flush();
 
     expect(onHydrated).toHaveBeenCalledTimes(1);
@@ -152,14 +161,13 @@ describe('persist() — basic hydration and saving', () => {
 
   it('calls onHydrated even when storage is empty', async () => {
     const storage = mockStorage();
-    const onHydrated = jest.fn();
+    const onHydrated = jest.fn((_store: ScoreStore) => {});
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    mountScoreStore({
       key: 'game',
       storage,
       onHydrated,
     });
-    factory();
     await flush();
 
     expect(onHydrated).toHaveBeenCalledTimes(1);
@@ -167,14 +175,13 @@ describe('persist() — basic hydration and saving', () => {
 
   it('passes the store to onHydrated', async () => {
     const storage = mockStorage();
-    const onHydrated = jest.fn();
+    const onHydrated = jest.fn((_store: ScoreStore) => {});
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       onHydrated,
     });
-    const store = factory();
     await flush();
 
     expect(onHydrated).toHaveBeenCalledWith(store);
@@ -187,11 +194,10 @@ describe('persist() — basic hydration and saving', () => {
       JSON.stringify({ v: 1, data: { score: 11 } }),
     );
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'sess-game',
       storage: 'session',
     });
-    const store = factory();
     await flush();
 
     expect(store.score.current).toBe(11);
@@ -229,15 +235,16 @@ describe('persist() — versioning and migration', () => {
   it('skips migration when version matches', async () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 2, data: { score: 5 } });
-    const migrate = jest.fn((s) => s);
+    const migrate = jest.fn(
+      (stored: Record<string, unknown>, _fromVersion: number) => stored,
+    );
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    mountScoreStore({
       key: 'game',
       storage,
       version: 2,
       migrate,
     });
-    factory();
     await flush();
 
     expect(migrate).not.toHaveBeenCalled();
@@ -246,15 +253,16 @@ describe('persist() — versioning and migration', () => {
   it('passes the stored version number to migrate', async () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 3, data: { score: 1 } });
-    const migrate = jest.fn((s: unknown) => s);
+    const migrate = jest.fn(
+      (stored: Record<string, unknown>, _fromVersion: number) => stored,
+    );
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    mountScoreStore({
       key: 'game',
       storage,
       version: 5,
       migrate,
     });
-    factory();
     await flush();
 
     expect(migrate).toHaveBeenCalledWith({ score: 1 }, 3);
@@ -263,9 +271,9 @@ describe('persist() — versioning and migration', () => {
   it('keeps default and calls onHydrated when migrate throws', async () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 99 } });
-    const onHydrated = jest.fn();
+    const onHydrated = jest.fn((_store: ScoreStore) => {});
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       version: 2,
@@ -274,7 +282,6 @@ describe('persist() — versioning and migration', () => {
       },
       onHydrated,
     });
-    const store = factory();
     await flush();
 
     expect(store.score.current).toBe(0);
@@ -301,7 +308,9 @@ describe('persist() — versioning and migration', () => {
   it('signal-level — passes fromVersion to migrate', async () => {
     const storage = mockStorage();
     storage.store['sig'] = JSON.stringify({ v: 2, data: 'x' });
-    const migrate = jest.fn(() => 'new');
+    const migrate = jest.fn(
+      (_stored: unknown, _fromVersion: number): unknown => 'new',
+    );
 
     createRefSignal('default', {
       persist: { key: 'sig', storage, version: 4, migrate },
@@ -320,12 +329,11 @@ describe('persist() — timing options', () => {
 
   it('throttle: rapid signal updates produce at most one write per window', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       throttle: 100,
     });
-    const store = factory();
     await flush();
 
     store.score.update(1); // leading edge — write fires immediately
@@ -341,12 +349,11 @@ describe('persist() — timing options', () => {
 
   it('debounce: only writes after quiet period', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       debounce: 100,
     });
-    const store = factory();
     await flush();
 
     store.score.update(1);
@@ -362,7 +369,7 @@ describe('persist() — timing options', () => {
 
   it('cleanup cancels pending timer so no write fires after unmount', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { unmount } = renderHook(() =>
       usePersist(store, { key: 'game2', storage, debounce: 100 }),
@@ -410,12 +417,11 @@ describe('persist() — timing options', () => {
 
   it('store-level rAF: batches writes into animation frames', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       rAF: true,
     });
-    const store = factory();
     await flush();
 
     store.score.update(1);
@@ -450,11 +456,10 @@ describe('persist() — edge cases', () => {
     const storage = mockStorage();
     storage.store['game'] = 'not valid json{{{';
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
     });
-    const store = factory();
     await flush();
 
     expect(store.score.current).toBe(0);
@@ -490,13 +495,12 @@ describe('persist() — edge cases', () => {
     // Pre-populate with a value encoded by the custom serializer
     storage.store['custom'] = serialize({ v: 1, data: { score: 77 } });
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'custom',
       storage,
       serialize,
       deserialize,
     });
-    const store = factory();
     await flush();
 
     expect(store.score.current).toBe(77);
@@ -537,11 +541,10 @@ describe('persist() — edge cases', () => {
       remove: () => Promise.resolve(),
     };
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'fail-store',
       storage: failStorage,
     });
-    const store = factory();
     await flush();
 
     store.score.update(5);
@@ -558,11 +561,10 @@ describe('persist() — edge cases', () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
     });
-    const store = factory();
 
     // Update fires before hydration resolves
     store.score.update(100);
@@ -578,11 +580,10 @@ describe('persist() — edge cases', () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1 }); // no data field
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
     });
-    const store = factory();
     await flush();
 
     expect(store.score.current).toBe(0);
@@ -664,11 +665,10 @@ describe('persist() — envelope validation', () => {
       const storage = mockStorage();
       storage.store['game'] = raw;
 
-      const factory = persist(() => ({ score: createRefSignal(0) }), {
+      const store = mountScoreStore({
         key: 'game',
         storage,
       });
-      const store = factory();
       await flush();
 
       expect(store.score.current).toBe(0);
@@ -688,11 +688,10 @@ describe('persist() — envelope validation', () => {
       const storage = mockStorage();
       storage.store['game'] = JSON.stringify({ v: 1, data });
 
-      const factory = persist(() => ({ score: createRefSignal(0) }), {
+      const store = mountScoreStore({
         key: 'game',
         storage,
       });
-      const store = factory();
       await flush();
 
       expect(store.score.current).toBe(0);
@@ -744,21 +743,12 @@ describe('clearPersistedStorage()', () => {
 // ─── setupPersist().clear() — controller semantics ───────────────────────────
 
 describe('setupPersist() — clear()', () => {
-  it('removes the storage key', async () => {
-    const storage = mockStorage();
-    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
-
-    const store = { score: createRefSignal(0) };
-    const { cleanup, clear } = setupPersist(store, { key: 'game', storage });
-    await flush();
-
-    await clear();
-
-    expect(storage.store['game']).toBeUndefined();
-    cleanup();
-  });
-
-  it('resets signals to their default values', async () => {
+  it('removes the storage key and resets signals without re-saving defaults', async () => {
+    // Covers three intertwined guarantees:
+    //  - clear() removes the storage key entirely
+    //  - signals are reset to their default values
+    //  - reset fires listeners during clear, but save is suppressed so the
+    //    freshly-defaulted snapshot is NOT written back to storage
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({
       v: 1,
@@ -779,21 +769,6 @@ describe('setupPersist() — clear()', () => {
 
     expect(store.score.current).toBe(0);
     expect(store.level.current).toBe(1);
-    cleanup();
-  });
-
-  it('does not re-save the default values during clear (suppression)', async () => {
-    const storage = mockStorage();
-    storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
-
-    const store = { score: createRefSignal(0) };
-    const { cleanup, clear } = setupPersist(store, { key: 'game', storage });
-    await flush();
-
-    await clear();
-
-    // After clear, storage should be empty — reset() must NOT have written
-    // the default back under the key.
     expect(storage.store['game']).toBeUndefined();
     cleanup();
   });
@@ -802,7 +777,7 @@ describe('setupPersist() — clear()', () => {
     jest.useFakeTimers();
     try {
       const storage = mockStorage();
-      const store = { score: createRefSignal(0) };
+      const store: ScoreStore = { score: createRefSignal(0) };
       const { cleanup, clear } = setupPersist(store, {
         key: 'game',
         storage,
@@ -836,10 +811,17 @@ describe('setupPersist() — clear()', () => {
     let resolveRemove: (() => void) | null = null;
     const deferredStorage = {
       ...mockStorage(),
-      remove: () => new Promise<void>((r) => (resolveRemove = r)),
+      remove: () =>
+        new Promise<void>((r) => {
+          // Wrap so resolveRemove has a zero-arg signature instead of the
+          // Promise resolver's `(value?: void | PromiseLike<void>) => void`.
+          resolveRemove = () => {
+            r();
+          };
+        }),
     };
 
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     const { cleanup, clear } = setupPersist(store, {
       key: 'game',
       storage: deferredStorage,
@@ -864,7 +846,7 @@ describe('setupPersist() — clear()', () => {
 
   it('updates after clear() do re-save (suppression is scoped to clear)', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     const { cleanup, clear } = setupPersist(store, { key: 'game', storage });
 
     await clear();
@@ -889,10 +871,15 @@ describe('setupPersist() — flush()', () => {
     let resolveSet: (() => void) | null = null;
     const deferredStorage: PersistStorage = {
       get: () => Promise.resolve(null),
-      set: () => new Promise<void>((r) => (resolveSet = r)),
+      set: () =>
+        new Promise<void>((r) => {
+          resolveSet = () => {
+            r();
+          };
+        }),
       remove: () => Promise.resolve(),
     };
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     const { cleanup, flush } = setupPersist(store, {
       key: 'game',
       storage: deferredStorage,
@@ -919,7 +906,7 @@ describe('setupPersist() — flush()', () => {
       set: () => Promise.reject(new Error('disk full')),
       remove: () => Promise.resolve(),
     };
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     const { cleanup, flush } = setupPersist(store, { key: 'game', storage });
 
     await expect(flush()).rejects.toThrow('disk full');
@@ -935,7 +922,7 @@ describe('setupPersist() — flush()', () => {
       set: setSpy,
       remove: () => Promise.resolve(),
     };
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     const { cleanup, flush, clear } = setupPersist(store, {
       key: 'game',
       storage,
@@ -960,7 +947,7 @@ describe('usePersist() — clear', () => {
   it('returns a stable clear() function that wipes storage and resets signals', async () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 5 } });
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result } = renderHook(() =>
       usePersist(store, { key: 'game', storage }),
@@ -978,7 +965,7 @@ describe('usePersist() — clear', () => {
 
   it('clear identity is stable across renders', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result, rerender } = renderHook(() =>
       usePersist(store, { key: 'game', storage }),
@@ -996,7 +983,7 @@ describe('usePersist()', () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 55 } });
 
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     renderHook(() => {
       usePersist(store, { key: 'game', storage });
     });
@@ -1008,7 +995,7 @@ describe('usePersist()', () => {
   it('returns an isHydrated signal that starts false and becomes true after hydration', async () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 1 } });
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result } = renderHook(() =>
       usePersist(store, { key: 'game', storage }),
@@ -1021,7 +1008,7 @@ describe('usePersist()', () => {
 
   it('returned isHydrated signal resets to false when key changes', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result, rerender } = renderHook(
       ({ k }) => usePersist(store, { key: k, storage }),
@@ -1038,7 +1025,7 @@ describe('usePersist()', () => {
 
   it('returned isHydrated signal is stable across re-renders', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result, rerender } = renderHook(
       ({ extra }: { extra: number }) =>
@@ -1054,7 +1041,7 @@ describe('usePersist()', () => {
 
   it('saves signal updates to storage', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     renderHook(() => {
       usePersist(store, { key: 'game', storage });
     });
@@ -1071,7 +1058,7 @@ describe('usePersist()', () => {
 
   it('stops saving after unmount', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     const { unmount } = renderHook(() => {
       usePersist(store, { key: 'game', storage });
     });
@@ -1087,7 +1074,7 @@ describe('usePersist()', () => {
   it('resubscribes when key changes', async () => {
     const storage = mockStorage();
     storage.store['key-b'] = JSON.stringify({ v: 1, data: { score: 3 } });
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { rerender } = renderHook(
       ({ k }) => {
@@ -1105,7 +1092,7 @@ describe('usePersist()', () => {
 
   it('after key change, updates write to new key not old key', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { rerender } = renderHook(
       ({ k }) => {
@@ -1430,12 +1417,11 @@ describe('persist() — filter option', () => {
 
   it('store-level: skips write when filter returns false', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       filter: () => false,
     });
-    const store = factory();
     await flush();
 
     store.score.update(42);
@@ -1446,12 +1432,11 @@ describe('persist() — filter option', () => {
 
   it('store-level: writes when filter returns true', async () => {
     const storage = mockStorage();
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       filter: () => true,
     });
-    const store = factory();
     await flush();
 
     store.score.update(5);
@@ -1464,7 +1449,7 @@ describe('persist() — filter option', () => {
     const storage = mockStorage();
     const captured: Array<{ score: number }> = [];
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       filter: (snap) => {
@@ -1472,7 +1457,6 @@ describe('persist() — filter option', () => {
         return true;
       },
     });
-    const store = factory();
     await flush();
 
     store.score.update(9);
@@ -1485,12 +1469,11 @@ describe('persist() — filter option', () => {
   it('store-level: filter gate toggles — skip then allow', async () => {
     const storage = mockStorage();
     let allow = false;
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       filter: () => allow,
     });
-    const store = factory();
     await flush();
 
     store.score.update(1); // filter false — skip
@@ -1507,12 +1490,11 @@ describe('persist() — filter option', () => {
     const storage = mockStorage();
     storage.store['game'] = JSON.stringify({ v: 1, data: { score: 77 } });
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'game',
       storage,
       filter: () => false,
     });
-    const store = factory();
     await flush();
 
     expect(store.score.current).toBe(77);
@@ -1522,7 +1504,7 @@ describe('persist() — filter option', () => {
 
   it('usePersist: skips write when filter returns false', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     renderHook(() =>
       usePersist(store, { key: 'game', storage, filter: () => false }),
@@ -1563,13 +1545,12 @@ describe('persist() — filter option', () => {
     it('store-level: leading edge skipped when filter false; trailing writes when filter flips true', async () => {
       const storage = mockStorage();
       let allow = false;
-      const factory = persist(() => ({ score: createRefSignal(0) }), {
+      const store = mountScoreStore({
         key: 'game',
         storage,
         throttle: 100,
         filter: () => allow,
       });
-      const store = factory();
       await flush();
 
       store.score.update(1); // leading fires synchronously — filter false → skip
@@ -1585,16 +1566,27 @@ describe('persist() — filter option', () => {
 
 // ─── usePersist() — flush and onUnmount ──────────────────────────────────────
 
+/**
+ * Mount a usePersist hook over a fresh ScoreStore + mockStorage.
+ * Extras are merged into the options; `key` defaults to 'game'.
+ */
+function mountUsePersist(extras: Partial<PersistOptions<ScoreStore>> = {}) {
+  const storage = mockStorage();
+  const store: ScoreStore = { score: createRefSignal(0) };
+  const options = {
+    key: 'game',
+    storage,
+    ...extras,
+  } as PersistOptions<ScoreStore>;
+  const hook = renderHook(() => usePersist(store, options));
+  return { storage, store, ...hook };
+}
+
 describe('usePersist() — flush and onUnmount', () => {
   // ── flush() ───────────────────────────────────────────────────────────────
 
   it('flush() writes current state to storage immediately', async () => {
-    const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
-
-    const { result } = renderHook(() =>
-      usePersist(store, { key: 'game', storage }),
-    );
+    const { storage, store, result } = mountUsePersist();
     await flush();
 
     act(() => {
@@ -1606,12 +1598,9 @@ describe('usePersist() — flush and onUnmount', () => {
   });
 
   it('flush() bypasses filter', async () => {
-    const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
-
-    const { result } = renderHook(() =>
-      usePersist(store, { key: 'game', storage, filter: () => false }),
-    );
+    const { storage, store, result } = mountUsePersist({
+      filter: () => false,
+    });
     await flush();
 
     act(() => {
@@ -1624,12 +1613,7 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('flush() bypasses pending debounce timer', async () => {
     jest.useFakeTimers();
-    const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
-
-    const { result } = renderHook(() =>
-      usePersist(store, { key: 'game', storage, debounce: 500 }),
-    );
+    const { storage, store, result } = mountUsePersist({ debounce: 500 });
     await flush();
 
     act(() => {
@@ -1647,7 +1631,7 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('flush() is stable across re-renders', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result, rerender } = renderHook(
       ({ extra }: { extra: number }) =>
@@ -1671,7 +1655,7 @@ describe('usePersist() — flush and onUnmount', () => {
           : Promise.resolve(),
       remove: () => Promise.resolve(),
     };
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result } = renderHook(() =>
       usePersist(store, { key: 'game', storage }),
@@ -1695,7 +1679,7 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('flush() after unmount is a no-op (does not throw)', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result, unmount } = renderHook(() =>
       usePersist(store, { key: 'game', storage }),
@@ -1710,7 +1694,7 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('flush() always calls the latest setup after key change', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { result, rerender } = renderHook(
       ({ k }) => usePersist(store, { key: k, storage }),
@@ -1735,8 +1719,10 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('onUnmount is called when the component unmounts', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
-    const onUnmount = jest.fn();
+    const store: ScoreStore = { score: createRefSignal(0) };
+    const onUnmount = jest.fn(
+      (_snapshot: StoreSnapshot<ScoreStore>, _flush: () => Promise<void>) => {},
+    );
 
     const { unmount } = renderHook(() =>
       usePersist(store, { key: 'game', storage, onUnmount }),
@@ -1753,7 +1739,7 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('onUnmount receives a snapshot of current signal values', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
     const snapshots: Array<{ score: number }> = [];
 
     const { unmount } = renderHook(() =>
@@ -1776,7 +1762,7 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('onUnmount flush() writes to storage bypassing filter', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { unmount } = renderHook(() =>
       usePersist(store, {
@@ -1801,7 +1787,7 @@ describe('usePersist() — flush and onUnmount', () => {
   it('onUnmount flush() closes the debounce footgun — pending write survives unmount', async () => {
     jest.useFakeTimers();
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
+    const store: ScoreStore = { score: createRefSignal(0) };
 
     const { unmount } = renderHook(() =>
       usePersist(store, {
@@ -1828,8 +1814,10 @@ describe('usePersist() — flush and onUnmount', () => {
 
   it('onUnmount is not called during key-change resubscription (only true unmount)', async () => {
     const storage = mockStorage();
-    const store = { score: createRefSignal(0) };
-    const onUnmount = jest.fn();
+    const store: ScoreStore = { score: createRefSignal(0) };
+    const onUnmount = jest.fn(
+      (_snapshot: StoreSnapshot<ScoreStore>, _flush: () => Promise<void>) => {},
+    );
 
     const { rerender, unmount } = renderHook(
       ({ k }) => usePersist(store, { key: k, storage, onUnmount }),
@@ -1887,13 +1875,12 @@ describe("storage: 'indexeddb' shorthand", () => {
     const idb = indexedDBStorage({ dbName: 'store-idb', storeName: 'p' });
     await idb.set('store', JSON.stringify({ v: 1, data: { score: 7 } }));
 
-    const factory = persist(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreStore({
       key: 'store',
       storage: 'indexeddb',
       dbName: 'store-idb',
       storeName: 'p',
     });
-    const store = factory();
     await flushIDB();
     expect(store.score.current).toBe(7);
   });

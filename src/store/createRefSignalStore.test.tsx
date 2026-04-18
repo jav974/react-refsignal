@@ -175,22 +175,6 @@ describe('useRefSignalStore — unwrap', () => {
     expect(result.current.tag).toBe('game');
     expect((result.current as Record<string, unknown>).setTag).toBeUndefined();
   });
-
-  it('does not re-render without renderOn even with unwrap', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    // renderOn is required for unwrap: true at the type level;
-    // this exercises the runtime path without it
-    renderHook(() => {
-      renderCount++;
-
-      return useRefSignalStore(store, { unwrap: true } as any);
-    });
-    act(() => {
-      store.score.update(1);
-    });
-    expect(renderCount).toBe(1);
-  });
 });
 
 describe('useRefSignalStore — timing options', () => {

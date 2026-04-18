@@ -8,16 +8,16 @@ import { createRefSignal } from './refsignal';
 import { useRefSignal } from './hooks/useRefSignal';
 import { useRefSignalEffect } from './hooks/useRefSignalEffect';
 import { useRefSignalRender } from './hooks/useRefSignalRender';
-import { configureDevTools, devtools } from './devtools';
+import { devtools } from './devtools';
 
 describe('Robustness Tests', () => {
+  // These tests don't exercise devtools directly, but reset between tests
+  // guards against shared-state leakage from any prior suite.
   beforeEach(() => {
-    configureDevTools({ enabled: true });
     devtools.reset();
   });
 
   afterEach(() => {
-    configureDevTools({ enabled: false });
     devtools.reset();
   });
 

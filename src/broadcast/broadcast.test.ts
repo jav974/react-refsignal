@@ -57,11 +57,13 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-// Helper: simulate a message arriving from another tab on a channel
+// Helper: simulate a message arriving from another tab on a channel.
+// Routes through `postMessage` + `close` so the delivery path matches
+// production usage (BroadcastChannel never delivers to its own sender).
 function deliverFromOtherTab(channel: string, msg: unknown) {
-  for (const entry of buses.get(channel) ?? []) {
-    entry.instance.onmessage?.({ data: msg });
-  }
+  const sender = new MockBC(channel);
+  sender.postMessage(msg);
+  sender.close();
 }
 
 // ─── broadcast() — factory wrapper ───────────────────────────────────────────
@@ -411,7 +413,6 @@ describe('useBroadcast()', () => {
         channel: 'bye-hook',
         mode: 'one-to-many',
         initialElectionDelay: 0,
-        initialElectionDelay: 0,
         heartbeatInterval: 1000,
       });
     });
@@ -441,7 +442,6 @@ describe('useBroadcast()', () => {
         channel: 'is-bc-o2m-false',
         mode: 'one-to-many',
         initialElectionDelay: 0,
-        initialElectionDelay: 0,
         heartbeatInterval: 1000,
       }),
     );
@@ -463,7 +463,6 @@ describe('useBroadcast()', () => {
       useBroadcast(store, {
         channel: 'is-bc-elect',
         mode: 'one-to-many',
-        initialElectionDelay: 0,
         initialElectionDelay: 0,
         heartbeatInterval: 1000,
       }),
@@ -535,7 +534,6 @@ describe('useBroadcast()', () => {
       useBroadcast(store, {
         channel: 'is-bc-callback',
         mode: 'one-to-many',
-        initialElectionDelay: 0,
         initialElectionDelay: 0,
         heartbeatInterval: 1000,
         onBroadcasterChange: onChange,
@@ -1220,7 +1218,6 @@ describe('createRefSignal — broadcast option (string shorthand)', () => {
         channel: 'sig-obj',
         mode: 'one-to-many',
         initialElectionDelay: 0,
-        initialElectionDelay: 0,
         onBroadcasterChange,
       },
     });
@@ -1626,8 +1623,6 @@ describe('edge cases — persist + broadcast state-handoff race', () => {
     //
     // This test documents the CURRENT behavior. If it fails after a fix, update
     // the expectation to 100.
-
-    const { persist: persistFactory } = await import('../persist/index');
 
     let resolveGet!: (val: string | null) => void;
     const deferredStorage = {
