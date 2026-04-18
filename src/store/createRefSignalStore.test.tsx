@@ -101,14 +101,9 @@ describe('createRefSignalStore', () => {
 // ─── useRefSignalStore ────────────────────────────────────────────────────────
 
 describe('useRefSignalStore — no renderOn', () => {
-  it('returns the store', () => {
-    const store = createRefSignalStore(makeStore);
-    const { result } = renderHook(() => useRefSignalStore(store));
-    expect(result.current).toBe(store);
-  });
-
-  it('does not re-render when a signal updates', () => {
-    const { store, renders } = mountStore();
+  it('returns the same store reference and does not re-render on updates', () => {
+    const { store, result, renders } = mountStore();
+    expect(result.current).toBe(store); // same reference, no proxy/wrapper
     act(() => {
       store.score.update(42);
     });

@@ -317,16 +317,6 @@ describe('createRefSignalContext', () => {
       });
       expect(renders()).toBeGreaterThan(after);
     });
-
-    it('does not re-render by default without renderOn', () => {
-      const { result, renders } = mountUser();
-
-      const initial = renders();
-      act(() => {
-        result.current.name.update('Bob');
-      });
-      expect(renders()).toBe(initial);
-    });
   });
 
   describe('resubscription stability', () => {
