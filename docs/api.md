@@ -759,7 +759,7 @@ devtools.getAllSignals();              // Array<{ name: string; signal: RefSigna
 
 Cross-tab sync is a separate subpath — import from `react-refsignal/broadcast`. Importing the subpath is sufficient to activate it; apps that never import it pay zero cost (~1.3 KB gzipped).
 
-> **SSR:** `setupBroadcast` and `useBroadcast` are no-ops when `typeof window === 'undefined'`. The broadcast subpath is safe to import in SSR environments.
+> **SSR:** `broadcast` and `useBroadcast` are no-ops when `typeof window === 'undefined'`. The broadcast subpath is safe to import in SSR environments.
 
 For a full tour with examples, see [Cross-tab Broadcast](broadcast.md).
 
@@ -897,7 +897,7 @@ usePersist(store, {
 **Clearing persisted data:**
 
 ```ts
-// Controller-level (recommended when you have a usePersist / setupPersist handle)
+// Controller-level (recommended when you have a usePersist handle)
 const { clear } = usePersist(store, { key: 'game' });
 await clear(); // cancels pending timers, resets signals, wipes storage key
 

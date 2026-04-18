@@ -243,7 +243,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     QC{"Need to wipe the stored value\n(logout, reset, recovery)?"}
-    QC -->|"You have a setupPersist / usePersist controller"| CA["controller.clear(): Promise<void>\nCancels pending timers, resets signals to defaults,\nremoves storage key — race-free"]
+    QC -->|"You have a usePersist controller"| CA["controller.clear(): Promise<void>\nCancels pending timers, resets signals to defaults,\nremoves storage key — race-free"]
     QC -->|"Signal-level persist or just want to remove by key"| CB["clearPersistedStorage(key, storage?)\nOnly removes storage — does NOT reset in-memory signals,\nand may race with an active persist's queued timer.\nDefaults to localStorage; accepts 'session', 'indexeddb', or a custom adapter."]
 ```
 

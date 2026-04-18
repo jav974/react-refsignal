@@ -184,7 +184,7 @@ const { clear } = usePersist(store, { key: 'game' });
 
 Under the hood it cancels any pending throttle/debounce timer, suppresses the save path while each signal's `.reset()` fires, and calls `storage.remove(key)` last. No phantom save can race back into the cleared key.
 
-For **signal-level** persistence (`createRefSignal({ persist: ... })`) where you don't have a `usePersist`/`setupPersist` controller, use the low-level `clearPersistedStorage(key, storage?)` utility exported from `react-refsignal/persist`:
+For **signal-level** persistence (`createRefSignal({ persist: ... })`) where you don't have a `usePersist` controller, use the low-level `clearPersistedStorage(key, storage?)` utility exported from `react-refsignal/persist`:
 
 ```ts
 import { clearPersistedStorage } from 'react-refsignal/persist';
@@ -505,7 +505,7 @@ Options for `persist()` and `usePersist()`. All fields from `PersistSignalOption
 | `keys` | `Array<keyof TStore>` | all signals | Persist only these signal keys. Non-signal values are always excluded. |
 | `filter` | `(snapshot: StoreSnapshot<TStore>) => boolean` | — | Skip the write when this returns `false`. Receives current signal values unwrapped. Only gates writes — hydration always runs. |
 | `onHydrated` | `(store: TStore) => void` | — | Called once after hydration. Receives the full store object. |
-| `onUnmount` | `(snapshot: StoreSnapshot<TStore>, flush: () => void) => void` | — | `usePersist` only. Called on unmount with the current snapshot and a `flush` function that writes immediately, bypassing filter and timing. |
+| `onUnmount` | `(snapshot: StoreSnapshot<TStore>, flush: () => Promise<void>) => void` | — | `usePersist` only. Called on unmount with the current snapshot and a `flush` function that writes immediately, bypassing filter and timing. Safe to call fire-and-forget. |
 | `migrate` | `(stored: Record<string, unknown>, fromVersion: number) => Record<string, unknown>` | — | Transform stored snapshot when version changes. |
 
 ### `persist(factory, options)`
@@ -529,13 +529,18 @@ import { usePersist } from 'react-refsignal/persist';
 function usePersist<TStore>(
   store: TStore,
   options: PersistOptions<TStore>,
-): { isHydrated: RefSignal<boolean>; flush: () => void }
+): {
+  isHydrated: RefSignal<boolean>;
+  flush: () => Promise<void>;
+  clear: () => Promise<void>;
+}
 ```
 
 Hook variant. Sets up persist inside a React Provider; tears down subscriptions on unmount. Re-hydrates when `key` changes.
 
 - `isHydrated` — becomes `true` once hydration from storage completes.
 - `flush` — writes current state to storage immediately, bypassing `filter` and any pending timer. Stable across re-renders.
+- `clear` — cancels pending timers, resets signals to factory defaults, and removes the storage key. Stable across re-renders.
 
 ### `indexedDBStorage(options?)`
 
