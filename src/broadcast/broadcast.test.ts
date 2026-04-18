@@ -3,7 +3,7 @@
  */
 import { act } from 'react';
 import { renderHook } from '@testing-library/react';
-import { createRefSignal } from '../refsignal';
+import { CANCEL, createRefSignal } from '../refsignal';
 import { broadcast, useBroadcast } from './index';
 import { setupBroadcast } from './broadcast';
 import { useRefSignal } from '../hooks/useRefSignal';
@@ -206,6 +206,7 @@ describe('broadcast() — one-to-many', () => {
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'elect',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 100,
     });
@@ -222,6 +223,7 @@ describe('broadcast() — one-to-many', () => {
     const factoryA = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'elect',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
     const storeA = factoryA();
@@ -240,12 +242,14 @@ describe('broadcast() — one-to-many', () => {
     broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'recv',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
 
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'recv',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
     const store = factory();
@@ -267,6 +271,7 @@ describe('broadcast() — one-to-many', () => {
     const factory1 = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'bye-test',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
     factory1();
@@ -275,6 +280,7 @@ describe('broadcast() — one-to-many', () => {
     const factory2 = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'bye-test',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
       onBroadcasterChange,
     });
@@ -404,6 +410,8 @@ describe('useBroadcast()', () => {
       useBroadcast(store, {
         channel: 'bye-hook',
         mode: 'one-to-many',
+        initialElectionDelay: 0,
+        initialElectionDelay: 0,
         heartbeatInterval: 1000,
       });
     });
@@ -432,6 +440,8 @@ describe('useBroadcast()', () => {
       useBroadcast(store, {
         channel: 'is-bc-o2m-false',
         mode: 'one-to-many',
+        initialElectionDelay: 0,
+        initialElectionDelay: 0,
         heartbeatInterval: 1000,
       }),
     );
@@ -453,6 +463,8 @@ describe('useBroadcast()', () => {
       useBroadcast(store, {
         channel: 'is-bc-elect',
         mode: 'one-to-many',
+        initialElectionDelay: 0,
+        initialElectionDelay: 0,
         heartbeatInterval: 1000,
       }),
     );
@@ -476,7 +488,12 @@ describe('useBroadcast()', () => {
     let mode: 'many-to-many' | 'one-to-many' = 'many-to-many';
 
     const { result, rerender } = renderHook(() =>
-      useBroadcast(store, { channel, mode, heartbeatInterval: 1000 }),
+      useBroadcast(store, {
+        channel,
+        mode,
+        heartbeatInterval: 1000,
+        initialElectionDelay: 0,
+      }),
     );
 
     expect(result.current.isBroadcaster.current).toBe(true); // many-to-many — always true
@@ -518,6 +535,8 @@ describe('useBroadcast()', () => {
       useBroadcast(store, {
         channel: 'is-bc-callback',
         mode: 'one-to-many',
+        initialElectionDelay: 0,
+        initialElectionDelay: 0,
         heartbeatInterval: 1000,
         onBroadcasterChange: onChange,
       }),
@@ -719,6 +738,7 @@ describe('edge cases — one-to-many election', () => {
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'yield',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 100,
     });
@@ -738,6 +758,7 @@ describe('edge cases — one-to-many election', () => {
     const factory = broadcast(() => ({ score: createRefSignal(42) }), {
       channel: 'hello-yield',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 1000,
     });
@@ -778,6 +799,7 @@ describe('edge cases — one-to-many election', () => {
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'timeout-test',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 100,
       heartbeatTimeout: 500,
@@ -795,6 +817,7 @@ describe('edge cases — one-to-many election', () => {
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'handoff-send',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
     const store = factory();
@@ -823,6 +846,7 @@ describe('edge cases — one-to-many election', () => {
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'handoff-recv',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
     const store = factory();
@@ -842,6 +866,7 @@ describe('edge cases — one-to-many election', () => {
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'handoff-ignore',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
     const store = factory();
@@ -861,6 +886,130 @@ describe('edge cases — one-to-many election', () => {
     });
 
     expect(store.score.current).toBe(42); // unchanged
+  });
+});
+
+describe('initialElectionDelay', () => {
+  it('defers first election by the configured delay', () => {
+    jest.useFakeTimers();
+    try {
+      const onBroadcasterChange = jest.fn();
+      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+        channel: 'delay-basic',
+        mode: 'one-to-many',
+        onBroadcasterChange,
+        heartbeatInterval: 1000,
+        initialElectionDelay: 50,
+      });
+      factory();
+
+      // Not elected yet — within the delay window
+      expect(onBroadcasterChange).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(49);
+      expect(onBroadcasterChange).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(1);
+      expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('defaults to 50ms when not specified', () => {
+    jest.useFakeTimers();
+    try {
+      const onBroadcasterChange = jest.fn();
+      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+        channel: 'delay-default',
+        mode: 'one-to-many',
+        onBroadcasterChange,
+        heartbeatInterval: 1000,
+      });
+      factory();
+
+      jest.advanceTimersByTime(49);
+      expect(onBroadcasterChange).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(1);
+      expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('initialElectionDelay: 0 elects synchronously', () => {
+    const onBroadcasterChange = jest.fn();
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'delay-zero',
+      mode: 'one-to-many',
+      onBroadcasterChange,
+      heartbeatInterval: 1000,
+      initialElectionDelay: 0,
+    });
+    factory();
+
+    expect(onBroadcasterChange).toHaveBeenCalledWith(true);
+  });
+
+  it('peer hello arriving within the delay window prevents transient self-election', () => {
+    jest.useFakeTimers();
+    try {
+      const onBroadcasterChange = jest.fn();
+      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+        channel: 'delay-peer',
+        mode: 'one-to-many',
+        onBroadcasterChange,
+        heartbeatInterval: 1000,
+        initialElectionDelay: 50,
+      });
+      factory();
+
+      // Within the delay window, a lower-ID peer hellos
+      deliverFromOtherTab('delay-peer', {
+        type: 'hello',
+        tabId: '0000',
+        ts: Date.now(),
+      });
+
+      // Scheduled election fires — peer in tabsLastSeen already, so our tab
+      // correctly does NOT self-elect
+      jest.advanceTimersByTime(50);
+
+      expect(onBroadcasterChange).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('scheduled election is cancelled on unmount before it fires', () => {
+    jest.useFakeTimers();
+    try {
+      const onBroadcasterChange = jest.fn();
+      const { unmount } = renderHook(() =>
+        useBroadcast(
+          { score: createRefSignal(0) },
+          {
+            channel: 'delay-cancel',
+            mode: 'one-to-many',
+            onBroadcasterChange,
+            heartbeatInterval: 1000,
+            initialElectionDelay: 50,
+          },
+        ),
+      );
+
+      // Unmount within the delay window
+      jest.advanceTimersByTime(20);
+      unmount();
+
+      // Timer would have fired at 50ms — advance past that; nothing should happen
+      jest.advanceTimersByTime(100);
+
+      expect(onBroadcasterChange).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -933,6 +1082,8 @@ describe('createRefSignal — broadcast option (string shorthand)', () => {
       broadcast: {
         channel: 'sig-obj',
         mode: 'one-to-many',
+        initialElectionDelay: 0,
+        initialElectionDelay: 0,
         onBroadcasterChange,
       },
     });
@@ -1128,6 +1279,7 @@ describe('branch coverage', () => {
     const factory = broadcast(() => ({ score: createRefSignal(0) }), {
       channel: 'prune-test',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 100,
       heartbeatTimeout: 300,
@@ -1160,6 +1312,168 @@ describe('edge cases — BroadcastChannel absent at runtime', () => {
       const cleanup = setupBroadcast(store, { channel: 'no-bc' });
       cleanup();
     }).not.toThrow();
+  });
+});
+
+// ─── edge cases — interceptor + broadcast ────────────────────────────────────
+
+describe('edge cases — interceptor + broadcast', () => {
+  it('interceptor CANCEL on a broadcast-received value leaves the tab out of sync', () => {
+    // Documents the current behavior: broadcast-delivered values go through
+    // `signal.update` which respects the interceptor. If the interceptor
+    // returns CANCEL, the remote value is silently dropped and this tab's
+    // state diverges from the sender's. Not a library bug — interceptors
+    // are user-owned policy — but worth a regression test + docs call-out.
+    const store = {
+      score: createRefSignal(0, {
+        // Reject negatives — simulates a validation interceptor
+        interceptor: (value: number) =>
+          value < 0 ? (CANCEL as unknown as number) : value,
+      }),
+    };
+
+    setupBroadcast(store, { channel: 'interceptor-cancel' });
+
+    // A peer broadcasts a value our interceptor rejects
+    deliverFromOtherTab('interceptor-cancel', {
+      type: 'update',
+      tabId: 'other',
+      payload: { score: -5 },
+    });
+
+    // Our interceptor cancelled the update — tab stays at 0 while sender had -5.
+    expect(store.score.current).toBe(0);
+  });
+
+  it('interceptor transform applies to broadcast-received values (coerces on receipt)', () => {
+    // A transforming interceptor runs on every incoming broadcast update,
+    // including remote ones. This can intentionally normalize peer values
+    // (e.g. clamp to a range) or accidentally cause divergence if only
+    // some tabs have the interceptor. Documenting the behavior.
+    const store = {
+      score: createRefSignal(0, {
+        interceptor: (value: number) => Math.max(0, Math.min(100, value)),
+      }),
+    };
+
+    setupBroadcast(store, { channel: 'interceptor-clamp' });
+
+    deliverFromOtherTab('interceptor-clamp', {
+      type: 'update',
+      tabId: 'other',
+      payload: { score: 999 },
+    });
+
+    expect(store.score.current).toBe(100); // clamped on receipt, not stored raw
+  });
+});
+
+// ─── edge cases — persist hydration racing any broadcast update ──────────────
+
+describe('edge cases — persist hydration racing broadcast update', () => {
+  it('broadcast update arriving before hydration wins — mixed-signal case', async () => {
+    // Scenario: tab sets up persist (async get) and broadcast. Before persist
+    // hydration resolves, a full-snapshot `update` arrives from a peer.
+    // Signals touched by the broadcast update must NOT be overwritten by
+    // the later-resolving hydration. Signals NOT in the broadcast payload
+    // should still be hydrated from storage.
+    const { setupPersist } = await import('../persist/persist');
+
+    let resolveGet!: (val: string | null) => void;
+    const deferredStorage = {
+      get: () =>
+        new Promise<string | null>((r) => {
+          resolveGet = r;
+        }),
+      set: async () => {},
+      remove: async () => {},
+    };
+
+    const store = {
+      score: createRefSignal(0),
+      level: createRefSignal(1),
+    };
+
+    const { cleanup: persistCleanup } = setupPersist(store, {
+      key: 'race-mixed',
+      storage: deferredStorage,
+    });
+    const broadcastCleanup = setupBroadcast(store, {
+      channel: 'race-mixed-channel',
+    });
+
+    // Peer broadcasts a full snapshot — but only score is meaningful here
+    // (we'll verify mixed behavior: score overridden, level hydrated).
+    deliverFromOtherTab('race-mixed-channel', {
+      type: 'update',
+      tabId: 'peer',
+      payload: { score: 77 },
+    });
+
+    expect(store.score.current).toBe(77);
+    expect(store.level.current).toBe(1); // still default — not yet hydrated
+
+    // Hydration resolves with stale score (5) and a fresh level (9)
+    resolveGet(JSON.stringify({ v: 1, data: { score: 5, level: 9 } }));
+    await act(async () => {});
+
+    // score stays 77 (broadcast won — lastUpdated moved post-setup)
+    // level becomes 9 (hydrated — never touched by broadcast)
+    expect(store.score.current).toBe(77);
+    expect(store.level.current).toBe(9);
+
+    persistCleanup();
+    broadcastCleanup();
+  });
+
+  it('multiple broadcast updates during pending hydration stay consistent', async () => {
+    // Two back-to-back updates from a peer before persist hydrates —
+    // the tab's final state should reflect the LAST broadcast, not be
+    // partially overwritten by the stale persisted payload.
+    const { setupPersist } = await import('../persist/persist');
+
+    let resolveGet!: (val: string | null) => void;
+    const deferredStorage = {
+      get: () =>
+        new Promise<string | null>((r) => {
+          resolveGet = r;
+        }),
+      set: async () => {},
+      remove: async () => {},
+    };
+
+    const store = { score: createRefSignal(0) };
+
+    const { cleanup: persistCleanup } = setupPersist(store, {
+      key: 'race-multi',
+      storage: deferredStorage,
+    });
+    const broadcastCleanup = setupBroadcast(store, {
+      channel: 'race-multi-channel',
+    });
+
+    deliverFromOtherTab('race-multi-channel', {
+      type: 'update',
+      tabId: 'peer',
+      payload: { score: 42 },
+    });
+    deliverFromOtherTab('race-multi-channel', {
+      type: 'update',
+      tabId: 'peer',
+      payload: { score: 100 },
+    });
+
+    expect(store.score.current).toBe(100);
+
+    // Hydration arrives with stale data
+    resolveGet(JSON.stringify({ v: 1, data: { score: 5 } }));
+    await act(async () => {});
+
+    // Latest broadcast wins — hydration skipped because counter moved
+    expect(store.score.current).toBe(100);
+
+    persistCleanup();
+    broadcastCleanup();
   });
 });
 
@@ -1200,6 +1514,7 @@ describe('edge cases — persist + broadcast state-handoff race', () => {
     const broadcastCleanup = setupBroadcast(store, {
       channel: 'race-channel',
       mode: 'one-to-many',
+      initialElectionDelay: 0,
     });
 
     // Deliver state-handoff from yielding broadcaster (score=100)

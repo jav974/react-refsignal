@@ -181,17 +181,22 @@ broadcast(factory, {
 2. Tabs that have not sent a heartbeat within `heartbeatTimeout` ms are pruned.
 3. The tab with the lexicographically smallest `TAB_ID` wins.
 4. The winner sends a `broadcaster-claim` message so other tabs yield immediately.
-5. When a tab closes or unmounts, it sends a `bye` message to trigger immediate re-election.
+5. When a tab closes or unmounts, it sends a `bye` message.
+
+**Initial election is deferred by `initialElectionDelay` ms (default 50)** — a short grace period after setup or visibility-resume that lets peers respond to our `hello` before we decide. Without it, a tab joining an existing session would briefly self-elect (before hearing from the current leader) and then yield — a visible flicker of `isBroadcaster` from `false → true → false`. 50ms is imperceptible for a lone tab and wide enough to catch peer hellos on a local channel.
 
 ```ts
 broadcast(factory, {
   channel: 'game',
   mode: 'one-to-many',
-  heartbeatInterval: 2000, // how often to announce presence (default: 2000ms)
-  heartbeatTimeout: 5000,  // consider a tab dead after this silence (default: 5000ms)
+  heartbeatInterval: 2000,      // how often to announce presence (default: 2000ms)
+  heartbeatTimeout: 5000,       // consider a tab dead after this silence (default: 5000ms)
+  initialElectionDelay: 50,     // grace period before first election (default: 50ms)
   onBroadcasterChange: (active) => isBroadcaster.update(active),
 });
 ```
+
+Set `initialElectionDelay: 0` to elect synchronously if you know the tab is always first (e.g., initial page load with no existing session) and the small flicker is unacceptable.
 
 Non-broadcaster tabs still receive incoming updates — they just don't send any.
 
@@ -292,6 +297,7 @@ Options for the `broadcast` field on `createRefSignal` / `useRefSignal`.
 | `onBroadcasterChange` | `(active: boolean) => void` | — | `one-to-many` only: called when this tab gains or loses broadcaster status. |
 | `heartbeatInterval` | `number` | `2000` | `one-to-many` only: how often to announce presence, in ms. |
 | `heartbeatTimeout` | `number` | `5000` | `one-to-many` only: consider a tab dead after this silence, in ms. |
+| `initialElectionDelay` | `number` | `50` | `one-to-many` only: grace period in ms before the first election after setup or resume. Prevents transient self-election when joining an existing session. Set to `0` for synchronous election. |
 
 ### `BroadcastOptions<TStore>`
 
@@ -357,6 +363,13 @@ No configuration needed. The fallback is transparent.
 **`one-to-many` and page reload.** If the broadcaster tab reloads, the remaining tabs re-elect within one `heartbeatTimeout`. During this window, no outgoing updates are sent. Size `heartbeatTimeout` accordingly for your use case.
 
 **Persist + broadcast composition.** When `persist` and `broadcast` are composed on the same store, hydration and state-handoff are safe to use together. Persist snapshots each signal's update counter at setup time — if a `state-handoff` (or any other update) arrives before the storage read resolves, hydration is skipped for that signal and the in-memory state is preserved.
+
+**Interceptors run on incoming broadcast updates.** Remote values are applied via `signal.update()`, which passes through the signal's `interceptor` (if any) — exactly as if the value came from local code. Two consequences:
+
+- An interceptor that returns `CANCEL` silently drops the remote value. The sender and this tab will diverge until a non-cancelled update arrives.
+- A transforming interceptor (clamp, normalize, coerce) runs on every tab. If only some tabs have the interceptor, they hold different values for the same broadcast.
+
+Usually the right behavior — validation policy should apply equally to all inputs. But worth knowing when diagnosing "why aren't tabs in sync?"
 
 ## Threat model
 

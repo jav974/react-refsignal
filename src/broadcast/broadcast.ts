@@ -37,6 +37,7 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     onBroadcasterChange,
     heartbeatInterval = 2000,
     heartbeatTimeout = 5000,
+    initialElectionDelay = 50,
   } = options;
 
   const transport: Transport = resolveTransport(channel);
@@ -160,28 +161,30 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
   // ── Heartbeat + visibility handling (one-to-many only) ─────────────────────
 
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  let hasStartedOnce = false;
+  let initialElectionTimer: ReturnType<typeof setTimeout> | null = null;
 
   const startHeartbeat = () => {
     if (heartbeatTimer !== null) return;
     tabsLastSeen.set(TAB_ID, Date.now());
-    // First mount: elect immediately so a solitary tab becomes broadcaster
-    // without waiting `heartbeatInterval`. On a resume from hidden, skip
-    // the immediate election — peers may have been pruned from
-    // `tabsLastSeen` while we were throttled, so claiming now would
-    // incorrectly self-elect ahead of still-alive peers (causing the
-    // resuming tab to flicker into "broadcaster" for one tick).
-    if (!hasStartedOnce) {
+    // Announce presence immediately so peers add us to their tabsLastSeen.
+    transport.post({
+      type: 'hello',
+      tabId: TAB_ID,
+      ts: Date.now(),
+    } satisfies Msg<never>);
+
+    // Defer the first election by `initialElectionDelay` ms. Peers receive
+    // our hello, respond with their own, and we elect with a complete
+    // view — avoiding the "transient self-elect" flicker that happens
+    // when a tab joins an existing session or resumes from hidden.
+    // `initialElectionDelay: 0` opts into synchronous election.
+    if (initialElectionDelay <= 0) {
       electBroadcaster();
-      hasStartedOnce = true;
     } else {
-      // Announce presence so peers add us back to their tabsLastSeen;
-      // our next heartbeat tick runs the election with a fresh view.
-      transport.post({
-        type: 'hello',
-        tabId: TAB_ID,
-        ts: Date.now(),
-      } satisfies Msg<never>);
+      initialElectionTimer = setTimeout(() => {
+        initialElectionTimer = null;
+        electBroadcaster();
+      }, initialElectionDelay);
     }
     heartbeatTimer = setInterval(() => {
       transport.post({
@@ -197,6 +200,10 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     if (heartbeatTimer !== null) {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
+    }
+    if (initialElectionTimer !== null) {
+      clearTimeout(initialElectionTimer);
+      initialElectionTimer = null;
     }
   };
 
