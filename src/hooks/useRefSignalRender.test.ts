@@ -3,7 +3,7 @@
  */
 
 import { act } from 'react';
-import { renderHook } from '@testing-library/react';
+import { renderHook } from '../test-utils/renderHook';
 import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalRender } from './useRefSignalRender';

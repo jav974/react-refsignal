@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import { act } from 'react';
-import { renderHook } from '@testing-library/react';
+import { renderHook } from '../test-utils/renderHook';
 import { CANCEL, createRefSignal } from '../refsignal';
 import { broadcast, useBroadcast } from './index';
 import { setupBroadcast } from './broadcast';

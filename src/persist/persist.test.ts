@@ -9,7 +9,7 @@ if (typeof globalThis.structuredClone === 'undefined') {
     JSON.parse(JSON.stringify(v)) as T;
 }
 import { act } from 'react';
-import { renderHook } from '@testing-library/react';
+import { renderHook } from '../test-utils/renderHook';
 import { createRefSignal } from '../refsignal';
 import {
   persist,

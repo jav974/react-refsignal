@@ -3,7 +3,7 @@
  */
 import React, { ReactNode } from 'react';
 import { act } from 'react';
-import { renderHook } from '@testing-library/react';
+import { renderHook } from '../test-utils/renderHook';
 import { createRefSignal, watch } from '../refsignal';
 import { createRefSignalStore } from './createRefSignalStore';
 import { useRefSignalStore } from './useRefSignalStore';
