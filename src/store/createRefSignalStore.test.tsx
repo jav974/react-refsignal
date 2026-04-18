@@ -6,14 +6,65 @@ import { act } from 'react';
 import { renderHook } from '../test-utils/renderHook';
 import { createRefSignal, watch } from '../refsignal';
 import { createRefSignalStore } from './createRefSignalStore';
-import { useRefSignalStore } from './useRefSignalStore';
+import {
+  useRefSignalStore,
+  type SignalStoreOptionsPlain,
+  type SignalStoreOptionsUnwrapped,
+  type UnwrappedStore,
+} from './useRefSignalStore';
 import { ALL } from '../context/createRefSignalContext';
 
-function makeStore() {
+type GameStore = {
+  score: ReturnType<typeof createRefSignal<number>>;
+  level: ReturnType<typeof createRefSignal<number>>;
+  tag: string;
+};
+
+function makeStore(): GameStore {
   return {
     score: createRefSignal(0),
     level: createRefSignal(1),
     tag: 'game', // non-signal passthrough
+  };
+}
+
+/**
+ * Mount `useRefSignalStore` over a fresh store, tracking render count.
+ * Collapses the `let renderCount = 0; renderHook(() => { renderCount++; ... })`
+ * scaffolding that repeated across every behavior test.
+ */
+function mountStore(options?: SignalStoreOptionsPlain<GameStore>) {
+  const store = createRefSignalStore(makeStore);
+  let renders = 0;
+  const { result, rerender, unmount } = renderHook(() => {
+    renders++;
+    return useRefSignalStore(store, options);
+  });
+  return {
+    store,
+    result: result as { current: GameStore },
+    rerender,
+    unmount,
+    renders: () => renders,
+  };
+}
+
+/**
+ * Variant that forces the unwrapped overload. `result.current` is typed as
+ * {@link UnwrappedStore} so setters resolve in the IDE.
+ */
+function mountStoreUnwrapped(options: SignalStoreOptionsUnwrapped<GameStore>) {
+  const store = createRefSignalStore(makeStore);
+  const renders = 0;
+  const { result, rerender, unmount } = renderHook(() =>
+    useRefSignalStore(store, options),
+  );
+  return {
+    store,
+    result: result as { current: UnwrappedStore<GameStore> },
+    rerender,
+    unmount,
+    renders: () => renders,
   };
 }
 
@@ -57,25 +108,17 @@ describe('useRefSignalStore — no renderOn', () => {
   });
 
   it('does not re-render when a signal updates', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    renderHook(() => {
-      renderCount++;
-      return useRefSignalStore(store);
-    });
+    const { store, renders } = mountStore();
     act(() => {
       store.score.update(42);
     });
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
   });
 });
 
 describe('useRefSignalStore — renderOn specific signals', () => {
   it('re-renders when the subscribed signal updates', async () => {
-    const store = createRefSignalStore(makeStore);
-    const { result } = renderHook(() =>
-      useRefSignalStore(store, { renderOn: ['score'] }),
-    );
+    const { store, result } = mountStore({ renderOn: ['score'] });
     expect(result.current.score.current).toBe(0);
     act(() => {
       store.score.update(7);
@@ -84,81 +127,61 @@ describe('useRefSignalStore — renderOn specific signals', () => {
   });
 
   it('does not re-render when an unsubscribed signal updates', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    renderHook(() => {
-      renderCount++;
-      return useRefSignalStore(store, { renderOn: ['score'] });
-    });
+    const { store, renders } = mountStore({ renderOn: ['score'] });
     act(() => {
       store.level.update(5);
     });
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
   });
 
   it('re-renders when any listed signal updates', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    renderHook(() => {
-      renderCount++;
-      return useRefSignalStore(store, { renderOn: ['score', 'level'] });
-    });
+    const { store, renders } = mountStore({ renderOn: ['score', 'level'] });
     act(() => {
       store.score.update(1);
     });
     act(() => {
       store.level.update(2);
     });
-    expect(renderCount).toBe(3); // initial + 2 updates
+    expect(renders()).toBe(3); // initial + 2 updates
   });
 });
 
 describe('useRefSignalStore — renderOn: ALL', () => {
   it('re-renders on any signal update', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    renderHook(() => {
-      renderCount++;
-      return useRefSignalStore(store, { renderOn: ALL });
-    });
+    const { store, renders } = mountStore({ renderOn: ALL });
     act(() => {
       store.score.update(1);
     });
     act(() => {
       store.level.update(2);
     });
-    expect(renderCount).toBe(3);
+    expect(renders()).toBe(3);
   });
 });
 
 describe('useRefSignalStore — filter', () => {
   it('skips re-render when filter returns false', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    renderHook(() => {
-      renderCount++;
-      return useRefSignalStore(store, {
-        renderOn: ['score'],
-        filter: (s) => s.score > 10,
-      });
+    const { store, renders } = mountStore({
+      renderOn: ['score'],
+      filter: (s) => s.score > 10,
     });
     act(() => {
       store.score.update(5);
     }); // filtered out
-    expect(renderCount).toBe(1);
+    expect(renders()).toBe(1);
     act(() => {
       store.score.update(20);
     }); // passes filter
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 });
 
 describe('useRefSignalStore — unwrap', () => {
   it('returns plain values and auto-generated setters', () => {
-    const store = createRefSignalStore(makeStore);
-    const { result } = renderHook(() =>
-      useRefSignalStore(store, { renderOn: ['score'], unwrap: true }),
-    );
+    const { result } = mountStoreUnwrapped({
+      renderOn: ['score'],
+      unwrap: true,
+    });
     expect(result.current.score).toBe(0);
     expect(typeof result.current.setScore).toBe('function');
     act(() => {
@@ -168,10 +191,10 @@ describe('useRefSignalStore — unwrap', () => {
   });
 
   it('passes through non-signal values without a setter', () => {
-    const store = createRefSignalStore(makeStore);
-    const { result } = renderHook(() =>
-      useRefSignalStore(store, { renderOn: ['score'], unwrap: true }),
-    );
+    const { result } = mountStoreUnwrapped({
+      renderOn: ['score'],
+      unwrap: true,
+    });
     expect(result.current.tag).toBe('game');
     expect((result.current as Record<string, unknown>).setTag).toBeUndefined();
   });
@@ -182,11 +205,9 @@ describe('useRefSignalStore — timing options', () => {
   afterEach(() => jest.useRealTimers());
 
   it('throttle: limits re-renders to at most once per window', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    renderHook(() => {
-      renderCount++;
-      return useRefSignalStore(store, { renderOn: ['score'], throttle: 100 });
+    const { store, renders } = mountStore({
+      renderOn: ['score'],
+      throttle: 100,
     });
     act(() => {
       store.score.update(1);
@@ -197,19 +218,17 @@ describe('useRefSignalStore — timing options', () => {
     act(() => {
       store.score.update(3);
     }); // trailing pending
-    expect(renderCount).toBe(2); // initial + leading
+    expect(renders()).toBe(2); // initial + leading
     act(() => {
       jest.advanceTimersByTime(100);
     });
-    expect(renderCount).toBe(3); // + trailing
+    expect(renders()).toBe(3); // + trailing
   });
 
   it('debounce: only re-renders after quiet period', () => {
-    const store = createRefSignalStore(makeStore);
-    let renderCount = 0;
-    renderHook(() => {
-      renderCount++;
-      return useRefSignalStore(store, { renderOn: ['score'], debounce: 100 });
+    const { store, renders } = mountStore({
+      renderOn: ['score'],
+      debounce: 100,
     });
     act(() => {
       store.score.update(1);
@@ -217,11 +236,11 @@ describe('useRefSignalStore — timing options', () => {
     act(() => {
       store.score.update(2);
     });
-    expect(renderCount).toBe(1); // no re-render yet
+    expect(renders()).toBe(1); // no re-render yet
     act(() => {
       jest.advanceTimersByTime(100);
     });
-    expect(renderCount).toBe(2);
+    expect(renders()).toBe(2);
   });
 });
 

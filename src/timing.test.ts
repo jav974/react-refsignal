@@ -8,6 +8,7 @@ import {
   createRAF,
   createThrottle,
 } from './timing';
+import { setupRafMock } from './test-utils/raf';
 
 describe('createThrottle', () => {
   beforeEach(() => jest.useFakeTimers());
@@ -150,18 +151,15 @@ describe('createDebounce', () => {
 });
 
 describe('createRAF', () => {
-  let rafCallback: FrameRequestCallback | null = null;
+  let raf: ReturnType<typeof setupRafMock>;
 
   beforeEach(() => {
-    rafCallback = null;
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafCallback = cb;
-      return 1;
-    });
-    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+    raf = setupRafMock();
   });
 
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    raf.restore();
+  });
 
   it('schedules fn on the next animation frame', () => {
     const fn = jest.fn();
@@ -170,7 +168,7 @@ describe('createRAF', () => {
     call();
     expect(fn).not.toHaveBeenCalled();
 
-    rafCallback?.(0);
+    raf.fire();
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
@@ -182,7 +180,7 @@ describe('createRAF', () => {
     call();
     call();
 
-    rafCallback?.(0);
+    raf.fire();
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
@@ -212,11 +210,11 @@ describe('createRAF', () => {
     const { call } = createRAF(fn);
 
     call();
-    rafCallback?.(0);
+    raf.fire();
     expect(fn).toHaveBeenCalledTimes(1);
 
     call();
-    rafCallback?.(0);
+    raf.fire();
     expect(fn).toHaveBeenCalledTimes(2);
   });
 });
@@ -274,18 +272,14 @@ describe('applyTimingOptions', () => {
 
   it('rAF: returns a rAF wrapper', () => {
     jest.useRealTimers();
-    let rafCb: FrameRequestCallback | null = null;
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafCb = cb;
-      return 1;
-    });
+    const raf = setupRafMock();
     const fn = jest.fn();
     const wrapper = applyTimingOptions(fn, { rAF: true });
     wrapper.call();
     expect(fn).not.toHaveBeenCalled();
-    rafCb?.(0);
+    raf.fire();
     expect(fn).toHaveBeenCalledTimes(1);
-    jest.restoreAllMocks();
+    raf.restore();
   });
 
   it('cancel() delegates to the underlying wrapper', () => {

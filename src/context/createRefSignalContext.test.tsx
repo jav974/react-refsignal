@@ -10,6 +10,11 @@ import {
   type ContextHook,
 } from './createRefSignalContext';
 import { createRefSignal, RefSignal } from '../refsignal';
+import type {
+  SignalStoreOptionsPlain,
+  SignalStoreOptionsUnwrapped,
+  UnwrappedStore,
+} from '../store/useRefSignalStore';
 
 function makeWrapper(Provider: React.FC<{ children: ReactNode }>) {
   return ({ children }: { children: ReactNode }) =>
@@ -73,7 +78,7 @@ function makeCountContext(factory: () => CountStore): CountContextResult {
  * the repeated ~10-line scaffolding into one call.
  */
 function mountUser(
-  options?: Parameters<ContextHook<UserStore>>[0],
+  options?: SignalStoreOptionsPlain<UserStore>,
   factory: () => UserStore = makeStore,
 ) {
   const { UserProvider, useUserContext } = makeUserContext(factory);
@@ -81,14 +86,40 @@ function mountUser(
   const { result, rerender, unmount } = renderHook(
     () => {
       renders++;
-      // Cast pushes the union-typed options through the overloaded hook —
-      // the runtime dispatches correctly regardless.
-      return (useUserContext as (opts?: typeof options) => unknown)(options);
+      return useUserContext(options);
     },
     { wrapper: makeWrapper(UserProvider) },
   );
   return {
-    result,
+    result: result as { current: UserStore },
+    rerender,
+    unmount,
+    renders: () => renders,
+    UserProvider,
+    useUserContext,
+  };
+}
+
+/**
+ * Variant of {@link mountUser} that forces the unwrapped overload.
+ * `result.current` is typed as {@link UnwrappedStore}, so setters
+ * (`setName`, `setScore`) and plain values resolve in the IDE.
+ */
+function mountUserUnwrapped(
+  options: SignalStoreOptionsUnwrapped<UserStore>,
+  factory: () => UserStore = makeStore,
+) {
+  const { UserProvider, useUserContext } = makeUserContext(factory);
+  let renders = 0;
+  const { result, rerender, unmount } = renderHook(
+    () => {
+      renders++;
+      return useUserContext(options);
+    },
+    { wrapper: makeWrapper(UserProvider) },
+  );
+  return {
+    result: result as { current: UnwrappedStore<UserStore> },
     rerender,
     unmount,
     renders: () => renders,
@@ -119,169 +150,99 @@ describe('createRefSignalContext', () => {
 
     it('capitalizes the name when passed in lowercase', () => {
       const result = createRefSignalContext('cart', makeStore);
-      expect(typeof (result as Record<string, unknown>).CartProvider).toBe(
-        'function',
-      );
-      expect(typeof (result as Record<string, unknown>).useCartContext).toBe(
-        'function',
-      );
+      expect(typeof result.CartProvider).toBe('function');
+      expect(typeof result.useCartContext).toBe('function');
     });
   });
 
   describe('without renderOn — no re-renders', () => {
-    it('returns the store', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      const { result } = renderHook(() => useUserContext(), {
-        wrapper: makeWrapper(UserProvider),
-      });
-      expect(result.current.name.current).toBe('Alice');
-      expect(result.current.score.current).toBe(0);
-      expect(result.current.sessionId).toBe('abc123');
-    });
-
     it('does not re-render when a signal updates', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext();
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, renders } = mountUser();
 
-      const initial = renderCount;
+      const initial = renders();
       act(() => {
         result.current.name.update('Bob');
       });
-      expect(renderCount).toBe(initial);
+      expect(renders()).toBe(initial);
     });
   });
 
   describe('with renderOn — selective re-renders', () => {
     it('re-renders when a renderOn signal updates', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: ['name'] });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, renders } = mountUser({ renderOn: ['name'] });
 
-      const initial = renderCount;
+      const initial = renders();
       act(() => {
         result.current.name.update('Bob');
       });
-      expect(renderCount).toBeGreaterThan(initial);
+      expect(renders()).toBeGreaterThan(initial);
     });
 
     it('does not re-render when an untracked signal updates', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: ['name'] });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, renders } = mountUser({ renderOn: ['name'] });
 
-      const initial = renderCount;
+      const initial = renders();
       act(() => {
         result.current.score.update(99);
       });
-      expect(renderCount).toBe(initial);
+      expect(renders()).toBe(initial);
     });
 
     it('re-renders when any of multiple renderOn signals update', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: ['name', 'score'] });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, renders } = mountUser({ renderOn: ['name', 'score'] });
 
-      const after0 = renderCount;
+      const after0 = renders();
       act(() => {
         result.current.score.update(99);
       });
-      expect(renderCount).toBeGreaterThan(after0);
+      expect(renders()).toBeGreaterThan(after0);
 
-      const after1 = renderCount;
+      const after1 = renders();
       act(() => {
         result.current.name.update('Charlie');
       });
-      expect(renderCount).toBeGreaterThan(after1);
+      expect(renders()).toBeGreaterThan(after1);
     });
 
     it('filter receives the store and gates re-renders', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({
-            renderOn: ['score'],
-            filter: (store) => store.score > 10,
-          });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, renders } = mountUser({
+        renderOn: ['score'],
+        filter: (store) => store.score > 10,
+      });
 
-      const initial = renderCount;
+      const initial = renders();
       act(() => {
         result.current.score.update(5);
       }); // below threshold — no re-render
-      expect(renderCount).toBe(initial);
+      expect(renders()).toBe(initial);
 
       act(() => {
         result.current.score.update(99);
       }); // above threshold — re-renders
-      expect(renderCount).toBeGreaterThan(initial);
+      expect(renders()).toBeGreaterThan(initial);
     });
 
     it('does not re-render when a tracked signal updates to same value', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: ['name'] });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, renders } = mountUser({ renderOn: ['name'] });
 
-      const initial = renderCount;
+      const initial = renders();
       act(() => {
         result.current.name.update('Alice'); // same value
       });
-      expect(renderCount).toBe(initial);
+      expect(renders()).toBe(initial);
     });
   });
 
   describe('unwrap', () => {
     it('returns plain values instead of signals', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      const { result } = renderHook(
-        () => useUserContext({ unwrap: true, renderOn: 'all' }),
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result } = mountUserUnwrapped({ unwrap: true, renderOn: 'all' });
 
       expect(result.current.name).toBe('Alice');
       expect(result.current.score).toBe(0);
     });
 
     it('non-signal values pass through unchanged', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      const { result } = renderHook(
-        () => useUserContext({ unwrap: true, renderOn: 'all' }),
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result } = mountUserUnwrapped({ unwrap: true, renderOn: 'all' });
 
       expect(result.current.sessionId).toBe('abc123');
     });
@@ -292,7 +253,10 @@ describe('createRefSignalContext', () => {
       const { result } = renderHook(
         () => ({
           raw: useUserContext(),
-          view: useUserContext({ renderOn: ['name'], unwrap: true }),
+          view: useUserContext({
+            renderOn: ['name'],
+            unwrap: true,
+          }),
         }),
         { wrapper: makeWrapper(UserProvider) },
       );
@@ -307,22 +271,14 @@ describe('createRefSignalContext', () => {
     });
 
     it('generates setters for each signal key', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      const { result } = renderHook(
-        () => useUserContext({ unwrap: true, renderOn: 'all' }),
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result } = mountUserUnwrapped({ unwrap: true, renderOn: 'all' });
 
       expect(typeof result.current.setName).toBe('function');
       expect(typeof result.current.setScore).toBe('function');
     });
 
     it('does not generate a setter for non-signal values', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-      const { result } = renderHook(
-        () => useUserContext({ unwrap: true, renderOn: 'all' }),
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result } = mountUserUnwrapped({ unwrap: true, renderOn: 'all' });
 
       expect(
         (result.current as Record<string, unknown>).setSessionId,
@@ -330,12 +286,10 @@ describe('createRefSignalContext', () => {
     });
 
     it('setter updates the signal and triggers re-render', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-
-      const { result } = renderHook(
-        () => useUserContext({ renderOn: ['name'], unwrap: true }),
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result } = mountUserUnwrapped({
+        renderOn: ['name'],
+        unwrap: true,
+      });
 
       expect(result.current.name).toBe('Alice');
 
@@ -349,99 +303,63 @@ describe('createRefSignalContext', () => {
 
   describe("renderOn: 'all'", () => {
     it("re-renders on all signals when renderOn: 'all'", () => {
-      const { UserProvider, useUserContext } = makeUserContext();
+      const { result, renders } = mountUser({ renderOn: 'all' });
 
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: 'all' });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
-
-      const initial = renderCount;
+      const initial = renders();
       act(() => {
         result.current.name.update('Bob');
       });
-      expect(renderCount).toBeGreaterThan(initial);
+      expect(renders()).toBeGreaterThan(initial);
 
-      const after = renderCount;
+      const after = renders();
       act(() => {
         result.current.score.update(99);
       });
-      expect(renderCount).toBeGreaterThan(after);
+      expect(renders()).toBeGreaterThan(after);
     });
 
     it('does not re-render by default without renderOn', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
+      const { result, renders } = mountUser();
 
-      let renderCount = 0;
-      const { result } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext();
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
-
-      const initial = renderCount;
+      const initial = renders();
       act(() => {
         result.current.name.update('Bob');
       });
-      expect(renderCount).toBe(initial);
+      expect(renders()).toBe(initial);
     });
   });
 
   describe('resubscription stability', () => {
     it('does not accumulate listeners when component re-renders with renderOn array', () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-
-      let renderCount = 0;
-      const { result, rerender } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: ['name'] });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, rerender, renders } = mountUser({ renderOn: ['name'] });
 
       // Force several re-renders — each creates a new array via .map()
       rerender();
       rerender();
       rerender();
 
-      renderCount = 0;
+      const baseline = renders();
       act(() => {
         result.current.name.update('Bob');
       });
 
-      // If listeners accumulated, renderCount would be > 1
-      expect(renderCount).toBe(1);
+      // If listeners accumulated, delta would be > 1
+      expect(renders() - baseline).toBe(1);
     });
 
     it("does not accumulate listeners when component re-renders with renderOn: 'all'", () => {
-      const { UserProvider, useUserContext } = makeUserContext();
-
-      let renderCount = 0;
-      const { result, rerender } = renderHook(
-        () => {
-          renderCount++;
-          return useUserContext({ renderOn: 'all' });
-        },
-        { wrapper: makeWrapper(UserProvider) },
-      );
+      const { result, rerender, renders } = mountUser({ renderOn: 'all' });
 
       rerender();
       rerender();
       rerender();
 
-      renderCount = 0;
+      const baseline = renders();
       act(() => {
         result.current.name.update('Bob');
       });
 
-      expect(renderCount).toBe(1);
+      expect(renders() - baseline).toBe(1);
     });
   });
 
@@ -526,8 +444,11 @@ describe('createRefSignalContextHook', () => {
       const [UserContext, useUserContext] =
         createRefSignalContextHook<UserStore>('User');
 
-      const UserProvider = ({ children }: { children: ReactNode }) =>
-        createElement(UserContext.Provider, { value: makeStore() }, children);
+      const UserProvider = ({ children }: { children: ReactNode }) => (
+        <UserContext.Provider value={makeStore()}>
+          {children}
+        </UserContext.Provider>
+      );
 
       return { UserProvider, useUserContext };
     }
@@ -636,12 +557,13 @@ describe('createRefSignalContextHook', () => {
 
       const makeProvider =
         (initial: string) =>
-        ({ children }: { children: ReactNode }) =>
-          createElement(
-            UserContext.Provider,
-            { value: { ...makeStore(), name: createRefSignal(initial) } },
-            children,
-          );
+        ({ children }: { children: ReactNode }) => (
+          <UserContext.Provider
+            value={{ ...makeStore(), name: createRefSignal(initial) }}
+          >
+            {children}
+          </UserContext.Provider>
+        );
 
       const { result: r1 } = renderHook(() => useUserContext(), {
         wrapper: makeWrapper(makeProvider('Alice')),

@@ -6,6 +6,7 @@ import {
   createComputedSignal,
   watch,
 } from './refsignal';
+import { setupRafMock } from './test-utils/raf';
 
 describe('createRefSignal', () => {
   it('should create a RefSignal with initial value', () => {
@@ -518,12 +519,7 @@ describe('watch', () => {
     });
 
     it('rAF: collapses updates into one call per frame', () => {
-      let rafCb: FrameRequestCallback | null = null;
-      const origRAF = globalThis.requestAnimationFrame;
-      globalThis.requestAnimationFrame = (cb) => {
-        rafCb = cb;
-        return 1;
-      };
+      const raf = setupRafMock();
       try {
         const signal = createRefSignal(0);
         const listener = jest.fn();
@@ -531,11 +527,11 @@ describe('watch', () => {
         signal.update(1);
         signal.update(2);
         expect(listener).not.toHaveBeenCalled();
-        rafCb?.(0);
+        raf.fire();
         expect(listener).toHaveBeenCalledTimes(1);
         expect(listener).toHaveBeenCalledWith(2);
       } finally {
-        globalThis.requestAnimationFrame = origRAF;
+        raf.restore();
       }
     });
 

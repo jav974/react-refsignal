@@ -3,10 +3,26 @@
  */
 import { act } from 'react';
 import { renderHook } from '../test-utils/renderHook';
-import { CANCEL, createRefSignal } from '../refsignal';
+import { CANCEL, createRefSignal, type RefSignal } from '../refsignal';
 import { broadcast, useBroadcast } from './index';
 import { setupBroadcast } from './broadcast';
 import { useRefSignal } from '../hooks/useRefSignal';
+import { setupRafMock } from '../test-utils/raf';
+import type { BroadcastOptions } from './types';
+
+type ScoreStore = { score: RefSignal<number> };
+
+/**
+ * Builds and instantiates a one-signal broadcast store. Collapses the
+ * `const factory = broadcast(() => ({ score: createRefSignal(initial) }), opts); const store = factory();`
+ * pattern that repeats across this file into one call. `initial` defaults to 0.
+ */
+function mountScoreBroadcaster(
+  options: BroadcastOptions<ScoreStore>,
+  initial = 0,
+) {
+  return broadcast(() => ({ score: createRefSignal(initial) }), options)();
+}
 
 // ─── Transport mocks ──────────────────────────────────────────────────────────
 
@@ -70,10 +86,9 @@ function deliverFromOtherTab(channel: string, msg: unknown) {
 
 describe('broadcast() — many-to-many', () => {
   it('sends snapshot to other tabs when a signal updates', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'test',
     });
-    const store = factory();
 
     const received: unknown[] = [];
     deliverFromOtherTab('test', null); // warm up listener
@@ -92,10 +107,9 @@ describe('broadcast() — many-to-many', () => {
   });
 
   it('applies incoming snapshot from another tab', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'test',
     });
-    const store = factory();
 
     deliverFromOtherTab('test', {
       type: 'update',
@@ -107,10 +121,9 @@ describe('broadcast() — many-to-many', () => {
   });
 
   it('ignores own messages (tabId check)', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'test',
     });
-    const store = factory();
 
     // Simulate a message arriving with our own TAB_ID — should be ignored
     // We can't know the internal TAB_ID, but we can verify applying a snapshot
@@ -128,11 +141,10 @@ describe('broadcast() — many-to-many', () => {
   });
 
   it('skips outgoing send when filter returns false', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'test',
       filter: (s) => s.score > 10,
     });
-    const store = factory();
 
     const received: unknown[] = [];
     const bc = new MockBC('test');
@@ -148,11 +160,10 @@ describe('broadcast() — many-to-many', () => {
   });
 
   it('respects throttle — collapses rapid updates into one send', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'test',
       throttle: 100,
     });
-    const store = factory();
 
     const received: unknown[] = [];
     const bc = new MockBC('test');
@@ -168,10 +179,9 @@ describe('broadcast() — many-to-many', () => {
   });
 
   it('ignores unknown keys in incoming snapshot', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'test',
     });
-    const store = factory();
 
     expect(() => {
       deliverFromOtherTab('test', {
@@ -185,10 +195,9 @@ describe('broadcast() — many-to-many', () => {
   });
 
   it('ignores malformed messages', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'test',
     });
-    const store = factory();
 
     expect(() => {
       deliverFromOtherTab('test', null);
@@ -205,14 +214,13 @@ describe('broadcast() — many-to-many', () => {
 describe('broadcast() — one-to-many', () => {
   it('calls onBroadcasterChange(true) when elected', () => {
     const onBroadcasterChange = jest.fn();
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'elect',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 100,
     });
-    factory();
 
     // Immediate election with no competition — should win
     expect(onBroadcasterChange).toHaveBeenCalledWith(true);
@@ -222,13 +230,12 @@ describe('broadcast() — one-to-many', () => {
     const received: unknown[] = [];
 
     // Tab A — broadcaster
-    const factoryA = broadcast(() => ({ score: createRefSignal(0) }), {
+    const storeA = mountScoreBroadcaster({
       channel: 'elect',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
-    const storeA = factoryA();
 
     const bc = new MockBC('elect');
     bc.onmessage = (e) => {
@@ -241,20 +248,19 @@ describe('broadcast() — one-to-many', () => {
   });
 
   it('non-broadcaster receives incoming updates', () => {
-    broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'recv',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
 
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'recv',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
-    const store = factory();
 
     // Deliver an incoming update regardless of broadcaster status
     deliverFromOtherTab('recv', {
@@ -270,23 +276,21 @@ describe('broadcast() — one-to-many', () => {
     const onBroadcasterChange = jest.fn();
 
     // First tab — becomes broadcaster
-    const factory1 = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'bye-test',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
-    factory1();
 
     // Second tab — observes
-    const factory2 = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'bye-test',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
       onBroadcasterChange,
     });
-    factory2();
 
     // Simulate first tab sending bye
     deliverFromOtherTab('bye-test', { type: 'bye', tabId: 'leaving-tab' });
@@ -733,14 +737,13 @@ describe('edge cases — store shape', () => {
 describe('edge cases — one-to-many election', () => {
   it('yields broadcaster status when a lower-ID tab sends broadcaster-claim', () => {
     const onBroadcasterChange = jest.fn();
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'yield',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 100,
     });
-    factory();
 
     // Our tab won election immediately — should be broadcaster
     expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
@@ -753,14 +756,16 @@ describe('edge cases — one-to-many election', () => {
 
   it('yields to a lower-ID tab announced via hello, sends state-handoff', () => {
     const onBroadcasterChange = jest.fn();
-    const factory = broadcast(() => ({ score: createRefSignal(42) }), {
-      channel: 'hello-yield',
-      mode: 'one-to-many',
-      initialElectionDelay: 0,
-      onBroadcasterChange,
-      heartbeatInterval: 1000,
-    });
-    factory();
+    mountScoreBroadcaster(
+      {
+        channel: 'hello-yield',
+        mode: 'one-to-many',
+        initialElectionDelay: 0,
+        onBroadcasterChange,
+        heartbeatInterval: 1000,
+      },
+      42,
+    );
 
     // Tab wins initial election (no competition yet)
     expect(onBroadcasterChange).toHaveBeenCalledWith(true);
@@ -794,7 +799,7 @@ describe('edge cases — one-to-many election', () => {
       ts: Date.now(),
     });
 
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'timeout-test',
       mode: 'one-to-many',
       initialElectionDelay: 0,
@@ -802,7 +807,6 @@ describe('edge cases — one-to-many election', () => {
       heartbeatInterval: 100,
       heartbeatTimeout: 500,
     });
-    factory();
 
     // The other tab (0000) should win election initially since it was seen
     // After heartbeatTimeout ms of silence, it gets pruned and we take over
@@ -812,13 +816,12 @@ describe('edge cases — one-to-many election', () => {
   });
 
   it('sends state-handoff when yielding to a lower-ID broadcaster-claim', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'handoff-send',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
-    const store = factory();
 
     // Set a known value so we can assert it appears in the handoff payload
     store.score.update(42);
@@ -841,13 +844,12 @@ describe('edge cases — one-to-many election', () => {
   });
 
   it('applies state-handoff from yielding tab when this tab is broadcaster', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'handoff-recv',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
-    const store = factory();
 
     // This tab wins election immediately (no competition) — isBroadcaster = true
     // Simulate the yielding broadcaster sending its in-memory state
@@ -861,13 +863,12 @@ describe('edge cases — one-to-many election', () => {
   });
 
   it('non-broadcaster ignores state-handoff', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'handoff-ignore',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       heartbeatInterval: 100,
     });
-    const store = factory();
 
     // Force the tab to yield broadcaster role
     deliverFromOtherTab('handoff-ignore', {
@@ -892,14 +893,13 @@ describe('initialElectionDelay', () => {
     jest.useFakeTimers();
     try {
       const onBroadcasterChange = jest.fn();
-      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      mountScoreBroadcaster({
         channel: 'delay-basic',
         mode: 'one-to-many',
         onBroadcasterChange,
         heartbeatInterval: 1000,
         initialElectionDelay: 50,
       });
-      factory();
 
       // Not elected yet — within the delay window
       expect(onBroadcasterChange).not.toHaveBeenCalled();
@@ -918,13 +918,12 @@ describe('initialElectionDelay', () => {
     jest.useFakeTimers();
     try {
       const onBroadcasterChange = jest.fn();
-      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      mountScoreBroadcaster({
         channel: 'delay-default',
         mode: 'one-to-many',
         onBroadcasterChange,
         heartbeatInterval: 1000,
       });
-      factory();
 
       jest.advanceTimersByTime(49);
       expect(onBroadcasterChange).not.toHaveBeenCalled();
@@ -938,14 +937,13 @@ describe('initialElectionDelay', () => {
 
   it('initialElectionDelay: 0 elects synchronously', () => {
     const onBroadcasterChange = jest.fn();
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'delay-zero',
       mode: 'one-to-many',
       onBroadcasterChange,
       heartbeatInterval: 1000,
       initialElectionDelay: 0,
     });
-    factory();
 
     expect(onBroadcasterChange).toHaveBeenCalledWith(true);
   });
@@ -954,14 +952,13 @@ describe('initialElectionDelay', () => {
     jest.useFakeTimers();
     try {
       const onBroadcasterChange = jest.fn();
-      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      mountScoreBroadcaster({
         channel: 'delay-peer',
         mode: 'one-to-many',
         onBroadcasterChange,
         heartbeatInterval: 1000,
         initialElectionDelay: 50,
       });
-      factory();
 
       // Within the delay window, a lower-ID peer hellos
       deliverFromOtherTab('delay-peer', {
@@ -1030,14 +1027,13 @@ describe('visibility handling', () => {
     const spy = new MockBC('vis-hidden');
     spy.onmessage = (e) => received.push(e.data);
 
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'vis-hidden',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 1000,
     });
-    factory();
 
     // Elected as sole tab
     expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
@@ -1059,14 +1055,13 @@ describe('visibility handling', () => {
     try {
       setVisibility('visible');
       const onBroadcasterChange = jest.fn();
-      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      mountScoreBroadcaster({
         channel: 'vis-resume',
         mode: 'one-to-many',
         initialElectionDelay: 0,
         onBroadcasterChange,
         heartbeatInterval: 1000,
       });
-      factory();
 
       expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
 
@@ -1090,14 +1085,13 @@ describe('visibility handling', () => {
   it('mounted while hidden → does not start heartbeat until visible', () => {
     setVisibility('hidden');
     const onBroadcasterChange = jest.fn();
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'vis-mounted-hidden',
       mode: 'one-to-many',
       initialElectionDelay: 0,
       onBroadcasterChange,
       heartbeatInterval: 1000,
     });
-    factory();
 
     // Hidden at mount — no election, no onBroadcasterChange
     expect(onBroadcasterChange).not.toHaveBeenCalled();
@@ -1355,18 +1349,12 @@ describe('branch coverage', () => {
   });
 
   it('rAF option: collapses rapid updates into one send per frame', () => {
-    let rafCb: FrameRequestCallback | null = null;
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafCb = cb;
-      return 1;
-    });
-    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+    const raf = setupRafMock();
 
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'raf-bc',
       rAF: true,
     });
-    const store = factory();
 
     const received: unknown[] = [];
     const spy = new MockBC('raf-bc');
@@ -1378,19 +1366,18 @@ describe('branch coverage', () => {
     store.score.update(2);
     expect(received).toHaveLength(0); // batched, not sent yet
 
-    rafCb?.(0);
+    raf.fire();
     expect(received).toHaveLength(1); // one send per frame
 
     spy.close();
-    jest.restoreAllMocks();
+    raf.restore();
   });
 
   it('debounce option: rapid updates produce one send after quiet period', () => {
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    const store = mountScoreBroadcaster({
       channel: 'debounce-bc',
       debounce: 100,
     });
-    const store = factory();
 
     const received: unknown[] = [];
     const spy = new MockBC('debounce-bc');
@@ -1410,7 +1397,7 @@ describe('branch coverage', () => {
 
   it('prunes timed-out tabs during election, then re-elects', () => {
     const onBroadcasterChange = jest.fn();
-    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+    mountScoreBroadcaster({
       channel: 'prune-test',
       mode: 'one-to-many',
       initialElectionDelay: 0,
@@ -1418,7 +1405,6 @@ describe('branch coverage', () => {
       heartbeatInterval: 100,
       heartbeatTimeout: 300,
     });
-    factory();
 
     // Register a lower-ID tab — our tab yields
     deliverFromOtherTab('prune-test', {

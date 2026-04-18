@@ -4,10 +4,19 @@
 
 import { act, StrictMode } from 'react';
 import { renderHook } from '../test-utils/renderHook';
+import { setupRafMock } from '../test-utils/raf';
 import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
-import { useRefSignalEffect } from './useRefSignalEffect';
+import { useRefSignalEffect, type EffectOptions } from './useRefSignalEffect';
 import { useState } from 'react';
+
+function mountTimedEffect(effect: jest.Mock, options: EffectOptions) {
+  return renderHook(() => {
+    const signal = useRefSignal(0);
+    useRefSignalEffect(effect, [signal], options);
+    return signal;
+  });
+}
 
 describe('useRefSignalEffect', () => {
   it('should run effect on initial mount', () => {
@@ -142,12 +151,7 @@ describe('useRefSignalEffect — timing options', () => {
 
   it('throttle: rapid signal fires run effect at most once per window', () => {
     const effect = jest.fn();
-
-    const { result } = renderHook(() => {
-      const signal = useRefSignal(0);
-      useRefSignalEffect(effect, [signal], { throttle: 100 });
-      return signal;
-    });
+    const { result } = mountTimedEffect(effect, { throttle: 100 });
 
     expect(effect).toHaveBeenCalledTimes(1); // mount
 
@@ -175,12 +179,7 @@ describe('useRefSignalEffect — timing options', () => {
 
   it('debounce: rapid signal fires produce one effect run after quiet period', () => {
     const effect = jest.fn();
-
-    const { result } = renderHook(() => {
-      const signal = useRefSignal(0);
-      useRefSignalEffect(effect, [signal], { debounce: 100 });
-      return signal;
-    });
+    const { result } = mountTimedEffect(effect, { debounce: 100 });
 
     expect(effect).toHaveBeenCalledTimes(1); // mount
 
@@ -202,13 +201,7 @@ describe('useRefSignalEffect — timing options', () => {
   });
 
   it('rAF: signal fires collapse into one effect run per frame', () => {
-    let rafCallback: FrameRequestCallback | null = null;
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafCallback = cb;
-      return 1;
-    });
-    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
-
+    const raf = setupRafMock();
     const effect = jest.fn();
 
     const { result } = renderHook(() => {
@@ -227,11 +220,11 @@ describe('useRefSignalEffect — timing options', () => {
     expect(effect).toHaveBeenCalledTimes(1); // not yet
 
     act(() => {
-      rafCallback?.(0);
+      raf.fire();
     });
     expect(effect).toHaveBeenCalledTimes(2); // exactly one run
 
-    jest.restoreAllMocks();
+    raf.restore();
   });
 
   it('conditional logic inside effect body works naturally with timing', () => {

@@ -4,6 +4,7 @@
 
 import { act } from 'react';
 import { renderHook } from '../test-utils/renderHook';
+import { setupRafMock } from '../test-utils/raf';
 import { createRefSignal, RefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { useRefSignalRender } from './useRefSignalRender';
@@ -278,19 +279,14 @@ describe('useRefSignalRender — timing options', () => {
   });
 
   it('rAF: coalesces any number of updates per frame into one render', () => {
-    let rafCallback: FrameRequestCallback | null = null;
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafCallback = cb;
-      return 1;
-    });
-    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+    const raf = setupRafMock();
 
     try {
       const signal = createRefSignal(0);
       const { renders } = renderWithSignals([signal], { rAF: true });
       const fireFrame = () => {
         act(() => {
-          rafCallback?.(0);
+          raf.fire();
         });
       };
 
@@ -312,7 +308,7 @@ describe('useRefSignalRender — timing options', () => {
       fireFrame();
       expect(renders()).toBe(3);
     } finally {
-      jest.restoreAllMocks();
+      raf.restore();
     }
   });
 
