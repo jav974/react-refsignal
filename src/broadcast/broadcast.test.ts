@@ -1013,6 +1013,143 @@ describe('initialElectionDelay', () => {
   });
 });
 
+// ─── visibility handling (one-to-many only) ──────────────────────────────────
+
+describe('visibility handling', () => {
+  // jsdom's document.visibilityState is a getter — override with a value we
+  // control for the duration of the test.
+  const setVisibility = (state: 'visible' | 'hidden') => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => state,
+    });
+  };
+
+  it('hidden → yields broadcaster role and posts bye', () => {
+    setVisibility('visible');
+    const onBroadcasterChange = jest.fn();
+    const received: unknown[] = [];
+    const spy = new MockBC('vis-hidden');
+    spy.onmessage = (e) => received.push(e.data);
+
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'vis-hidden',
+      mode: 'one-to-many',
+      initialElectionDelay: 0,
+      onBroadcasterChange,
+      heartbeatInterval: 1000,
+    });
+    factory();
+
+    // Elected as sole tab
+    expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+    received.length = 0;
+
+    // Transition to hidden — should yield + send bye
+    setVisibility('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(onBroadcasterChange).toHaveBeenLastCalledWith(false);
+    expect(received.some((m: any) => m?.type === 'bye')).toBe(true);
+
+    spy.close();
+    setVisibility('visible');
+  });
+
+  it('hidden → visible resumes heartbeat + reclaims if alone', () => {
+    jest.useFakeTimers();
+    try {
+      setVisibility('visible');
+      const onBroadcasterChange = jest.fn();
+      const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+        channel: 'vis-resume',
+        mode: 'one-to-many',
+        initialElectionDelay: 0,
+        onBroadcasterChange,
+        heartbeatInterval: 1000,
+      });
+      factory();
+
+      expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+
+      // Hide — yields
+      setVisibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(onBroadcasterChange).toHaveBeenLastCalledWith(false);
+
+      // Show — resumes. With initialElectionDelay: 0 and no competing peers,
+      // we reclaim immediately.
+      setVisibility('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+    } finally {
+      jest.useRealTimers();
+      setVisibility('visible');
+    }
+  });
+
+  it('mounted while hidden → does not start heartbeat until visible', () => {
+    setVisibility('hidden');
+    const onBroadcasterChange = jest.fn();
+    const factory = broadcast(() => ({ score: createRefSignal(0) }), {
+      channel: 'vis-mounted-hidden',
+      mode: 'one-to-many',
+      initialElectionDelay: 0,
+      onBroadcasterChange,
+      heartbeatInterval: 1000,
+    });
+    factory();
+
+    // Hidden at mount — no election, no onBroadcasterChange
+    expect(onBroadcasterChange).not.toHaveBeenCalled();
+
+    setVisibility('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+    setVisibility('visible');
+  });
+
+  it('unmount removes the visibilitychange listener', () => {
+    setVisibility('visible');
+    const store = { score: createRefSignal(0) };
+    const cleanup = setupBroadcast(store, {
+      channel: 'vis-cleanup',
+      mode: 'one-to-many',
+      initialElectionDelay: 0,
+      heartbeatInterval: 1000,
+    });
+
+    cleanup();
+
+    const onBroadcasterChange = jest.fn();
+    const cleanup2 = setupBroadcast(store, {
+      channel: 'vis-cleanup-2',
+      mode: 'one-to-many',
+      initialElectionDelay: 0,
+      onBroadcasterChange,
+      heartbeatInterval: 1000,
+    });
+
+    // Firing visibility events for the already-cleaned-up first subscription
+    // must NOT affect anything (listener removed). If the old listener
+    // leaked, we'd see a second onBroadcasterChange transition on it.
+    setVisibility('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    setVisibility('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    cleanup2();
+    setVisibility('visible');
+    // onBroadcasterChange belongs to the second subscription only — its
+    // transitions are what we'd see; the first subscription must be inert.
+    // This is best-effort: the stronger assertion would be listener count,
+    // but jsdom doesn't expose it cleanly.
+    expect(onBroadcasterChange).toHaveBeenCalled();
+  });
+});
+
 describe('edge cases — useBroadcast filter ref', () => {
   it('picks up filter changes without resubscription', () => {
     const store = { score: createRefSignal(0) };

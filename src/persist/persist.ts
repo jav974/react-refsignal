@@ -188,13 +188,17 @@ export function setupPersist<TStore extends Record<string, unknown>>(
   // Returns the underlying storage promise so callers can await completion
   // and catch write failures. Fire-and-forget is still fine (unhandled
   // rejections from silent adapters stay silent to the caller).
-  const doFlush = (): Promise<void> => {
-    if (suppressed) return Promise.resolve();
-    return storage.set(
+  //
+  // No `suppressed` guard here: `clear()`'s suppression is intended to prevent
+  // reset-triggered `save()` calls from re-populating storage mid-clear;
+  // manual `flush()` calls are user intent and should write as asked. If a
+  // caller flushes mid-`await clear()`, the clear's final `storage.remove`
+  // still lands after, leaving storage empty as expected.
+  const doFlush = (): Promise<void> =>
+    storage.set(
       key,
       serialize({ v: version, data: buildSnapshot() } satisfies Envelope),
     );
-  };
 
   const save = () => {
     if (suppressed) return;

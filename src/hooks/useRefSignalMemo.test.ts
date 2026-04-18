@@ -217,4 +217,33 @@ describe('useRefSignalMemo', () => {
     expect(result.current.current).toBe(30);
     expect(factory).toHaveBeenCalledTimes(2);
   });
+
+  it('handles trackSignals becoming undefined after mount without crashing', () => {
+    // The watchOptions memo in useWatchArgs is keyed on timing values only,
+    // so trackSignals changing identity (or disappearing) does not force a
+    // resubscription — the captured getter keeps reading via ref. If the
+    // caller re-renders with `trackSignals: undefined`, the ref becomes
+    // nullish and the getter must tolerate that gracefully.
+    const inner = createRefSignal('a');
+    const outer = createRefSignal(0);
+
+    const { rerender } = renderHook(
+      ({ track }: { track: boolean }) =>
+        useRefSignalMemo(() => outer.current, [outer], {
+          trackSignals: track ? () => [inner] : undefined,
+        }),
+      { initialProps: { track: true } },
+    );
+
+    // Re-render with trackSignals disabled — ref is now undefined
+    rerender({ track: false });
+
+    // Static dep fire triggers reconcile; the getter reads a now-undefined
+    // ref and must fall through the `?? []` guard without throwing.
+    expect(() => {
+      act(() => {
+        outer.update(1);
+      });
+    }).not.toThrow();
+  });
 });

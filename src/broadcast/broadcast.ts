@@ -28,7 +28,10 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
   options: BroadcastOptions<TStore>,
 ): () => void {
   // SSR guard — BroadcastChannel and cross-tab sync are browser-only.
-  if (typeof window === 'undefined') return () => {};
+  // Also requires `document` for the visibility API used in one-to-many mode.
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return () => {};
+  }
 
   const {
     channel,
@@ -212,7 +215,6 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
   // windows, triggering leadership flapping. Treat a hidden tab as "temporarily
   // absent": stop the heartbeat, yield broadcaster role, and send `bye` so
   // other tabs elect cleanly. Resume on `visible` — election runs again.
-  const hasDocument = typeof document !== 'undefined';
   let onVisibilityChange: (() => void) | null = null;
 
   if (mode === 'one-to-many') {
@@ -226,23 +228,18 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
       transport.post({ type: 'bye', tabId: TAB_ID } satisfies Msg<never>);
     };
 
-    if (hasDocument && document.visibilityState === 'visible') {
-      startHeartbeat();
-    } else if (!hasDocument) {
-      // No visibility API (e.g. older environment) — fall back to always-on.
+    if (document.visibilityState === 'visible') {
       startHeartbeat();
     }
 
-    if (hasDocument) {
-      onVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          startHeartbeat();
-        } else {
-          yieldRole();
-        }
-      };
-      document.addEventListener('visibilitychange', onVisibilityChange);
-    }
+    onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        startHeartbeat();
+      } else {
+        yieldRole();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
   }
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────
@@ -252,7 +249,7 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     signals.forEach((s) => {
       s.unsubscribe(wrapper.call);
     });
-    if (hasDocument && onVisibilityChange) {
+    if (onVisibilityChange) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     }
     if (mode === 'one-to-many') {

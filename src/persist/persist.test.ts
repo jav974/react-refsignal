@@ -730,6 +730,15 @@ describe('clearPersistedStorage()', () => {
       clearPersistedStorage('missing', storage),
     ).resolves.toBeUndefined();
   });
+
+  it('accepts a StorageConfig object form (e.g. indexeddb)', async () => {
+    // Exercises the `'storage' in storage` branch of the input-shape
+    // normalizer — passing a { storage: 'session', ... } config object
+    // rather than an adapter instance or a shorthand string.
+    window.sessionStorage.setItem('cfg-key', 'value');
+    await clearPersistedStorage('cfg-key', { storage: 'session' });
+    expect(window.sessionStorage.getItem('cfg-key')).toBeNull();
+  });
 });
 
 // ─── setupPersist().clear() — controller semantics ───────────────────────────
