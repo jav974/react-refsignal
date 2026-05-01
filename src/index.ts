@@ -6,6 +6,8 @@ export * from './hooks/useRefSignalFollow';
 export type {
   Listener,
   RefSignal,
+  ReadonlySignal,
+  ComputedSignal,
   SignalOptions,
   Interceptor,
   DevToolsAdapter,
@@ -20,7 +22,6 @@ export {
   createComputedSignal,
   watch,
 } from './refsignal';
-export type { ComputedSignal } from './refsignal';
 export {
   createRefSignalContext,
   createRefSignalContextHook,

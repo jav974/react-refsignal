@@ -21,6 +21,31 @@ describe('useRefSignalMemo', () => {
     expect(result.current.current).toBe(2);
   });
 
+  // Type-level: the returned ReadonlySignal hides every write-flavored API,
+  // including the `notify`/`notifyUpdate` escape hatches that only make sense
+  // when the caller mutated `.current` directly. This test compiling is the
+  // assertion.
+  it('returns a ReadonlySignal that hides write-side APIs (compile-time check)', () => {
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(1);
+      const memo = useRefSignalMemo(() => signal.current * 2, [signal]);
+
+      // @ts-expect-error — `update` is not exposed on ReadonlySignal
+      void memo.update;
+      // @ts-expect-error — `reset` is not exposed on ReadonlySignal
+      void memo.reset;
+      // @ts-expect-error — `notify` is not exposed on ReadonlySignal
+      void memo.notify;
+      // @ts-expect-error — `notifyUpdate` is not exposed on ReadonlySignal
+      void memo.notifyUpdate;
+
+      return memo;
+    });
+
+    expect(typeof result.current.current).toBe('number');
+    expect(typeof result.current.subscribe).toBe('function');
+  });
+
   it('should update value when signal dep changes', () => {
     const factory = jest.fn(() => 2);
 

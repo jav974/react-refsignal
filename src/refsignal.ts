@@ -259,11 +259,27 @@ export function createRefSignal<T = unknown>(
 }
 
 /**
- * A read-only derived signal. Exposes subscription and current value but not
- * `.update()` or `.reset()`. Call `.dispose()` to stop tracking dep signals.
- * Returned by {@link createComputedSignal}.
+ * A read-only signal. Exposes subscription and current value but not
+ * `.update()`, `.reset()`, `.notify()`, or `.notifyUpdate()`. Returned by
+ * {@link useRefSignalMemo} (where React owns the lifetime — no `dispose`
+ * is exposed).
+ *
+ * Both `notify` and `notifyUpdate` are escape hatches for direct `.current`
+ * mutation, which doesn't apply when the value is derived. Supertype of
+ * both {@link RefSignal} and {@link ComputedSignal}: anything that accepts
+ * `ReadonlySignal<T>` accepts the read-write or computed forms too.
  */
-export type ComputedSignal<T> = Omit<RefSignal<T>, 'update' | 'reset'> & {
+export type ReadonlySignal<T> = Omit<
+  RefSignal<T>,
+  'update' | 'reset' | 'notify' | 'notifyUpdate'
+>;
+
+/**
+ * A read-only derived signal with a managed lifetime. Adds `.dispose()` to
+ * {@link ReadonlySignal} so callers can stop tracking dep signals when the
+ * computed value is no longer needed. Returned by {@link createComputedSignal}.
+ */
+export type ComputedSignal<T> = ReadonlySignal<T> & {
   readonly dispose: () => void;
 };
 
