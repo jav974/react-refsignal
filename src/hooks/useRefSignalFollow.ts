@@ -12,10 +12,13 @@ export type FollowOptions = Omit<WatchOptions, 'trackSignals'>;
 
 /**
  * React hook that produces a stable {@link RefSignal} whose value tracks
- * another signal resolved dynamically through `getter`. The inner signal's
- * **identity** is allowed to change over time — whenever any signal in `deps`
- * fires, the hook re-evaluates `getter`, unsubscribes from the previous
- * inner signal, and subscribes to the new one.
+ * another signal resolved dynamically through `getter`.
+ *
+ * @see [Decision Tree §7 — Dynamic Signal Identity](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#7-dynamic-signal-identity)
+ *
+ * The inner signal's **identity** is allowed to change over time — whenever
+ * any signal in `deps` fires, the hook re-evaluates `getter`, unsubscribes
+ * from the previous inner signal, and subscribes to the new one.
  *
  * This is shorthand for a {@link useRefSignalMemo} that reads
  * `getter()?.current` while tracking `getter()` as a dynamic signal. Use it

@@ -86,6 +86,8 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * Connects a signal store to a React component — with opt-in re-renders,
  * timing options, filtering, and optional value unwrapping.
  *
+ * @see [Decision Tree §8 — Context / Shared State](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#8-context--shared-state)
+ *
  * The store can come from {@link createRefSignalStore} (module-scope singleton),
  * from a React context via `useContext`, or from any other source.
  *

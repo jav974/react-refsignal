@@ -82,7 +82,11 @@
     "react-dom": ">=18.0.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md"
   ],
   "size-limit": [
     {

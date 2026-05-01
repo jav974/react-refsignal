@@ -10,6 +10,8 @@ const noopAsync = async () => {};
  * Hook variant of `persist` — sets up storage persistence inside a React Provider.
  * Properly tears down on unmount (unsubscribes from signal updates).
  *
+ * @see [Decision Tree §9 — Persistence](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#9-persistence)
+ *
  * Returns `{ isHydrated, flush, clear }`:
  * - `isHydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes.
  *   Use it to gate rendering until stored values are loaded.

@@ -8,6 +8,8 @@ import type { WatchOptions } from '../timing';
 /**
  * React hook for creating a memoized {@link RefSignal} whose value is derived from a factory function and dependencies.
  *
+ * @see [Decision Tree §6 — Derived Values](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#6-derived-values)
+ *
  * This hook combines the behavior of {@link useMemo} and {@link useRefSignal}:
  * - The signal's value is initialized and updated using the provided factory function.
  * - The factory is re-evaluated whenever any value in the dependency list changes, and the signal is updated.

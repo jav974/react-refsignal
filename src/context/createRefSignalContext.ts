@@ -54,6 +54,8 @@ export const ALL = 'all' as const;
  * without generating a Provider component. Use this when you need to write your
  * own Provider body (custom effects, props, external subscriptions, etc.).
  *
+ * @see [Decision Tree §8 — Context / Shared State](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#8-context--shared-state)
+ *
  * The returned hook supports the same `renderOn`, `unwrap`, and timing options
  * as the hook returned by {@link createRefSignalContext}.
  *
@@ -117,6 +119,8 @@ export function createRefSignalContextHook<TStore extends object>(
 
 /**
  * Creates a named React context optimized for signal stores.
+ *
+ * @see [Decision Tree §8 — Context / Shared State](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#8-context--shared-state)
  *
  * Builds on {@link createRefSignalContextHook} and adds explicit per-call tracking:
  * components opt into re-renders by naming the signals they care about.

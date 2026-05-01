@@ -8,6 +8,8 @@ import { setupBroadcast } from './broadcast';
  * Hook variant of `broadcast` — sets up cross-tab sync inside a React Provider.
  * Properly tears down on unmount (closes transport, sends bye in one-to-many mode).
  *
+ * @see [Decision Tree §10 — Cross-tab Broadcast](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#10-cross-tab-broadcast)
+ *
  * Returns `{ isBroadcaster }`:
  * - `isBroadcaster` — a `RefSignal<boolean>` that is `true` when this tab is currently
  *   sending updates. Always `true` in `many-to-many` mode. In `one-to-many` mode starts

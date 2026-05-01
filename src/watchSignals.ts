@@ -45,6 +45,9 @@ export interface WatchHandle {
  * and `options.trackSignals` (dynamic). Returns a handle whose `dispose()`
  * tears down the subscription.
  *
+ * @see [Decision Tree §3 — Reacting to Changes](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#3-reacting-to-changes)
+ * @see [Decision Tree §7 — Dynamic Signal Identity](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#7-dynamic-signal-identity)
+ *
  * # Static vs dynamic
  *
  * - **Static**: any RefSignal inside `deps`. Subscribed at setup. Their

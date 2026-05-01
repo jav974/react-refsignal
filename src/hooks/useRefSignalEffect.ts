@@ -18,6 +18,8 @@ export type EffectOptions = WatchOptions & {
 /**
  * React hook for running an effect when one or more RefSignal values change.
  *
+ * @see [Decision Tree §3 — Reacting to Changes](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#3-reacting-to-changes)
+ *
  * This hook is similar to React's {@link useEffect}, but it tracks changes to the `.current` value
  * of each provided RefSignal dependency and runs the effect whenever any of them updates.
  *
