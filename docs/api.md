@@ -5,6 +5,8 @@
 ---
 
 - [`RefSignal<T>`](#refsignalt)
+- [`ReadonlySignal<T>`](#readonlysignalt)
+- [`ComputedSignal<T>`](#computedsignalt)
 - [`createRefSignal<T>(initialValue, options?)`](#createrefsignalt-initialvalue-options)
 - [`SignalOptions<T>` / `Interceptor<T>` / `CANCEL`](#signaloptionst--interceptort--cancel)
 - [`useRefSignal<T>(initialValue, options?)`](#userefsignalt-initialvalue-options)
@@ -48,6 +50,31 @@ The core interface implemented by all signal objects.
 | `subscribe(listener)` | Registers a listener called with the current value on every notification. |
 | `unsubscribe(listener)` | Removes a previously registered listener. |
 | `getDebugName?()` | Returns the signal's debug name. Only present when DevTools are enabled. |
+
+---
+
+### `ReadonlySignal<T>`
+
+Read-only view of a signal — `RefSignal<T>` minus the write-side APIs (`.update()`, `.reset()`, `.notify()`, `.notifyUpdate()`). Returned by [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) and [`useRefSignalFollow`](#userefsignalfollowt-getter-deps-options) where React owns the lifetime, so no `.dispose()` is exposed.
+
+`.notify()` and `.notifyUpdate()` are excluded because they are escape hatches for direct `.current` mutation — irrelevant when the value is derived.
+
+`ReadonlySignal<T>` is the supertype of both `RefSignal<T>` and [`ComputedSignal<T>`](#computedsignalt). Use it as a parameter type whenever you only need to read or subscribe — your function will accept all three forms.
+
+```ts
+function logChanges<T>(signal: ReadonlySignal<T>) {
+  return signal.subscribe((v) => console.log(v));
+}
+logChanges(myRefSignal);      // ✓
+logChanges(myMemoSignal);      // ✓ (from useRefSignalMemo)
+logChanges(myComputedSignal);  // ✓ (from createComputedSignal)
+```
+
+---
+
+### `ComputedSignal<T>`
+
+`ReadonlySignal<T>` plus `.dispose()` — used at module scope where the lifetime is not React-managed. Returned by [`createComputedSignal`](#createcomputedsignalt-compute-deps). Calling `.dispose()` unsubscribes from dep signals and stops recomputation.
 
 ---
 
@@ -331,6 +358,8 @@ const result = useRefSignalMemo(
 - The returned signal can be subscribed to like any other signal.
 - `options` is a [`WatchOptions`](#watchoptions) — timing, filter, and `trackSignals` for dynamic-signal traversal.
 
+Returns a [`ReadonlySignal<T>`](#readonlysignalt) — read-side APIs (`.current`, `.lastUpdated`, `.subscribe`/`.unsubscribe`, `.getDebugName`) only; the write-side APIs (`.update`, `.reset`, `.notify`, `.notifyUpdate`) are hidden. The lifetime is tied to the component, so no `.dispose()` either. Pass it as a dep wherever a `ReadonlySignal` is accepted: `useRefSignalRender`, `useRefSignalEffect`, `useRefSignalMemo`, `useRefSignalFollow`, `createComputedSignal`, `watch`, `watchSignals`, and `WatchOptions.trackSignals`.
+
 ---
 
 ### `useRefSignalFollow<T>(getter, deps, options?)`
@@ -343,7 +372,7 @@ const node = useRefSignalFollow(
   () => nodes.current.get(focusedId),
   [nodes, focusedId],
 );
-// node: RefSignal<NodeData | undefined>
+// node: ReadonlySignal<NodeData | undefined>
 ```
 
 Shorthand for a [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) that reads `getter()?.current` while auto-tracking `getter()` as a dynamic signal. Use it whenever you would otherwise write a memo + matching `trackSignals` pair by hand.
