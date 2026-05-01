@@ -1,5 +1,5 @@
 import { DependencyList } from 'react';
-import { ReadonlySignal, RefSignal } from '../refsignal';
+import { ReadonlySignal } from '../refsignal';
 import { useRefSignalMemo } from './useRefSignalMemo';
 import type { WatchOptions } from '../timing';
 
@@ -50,7 +50,7 @@ export type FollowOptions = Omit<WatchOptions, 'trackSignals'>;
  * );
  */
 export function useRefSignalFollow<T>(
-  getter: () => RefSignal<T> | null | undefined,
+  getter: () => ReadonlySignal<T> | null | undefined,
   deps: DependencyList,
   options?: FollowOptions,
 ): ReadonlySignal<T | undefined> {

@@ -142,7 +142,7 @@ export function isRefSignal<T = unknown>(obj: unknown): obj is RefSignal<T> {
 }
 
 export function subscribe<T>(
-  signal: RefSignal<T>,
+  signal: ReadonlySignal<T>,
   listener: Listener<T>,
 ): void {
   if (!listenersMap.has(signal)) {
@@ -152,7 +152,7 @@ export function subscribe<T>(
 }
 
 export function unsubscribe<T>(
-  signal: RefSignal<T>,
+  signal: ReadonlySignal<T>,
   listener: Listener<T>,
 ): void {
   const listeners = listenersMap.get(signal);
@@ -302,7 +302,7 @@ export type ComputedSignal<T> = ReadonlySignal<T> & {
 export function createComputedSignal<T>(
   compute: () => T,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  deps: RefSignal<any>[],
+  deps: ReadonlySignal<any>[],
 ): ComputedSignal<T> {
   const signal = createRefSignal(compute());
   const recompute = () => {
@@ -342,7 +342,7 @@ export function createComputedSignal<T>(
  * const stop = watch(score, (v) => log(v), { filter: () => score.current > 0 });
  */
 export function watch<T>(
-  signal: RefSignal<T>,
+  signal: ReadonlySignal<T>,
   listener: Listener<T>,
   // `trackSignals` is excluded here — `watch()` is single-signal and cannot
   // express "fire my value-delivering listener when a different signal updates"

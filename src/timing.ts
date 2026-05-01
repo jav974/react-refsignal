@@ -5,7 +5,7 @@
  */
 
 // Type-only import — avoids a runtime circular dep with `refsignal.ts`.
-import type { RefSignal } from './refsignal';
+import type { ReadonlySignal } from './refsignal';
 
 /**
  * Discriminated union of mutually exclusive timing strategies.
@@ -53,7 +53,7 @@ export interface TimingWrapper {
 export type WatchOptions = TimingOptions & {
   filter?: () => boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches `createComputedSignal` / `batch` signal-array conventions
-  trackSignals?: () => ReadonlyArray<RefSignal<any>>;
+  trackSignals?: () => ReadonlyArray<ReadonlySignal<any>>;
 };
 
 /**
