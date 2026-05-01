@@ -10,6 +10,8 @@
 - [Collections of signals](#collections-of-signals)
 - [Derived signals with `useRefSignalMemo`](#derived-signals-with-userefsignalmemo)
 - [Batching multiple updates](#batching-multiple-updates)
+- [Data hooks that re-render the Provider](#data-hooks-that-re-render-the-provider)
+- [Cross-tab notification badge](#cross-tab-notification-badge)
 - [High-frequency data with divergent consumers](#high-frequency-data-with-divergent-consumers)
 - [Filtered renders at a threshold](#filtered-renders-at-a-threshold)
 - [Module-scope signals and debounced consumers](#module-scope-signals-and-debounced-consumers)
@@ -457,6 +459,182 @@ function AudioMonitor() {
 ```
 
 The effect fires on every `buffer` update. The component re-renders at most every 500ms on `rms` changes. Both run independently in the same component.
+
+---
+
+## Data hooks that re-render the Provider
+
+Putting a re-rendering data source — RTK Query, Apollo, SWR, TanStack Query — directly in a Provider's body makes the Provider re-render on every poll tick, refetch, and cache update. Signal-subscribed children stay quiet (they only react to `.update()` calls), but the Provider itself re-runs all of its hooks N times per second, which makes memo discipline brittle and burns CPU in large trees.
+
+The fix is a **sibling-leaf** component that owns the data hook, writes into the signal store, and renders nothing. Its re-renders are isolated — it has no children — so the polling pulse stops at it.
+
+```tsx
+function MessagesProvider({ children }: { children: ReactNode }) {
+  const data = useRefSignal<MessagesData | undefined>(undefined);
+  const store = useMemo(() => ({ data }), [data]);
+
+  return (
+    <MessagesContext.Provider value={store}>
+      <DataLeaf data={data} />
+      {children}
+    </MessagesContext.Provider>
+  );
+}
+
+function DataLeaf({ data }: { data: RefSignal<MessagesData | undefined> }) {
+  const query = useGetMessagesQuery();
+  useEffect(() => {
+    if (query.data) data.update(query.data);
+  }, [query.data, data]);
+  return null;
+}
+```
+
+Why this composes:
+
+- **Leaf returns `null`** — its frequent re-renders touch nothing in the tree.
+- **Leaf reads from the data hook, writes into the signal** — the signal becomes the source of truth for everything below.
+- **`{children}` is a *sibling* of the leaf, not a descendant** — that's the structural detail that decouples them. Putting `<DataLeaf>{children}</DataLeaf>` would re-render every child on every poll.
+- **Children only react to signal updates** — exactly the rate of meaningful change, no faster.
+
+The leaf can read signals from props (as above) or from context. Props is cleaner when the parent already owns the store; context is needed for deeply-nested data leaves.
+
+When writing multiple signals together, wrap the writes in `batch()` so subscribers (broadcast, persist, render hooks) see one coalesced update instead of partial intermediate states:
+
+```tsx
+useEffect(() => {
+  if (!query.data) return;
+  batch(() => {
+    items.update(query.data.items);
+    nextCursor.update(query.data.nextCursor);
+  });
+}, [query.data]);
+```
+
+---
+
+## Cross-tab notification badge
+
+End-to-end recipe combining the [sibling-leaf](#data-hooks-that-re-render-the-provider) pattern with `broadcast` and `persist` for a dataset that should:
+
+- Fetch from the server **once** across all open tabs (not N times)
+- Persist to local storage **without** N tabs racing on writes
+- Stay live across tabs (close one, the others still see updates)
+- Show the last-known value instantly to a tab joining mid-session, while the leader's next poll fills in the latest
+
+```tsx
+import { useMemo, useEffect, type ReactNode } from 'react';
+import {
+  batch,
+  useRefSignal,
+  useRefSignalMemo,
+  useRefSignalRender,
+  createRefSignalContextHook,
+  type RefSignal,
+  type ReadonlySignal,
+} from 'react-refsignal';
+import { useBroadcast } from 'react-refsignal/broadcast';
+import { usePersist } from 'react-refsignal/persist';
+import { skipToken } from '@reduxjs/toolkit/query';
+import { useGetMessagesQuery } from './api';
+
+type MessagesStore = {
+  messages: RefSignal<MessagesData | undefined>;
+  unreadCount: ReadonlySignal<number>;
+};
+
+const [MessagesContext, useMessagesContext] =
+  createRefSignalContextHook<MessagesStore>('Messages');
+
+export function MessagesProvider({ userId, children }: { userId: string; children: ReactNode }) {
+  const messages = useRefSignal<MessagesData | undefined>(undefined);
+  const broadcastStore = useMemo(() => ({ messages }), [messages]);
+
+  // One tab elected per channel — only it sends `update` messages.
+  // All tabs receive incoming updates regardless.
+  const { isBroadcaster } = useBroadcast(broadcastStore, {
+    channel: `messages:${userId}`,
+    mode: 'one-to-many',
+  });
+
+  // Leader-only writes — joiners read the last value instantly while waiting
+  // for the next leader poll. Bump `version` when the shape changes.
+  usePersist(broadcastStore, {
+    key: `messages:${userId}`,
+    version: 1,
+    migrate: () => null,           // discard old shape, factory defaults take over
+    filter: () => isBroadcaster.current,
+  });
+
+  // Per-tab derived value — cheap, computed locally from the broadcasted source.
+  const unreadCount = useRefSignalMemo(
+    () => messages.current?.items.filter((m) => !m.read).length ?? 0,
+    [messages],
+  );
+
+  const value = useMemo<MessagesStore>(
+    () => ({ messages, unreadCount }),
+    [messages, unreadCount],
+  );
+
+  return (
+    <MessagesContext.Provider value={value}>
+      <LeaderPoller messages={messages} isBroadcaster={isBroadcaster} userId={userId} />
+      {children}
+    </MessagesContext.Provider>
+  );
+}
+
+function LeaderPoller({
+  messages,
+  isBroadcaster,
+  userId,
+}: {
+  messages: RefSignal<MessagesData | undefined>;
+  isBroadcaster: RefSignal<boolean>;
+  userId: string;
+}) {
+  // Re-render this leaf when leadership flips so the query re-evaluates.
+  // Reading isBroadcaster.current alone does not establish a subscription.
+  useRefSignalRender([isBroadcaster]);
+  const isLeader = isBroadcaster.current;
+
+  // skipToken makes RTK Query dormant on follower tabs — no network call.
+  // SWR's equivalent is `() => null`; Apollo's is `skip: !isLeader`.
+  const query = useGetMessagesQuery(
+    isLeader ? { userId } : skipToken,
+    { pollingInterval: 5000 },
+  );
+
+  useEffect(() => {
+    if (isLeader && query.data) {
+      batch(() => {
+        messages.update(query.data);
+      });
+    }
+  }, [isLeader, query.data, messages]);
+
+  return null;
+}
+
+export function useUnreadCount() {
+  const { unreadCount } = useMessagesContext({
+    renderOn: ['unreadCount'],
+    unwrap: true,
+  });
+  return unreadCount;
+}
+```
+
+What this composes:
+
+- **Network: one fetcher across N tabs.** `skipToken` makes the query dormant on followers — RTK Query keeps the cache but issues no requests until the tab becomes leader.
+- **Storage: one writer across N tabs.** `filter: () => isBroadcaster.current` skips outgoing storage writes on followers; hydration always runs.
+- **Tab join: instant last-known value.** A new tab reads the persisted snapshot on mount, then receives the leader's next broadcast 0–5 seconds later.
+- **Leadership transition: covered.** `useRefSignalRender([isBroadcaster])` in the leaf makes the query re-evaluate when leadership flips. The yielding leader hands off in-memory state via the broadcast `state-handoff` message so the new leader doesn't see a hydration flash.
+- **Per-tab derived values.** `useRefSignalMemo` runs locally on each tab using the broadcasted `messages` as input — no extra network or storage.
+
+The pattern minimizes the three things that scale poorly across tabs (network, storage, computation) while preserving the live cross-tab updates that make the UX feel right.
 
 ---
 
