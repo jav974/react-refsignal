@@ -38,9 +38,9 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
     mode = 'many-to-many',
     filter,
     onBroadcasterChange,
-    heartbeatInterval = 2000,
+    heartbeatInterval = 300,
     heartbeatTimeout = 5000,
-    initialElectionDelay = 50,
+    initialElectionDelay = 400,
   } = options;
 
   const transport: Transport = resolveTransport(channel);

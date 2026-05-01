@@ -183,18 +183,27 @@ broadcast(factory, {
 4. The winner sends a `broadcaster-claim` message so other tabs yield immediately.
 5. When a tab closes or unmounts, it sends a `bye` message.
 
-**Initial election is deferred by `initialElectionDelay` ms (default 50)** — a short grace period after setup or visibility-resume that lets peers respond to our `hello` before we decide. Without it, a tab joining an existing session would briefly self-elect (before hearing from the current leader) and then yield — a visible flicker of `isBroadcaster` from `false → true → false`. 50ms is imperceptible for a lone tab and wide enough to catch peer hellos on a local channel.
+**Initial election is deferred by `initialElectionDelay` ms (default 400)** — a grace period after setup or visibility-resume that lets existing peers respond to our `hello` with their own heartbeats before we decide. Without it, a tab joining an existing session would briefly self-elect (before any peer heartbeat arrives) and then yield — a visible flicker of `isBroadcaster` from `false → true → false`.
 
 ```ts
 broadcast(factory, {
   channel: 'game',
   mode: 'one-to-many',
-  heartbeatInterval: 2000,      // how often to announce presence (default: 2000ms)
+  heartbeatInterval: 300,       // how often each tab sends a hello (default: 300ms)
   heartbeatTimeout: 5000,       // consider a tab dead after this silence (default: 5000ms)
-  initialElectionDelay: 50,     // grace period before first election (default: 50ms)
+  initialElectionDelay: 400,    // grace period before first election (default: 400ms)
   onBroadcasterChange: (active) => isBroadcaster.update(active),
 });
 ```
+
+#### Picking values
+
+The two timings are coupled — pick `heartbeatInterval` first, then size `initialElectionDelay` against it.
+
+- **`heartbeatInterval`** — how often each tab broadcasts a `hello`. Every tab heartbeats (this is how peers discover each other for the election); only the elected leader sends `update` messages. Lower values speed up failover when a tab disappears and let joiners decide sooner; higher values are quieter on the channel. The default of 300ms is cheap on a local `BroadcastChannel` (which is in-process, not a network hop).
+- **`initialElectionDelay`** — how long a joining tab waits for peer heartbeats before electing. **Should be ≥ `heartbeatInterval`** to reliably catch at least one heartbeat from every existing peer; shorter and you reintroduce the flicker. The default 400ms gives the 300ms cycle a 100ms jitter buffer.
+
+If you raise `heartbeatInterval`, raise `initialElectionDelay` in step (e.g. heartbeat 1000 → election 1100+). If you lower it, you can lower the election delay too — at the limit, `initialElectionDelay: 0` skips the wait entirely.
 
 Set `initialElectionDelay: 0` to elect synchronously if you know the tab is always first (e.g., initial page load with no existing session) and the small flicker is unacceptable.
 
@@ -295,9 +304,9 @@ Options for the `broadcast` field on `createRefSignal` / `useRefSignal`.
 | `maxWait` | `number` | — | With `debounce`: guaranteed flush every N ms even if the signal keeps firing. |
 | `rAF` | `boolean` | — | One send per animation frame. |
 | `onBroadcasterChange` | `(active: boolean) => void` | — | `one-to-many` only: called when this tab gains or loses broadcaster status. |
-| `heartbeatInterval` | `number` | `2000` | `one-to-many` only: how often to announce presence, in ms. |
+| `heartbeatInterval` | `number` | `300` | `one-to-many` only: how often each tab broadcasts a `hello` for peer discovery, in ms. |
 | `heartbeatTimeout` | `number` | `5000` | `one-to-many` only: consider a tab dead after this silence, in ms. |
-| `initialElectionDelay` | `number` | `50` | `one-to-many` only: grace period in ms before the first election after setup or resume. Prevents transient self-election when joining an existing session. Set to `0` for synchronous election. |
+| `initialElectionDelay` | `number` | `400` | `one-to-many` only: grace period in ms before the first election after setup or resume. Should be `≥ heartbeatInterval` so the joiner reliably hears the current leader. Set to `0` for synchronous election (accepts the join-flicker). |
 
 ### `BroadcastOptions<TStore>`
 

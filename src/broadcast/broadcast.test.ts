@@ -914,7 +914,7 @@ describe('initialElectionDelay', () => {
     }
   });
 
-  it('defaults to 50ms when not specified', () => {
+  it('defaults to 400ms when not specified', () => {
     jest.useFakeTimers();
     try {
       const onBroadcasterChange = jest.fn();
@@ -925,7 +925,7 @@ describe('initialElectionDelay', () => {
         heartbeatInterval: 1000,
       });
 
-      jest.advanceTimersByTime(49);
+      jest.advanceTimersByTime(399);
       expect(onBroadcasterChange).not.toHaveBeenCalled();
 
       jest.advanceTimersByTime(1);
