@@ -860,6 +860,14 @@ persist(factory, {
   version: 2,
   migrate: (stored) => ({ xp: 0, ...stored }), // backfill missing field
 });
+
+// Or discard the stored snapshot when the old shape isn't worth migrating —
+// signals keep their declared defaults.
+persist(factory, {
+  key: 'game',
+  version: 2,
+  migrate: () => null,
+});
 ```
 
 **Rate-limiting writes** — same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `rAF`) prevent high-frequency updates from hammering storage:

@@ -318,6 +318,20 @@ If `version` matches the stored version, `migrate` is never called — no overhe
 
 If the stored data is corrupt or cannot be deserialized, it is silently discarded and signals keep their default values.
 
+### Discarding stored data
+
+When the old shape is not worth migrating, return `null` (or `undefined`) from `migrate` to drop the stored value and keep each signal's declared default — no need to enumerate every key in the store snapshot:
+
+```ts
+persist(factory, {
+  key: 'game',
+  version: 2,
+  migrate: () => null,  // discard v1 storage, signals keep their factory defaults
+});
+```
+
+This works at both the signal and store level.
+
 ---
 
 ## Hydration timing
@@ -482,7 +496,7 @@ Options for the `persist` field on `createRefSignal` / `useRefSignal`.
 | `dbVersion` | `number` | `1` | `'indexeddb'` only. Database schema version (`IDBFactory.open` param). |
 | `storeName` | `string` | `'persist'` | `'indexeddb'` only. Object store name. |
 | `version` | `number` | `1` | Schema version stored in the envelope. Triggers `migrate` when it differs from the stored value. |
-| `migrate` | `(stored: unknown, fromVersion: number) => unknown` | — | Transform stored data when the version changes. Return the migrated value. |
+| `migrate` | `(stored: unknown, fromVersion: number) => unknown` | — | Transform stored data when the version changes. Return the migrated value, or `null`/`undefined` to discard storage and keep the declared default. |
 | `serialize` | `(value: unknown) => string` | `JSON.stringify` | Serialize the envelope to a string before writing. |
 | `deserialize` | `(raw: string) => unknown` | `JSON.parse` | Deserialize the stored string back to an envelope. |
 | `filter` | `() => boolean` | — | Skip the write when this returns `false`. Only gates writes — hydration always runs. |
@@ -506,7 +520,7 @@ Options for `persist()` and `usePersist()`. All fields from `PersistSignalOption
 | `filter` | `(snapshot: StoreSnapshot<TStore>) => boolean` | — | Skip the write when this returns `false`. Receives current signal values unwrapped. Only gates writes — hydration always runs. |
 | `onHydrated` | `(store: TStore) => void` | — | Called once after hydration. Receives the full store object. |
 | `onUnmount` | `(snapshot: StoreSnapshot<TStore>, flush: () => Promise<void>) => void` | — | `usePersist` only. Called on unmount with the current snapshot and a `flush` function that writes immediately, bypassing filter and timing. Safe to call fire-and-forget. |
-| `migrate` | `(stored: Record<string, unknown>, fromVersion: number) => Record<string, unknown>` | — | Transform stored snapshot when version changes. |
+| `migrate` | `(stored: Record<string, unknown>, fromVersion: number) => Record<string, unknown> \| null \| undefined` | — | Transform stored snapshot when version changes. Return `null`/`undefined` to discard storage and keep each signal's declared default. |
 
 ### `persist(factory, options)`
 

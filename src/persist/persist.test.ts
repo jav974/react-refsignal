@@ -319,6 +319,64 @@ describe('persist() — versioning and migration', () => {
 
     expect(migrate).toHaveBeenCalledWith('x', 2);
   });
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+  ])(
+    'store-level — migrate returning %s discards storage and keeps defaults',
+    async (_label, sentinel) => {
+      const storage = mockStorage();
+      storage.store['game'] = JSON.stringify({
+        v: 1,
+        data: { score: 99, xp: 50 },
+      });
+      const onHydrated = jest.fn();
+
+      const factory = persist(
+        () => ({ score: createRefSignal(7), xp: createRefSignal(3) }),
+        {
+          key: 'game',
+          storage,
+          version: 2,
+          migrate: () => sentinel,
+          onHydrated,
+        },
+      );
+      const store = factory();
+      await flush();
+
+      expect(store.score.current).toBe(7);
+      expect(store.xp.current).toBe(3);
+      expect(onHydrated).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+  ])(
+    'signal-level — migrate returning %s discards storage and keeps default',
+    async (_label, sentinel) => {
+      const storage = mockStorage();
+      storage.store['sig'] = JSON.stringify({ v: 1, data: 'old' });
+      const onHydrated = jest.fn();
+
+      const signal = createRefSignal('default', {
+        persist: {
+          key: 'sig',
+          storage,
+          version: 2,
+          migrate: () => sentinel,
+          onHydrated,
+        },
+      });
+      await flush();
+
+      expect(signal.current).toBe('default');
+      expect(onHydrated).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 // ─── persist() — edge cases ───────────────────────────────────────────────────

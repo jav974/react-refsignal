@@ -34,7 +34,12 @@ type PersistCommonOptions = {
 };
 
 type BaseSignalOptions = PersistCommonOptions & {
-  /** Called when stored version differs from `version`. Return the migrated value. */
+  /**
+   * Called when stored version differs from `version`. Return the migrated value.
+   *
+   * Return `null` or `undefined` to discard the stored value and keep the signal's
+   * declared default — useful when the old shape is no longer worth migrating.
+   */
   migrate?: (stored: unknown, fromVersion: number) => unknown;
   /** Called once hydration from storage completes (including when no stored value exists). */
   onHydrated?: () => void;
@@ -50,11 +55,17 @@ export type SignalPersistInput = string | PersistSignalOptions;
 type BaseOptions<TStore> = PersistCommonOptions & {
   /** Only persist these signal keys. Defaults to all signals in the store. */
   keys?: Array<PersistableKeys<TStore>>;
-  /** Called when stored version differs from `version`. Return the migrated snapshot. */
+  /**
+   * Called when stored version differs from `version`. Return the migrated snapshot.
+   *
+   * Return `null` or `undefined` to discard the stored snapshot and keep each
+   * signal's declared default — useful when the old shape is no longer worth
+   * migrating and rebuilding the snapshot key-by-key would be tedious.
+   */
   migrate?: (
     stored: Record<string, unknown>,
     fromVersion: number,
-  ) => Record<string, unknown>;
+  ) => Record<string, unknown> | null | undefined;
   /** Called once hydration from storage completes. */
   onHydrated?: (store: TStore) => void;
   /**

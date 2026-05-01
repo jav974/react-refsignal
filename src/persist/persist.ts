@@ -62,11 +62,15 @@ function setupSignalPersist(
       try {
         const envelope: unknown = deserialize(raw);
         if (!isEnvelope(envelope)) throw new Error('corrupt');
-        const value =
-          migrate && envelope.v !== version
-            ? migrate(envelope.data, envelope.v)
-            : envelope.data;
-        signal.update(value);
+        if (migrate && envelope.v !== version) {
+          const migrated = migrate(envelope.data, envelope.v);
+          // null/undefined is the "discard storage, keep declared default" sentinel.
+          if (migrated !== null && migrated !== undefined) {
+            signal.update(migrated);
+          }
+        } else {
+          signal.update(envelope.data);
+        }
       } catch {
         // corrupt — ignore, keep default
       }
@@ -142,27 +146,33 @@ export function setupPersist<TStore extends Record<string, unknown>>(
         if (typeof envelope.data !== 'object' || envelope.data === null) {
           throw new Error('corrupt');
         }
-        let data = envelope.data as Record<string, unknown>;
+        let data: Record<string, unknown> | null | undefined =
+          envelope.data as Record<string, unknown>;
 
         if (migrate && envelope.v !== version) {
           data = migrate(data, envelope.v);
         }
 
-        // Batch the per-signal updates so subscribers observing the whole
-        // store (notably broadcast) see the fully-hydrated snapshot when
-        // they fire — not a stream of partial states that could be echoed
-        // back into the tab and revert still-hydrating signals.
-        batch(() => {
-          for (const k of signalKeys) {
-            const sk = k as string;
-            if (
-              sk in data &&
-              (store[k] as RefSignal).lastUpdated === countersAtSetup.get(k)
-            ) {
-              (store[k] as RefSignal).update(data[sk]);
+        // null/undefined from migrate is the "discard storage, keep declared
+        // defaults" sentinel — skip the batch entirely so signals retain the
+        // initial values from their factory.
+        if (data) {
+          // Batch the per-signal updates so subscribers observing the whole
+          // store (notably broadcast) see the fully-hydrated snapshot when
+          // they fire — not a stream of partial states that could be echoed
+          // back into the tab and revert still-hydrating signals.
+          batch(() => {
+            for (const k of signalKeys) {
+              const sk = k as string;
+              if (
+                sk in data &&
+                (store[k] as RefSignal).lastUpdated === countersAtSetup.get(k)
+              ) {
+                (store[k] as RefSignal).update(data[sk]);
+              }
             }
-          }
-        });
+          });
+        }
       } catch {
         // corrupt — ignore, keep defaults
       }
