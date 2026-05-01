@@ -205,6 +205,14 @@ export function update<T>(signal: RefSignal<T>, value: T) {
   }
 }
 
+/**
+ * Creates a signal outside React — at module scope, in a context factory, or in any non-component code.
+ *
+ * @see [Decision Tree §1 — Signal Creation](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#1-signal-creation)
+ *
+ * Returns a {@link RefSignal} with `.current`, `.update()`, `.reset()`, `.subscribe()`, and notification methods.
+ * Inside a React component, prefer {@link useRefSignal} so the signal's lifetime is tied to the component.
+ */
 export function createRefSignal<T = unknown>(
   initialValue: T,
   options?: string | SignalOptions<T>,
@@ -286,6 +294,9 @@ export type ComputedSignal<T> = ReadonlySignal<T> & {
 /**
  * Creates a derived signal whose value is recomputed whenever any dep signal updates.
  *
+ * @see [Decision Tree §6 — Derived Values](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#6-derived-values)
+ *
+ *
  * The computed signal is read-only — calling `.update()` or `.reset()` is not exposed.
  * The computation stays live as long as any dep signal is alive.
  *
@@ -320,6 +331,9 @@ export function createComputedSignal<T>(
 
 /**
  * Subscribes a listener to a signal and returns a cleanup function.
+ *
+ * @see [Decision Tree §3 — Reacting to Changes](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#3-reacting-to-changes)
+ *
  *
  * Mirrors the `useEffect` return pattern for non-React contexts — no need to
  * hold a reference to the listener just to unsubscribe later.
@@ -378,6 +392,9 @@ export function watch<T>(
 
 /**
  * Batch multiple signal updates and defer notifications until the callback completes.
+ *
+ * @see [Decision Tree §5 — Batching](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#5-batching)
+ *
  *
  * **Auto-inference mode** (no deps parameter):
  * - Automatically tracks signals updated via `.update()`

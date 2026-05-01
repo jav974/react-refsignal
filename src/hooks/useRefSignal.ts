@@ -10,6 +10,8 @@ import {
 /**
  * React hook for creating a mutable signal-like ref with subscription support.
  *
+ * @see [Decision Tree §1 — Signal Creation](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#1-signal-creation)
+ *
  * This hook returns a {@link RefSignal} object that holds a mutable value in `.current`
  * and provides methods to subscribe to changes, update the value, and notify listeners.
  *

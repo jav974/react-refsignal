@@ -91,13 +91,15 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 
 ## Docs
 
-- [Concepts](docs/concepts.md) — signals, notify vs notifyUpdate, effect vs render, signal lifetime
-- [API Reference](docs/api.md) — full API with examples for every hook and function
-- [Patterns](docs/patterns.md) — draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders
-- [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation
-- [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`
-- [Persist](docs/persist.md) — persist signals across page loads with `react-refsignal/persist`
-- [Decision Tree](docs/decision-tree.md) — pick the right API for any scenario
+- **[Decision Tree](docs/decision-tree.md)** — start here. Picks the right API for any scenario (signal creation, derived values, persistence, broadcast, context, batching). Useful as a navigation index for humans and as a generation reference for AI tools.
+- [Patterns](docs/patterns.md) — full worked examples: draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders, the sibling-leaf pattern for data hooks, and the cross-tab notification badge recipe.
+- [API Reference](docs/api.md) — every hook and function with examples.
+- [Concepts](docs/concepts.md) — signals, notify vs notifyUpdate, effect vs render, signal lifetime.
+- [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation.
+- [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`.
+- [Persist](docs/persist.md) — persist signals across page loads with `react-refsignal/persist`.
+
+The full `docs/` folder is bundled with the npm package — installed at `node_modules/react-refsignal/docs/`. AI coding tools and IDEs can read it directly without fetching from GitHub.
 
 ## Concepts
 

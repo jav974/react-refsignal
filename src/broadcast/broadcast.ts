@@ -265,6 +265,8 @@ export function setupBroadcast<TStore extends object>(
 /**
  * Wraps a signal store factory to sync state across browser tabs/windows.
  *
+ * @see [Decision Tree §10 — Cross-tab Broadcast](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#10-cross-tab-broadcast)
+ *
  * Returns a new factory — pass it to `createRefSignalContext` just like the original.
  * Subscriptions live for the app lifetime (factory-level singleton).
  * Use `useBroadcast` instead when the Provider mounts and unmounts during the session.

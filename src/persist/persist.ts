@@ -270,6 +270,8 @@ export function setupPersist<TStore extends object>(
 /**
  * Wraps a signal store factory to persist state to storage across page loads.
  *
+ * @see [Decision Tree §9 — Persistence](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#9-persistence)
+ *
  * Returns a new factory — pass it to `createRefSignalContext` just like the original.
  * Subscriptions live for the app lifetime (factory-level singleton).
  * Use `usePersist` instead when the Provider mounts and unmounts during the session.

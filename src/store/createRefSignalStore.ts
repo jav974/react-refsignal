@@ -1,6 +1,8 @@
 /**
  * Creates a module-scope signal store singleton.
  *
+ * @see [Decision Tree §8 — Context / Shared State](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#8-context--shared-state)
+ *
  * Calls `factory()` once immediately — the returned store lives for the
  * application's lifetime. Use {@link useRefSignalStore} to connect the store
  * to React components with opt-in re-renders, timing, and value unwrapping.

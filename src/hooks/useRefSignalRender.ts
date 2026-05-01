@@ -7,6 +7,8 @@ import type { WatchOptions } from '../timing';
 /**
  * React hook that forces a component to re-render whenever one or more {@link RefSignal} dependencies update.
  *
+ * @see [Decision Tree §3 — Reacting to Changes](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#3-reacting-to-changes)
+ *
  * Use this hook to automatically trigger a re-render of your component when the value of any provided RefSignal changes.
  * This is useful when you want your component to reflect the latest signal values in its render output.
  *
