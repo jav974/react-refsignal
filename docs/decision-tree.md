@@ -127,8 +127,8 @@ flowchart TD
 flowchart TD
     Q1{"Where do you need the derived value?"}
 
-    Q1 -->|Inside a React component| A["useRefSignalMemo(factory, deps, options?)\nTied to component lifetime\nDeps can mix signals and non-signals (props, state)"]
-    Q1 -->|"Outside React — module scope, context factory"| B["createComputedSignal(compute, deps)\nDeps must be RefSignals\nReturns read-only ComputedSignal with .dispose()"]
+    Q1 -->|Inside a React component| A["useRefSignalMemo(factory, deps, options?)\nTied to component lifetime\nDeps can mix signals and non-signals (props, state)\nReturns ReadonlySignal — no .dispose() (React owns cleanup)"]
+    Q1 -->|"Outside React — module scope, context factory"| B["createComputedSignal(compute, deps)\nDeps accept RefSignal / ReadonlySignal / ComputedSignal\nReturns ComputedSignal (= ReadonlySignal + .dispose())"]
 
     A --> Q3{"Need to rate-limit, filter, or follow dynamic signals?"}
     Q3 -->|Rate-limit the recompute| E["Add throttle / debounce / rAF — see Section 4"]
@@ -163,7 +163,7 @@ flowchart TD
     Q1 -->|"No — resolved through another signal's current value"| Q2
 
     Q2{"What shape do you need?"}
-    Q2 -->|"A stable RefSignal I can pass downstream as a normal dep"| B["useRefSignalFollow(() => getter(), deps)\n→ RefSignal<T | undefined>\nShorthand for the single-signal case"]
+    Q2 -->|"A stable signal I can pass downstream as a normal dep"| B["useRefSignalFollow(() => getter(), deps)\n→ ReadonlySignal<T | undefined>\nShorthand for the single-signal case"]
     Q2 -->|"React to N dynamic signals in one effect or render"| C["options.trackSignals: () => signals[]\non useRefSignalEffect / useRefSignalMemo / useRefSignalRender\n(outside React: watchSignals with the same option)"]
 
     B & C --> D["Diff-subscribed on every static-dep fire.\nRef-equal + content-equal shortcuts skip the diff when the returned array is stable."]
@@ -218,7 +218,7 @@ flowchart TD
     Q3 -->|Custom backend| G["Implement PersistStorage\n{ get, set, remove } returning Promise"]
 
     A & B & C --> Q4{"Data shape may change across releases?"}
-    Q4 -->|Yes| H["version: N\nmigrate: (storedData, storedVersion) => newData"]
+    Q4 -->|Yes| H["version: N\nmigrate: (storedData, storedVersion) => newData\nReturn null/undefined to discard storage and keep declared defaults"]
     Q4 -->|No| Q5
 
     Q5{"High-frequency updates? Want to coalesce storage writes?"}
