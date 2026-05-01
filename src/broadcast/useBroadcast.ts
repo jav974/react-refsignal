@@ -24,7 +24,7 @@ import { setupBroadcast } from './broadcast';
  * const { isBroadcaster } = useBroadcast(store, { channel: 'game', mode: 'one-to-many' });
  * usePersist(store, { key: 'game', filter: () => isBroadcaster.current });
  */
-export function useBroadcast<TStore extends Record<string, unknown>>(
+export function useBroadcast<TStore extends object>(
   store: TStore,
   options: BroadcastOptions<TStore>,
 ): { isBroadcaster: RefSignal<boolean> } {

@@ -153,6 +153,27 @@ describe('createRefSignalContext', () => {
       expect(typeof result.CartProvider).toBe('function');
       expect(typeof result.useCartContext).toBe('function');
     });
+
+    // Type-level regression: stores declared with `interface` were rejected by
+    // the previous `extends Record<string, unknown>` constraint (interfaces
+    // lack implicit index signatures). The relaxed `extends object` constraint
+    // accepts them. This test compiling is the assertion.
+    it('accepts a store declared with `interface` (compile-time check)', () => {
+      interface CartStore {
+        items: RefSignal<string[]>;
+        total: RefSignal<number>;
+      }
+      const factory = (): CartStore => ({
+        items: createRefSignal<string[]>([]),
+        total: createRefSignal(0),
+      });
+      const ctx = createRefSignalContext('Cart', factory);
+      const hookCtx = createRefSignalContextHook<CartStore>('Cart');
+      expect(
+        typeof (ctx as unknown as Record<string, unknown>).CartProvider,
+      ).toBe('function');
+      expect(hookCtx).toHaveLength(2);
+    });
   });
 
   describe('without renderOn — no re-renders', () => {

@@ -124,19 +124,19 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 // `{ unwrap: true, renderOn: [...] }` resolves to the unwrapped return type.
 // The union overload is the fallback for callers that hold a pre-typed
 // `SignalStoreOptions<TStore>` variable (e.g. context-hook wrappers).
-export function useRefSignalStore<TStore extends Record<string, unknown>>(
+export function useRefSignalStore<TStore extends object>(
   store: TStore,
   options: SignalStoreOptionsUnwrapped<TStore>,
 ): UnwrappedStore<TStore>;
-export function useRefSignalStore<TStore extends Record<string, unknown>>(
+export function useRefSignalStore<TStore extends object>(
   store: TStore,
   options?: SignalStoreOptionsPlain<TStore>,
 ): TStore;
-export function useRefSignalStore<TStore extends Record<string, unknown>>(
+export function useRefSignalStore<TStore extends object>(
   store: TStore,
   options?: SignalStoreOptions<TStore>,
 ): TStore | UnwrappedStore<TStore>;
-export function useRefSignalStore<TStore extends Record<string, unknown>>(
+export function useRefSignalStore<TStore extends object>(
   store: TStore,
   options?: SignalStoreOptions<TStore>,
 ): TStore | UnwrappedStore<TStore> {
@@ -198,7 +198,7 @@ export function useRefSignalStore<TStore extends Record<string, unknown>>(
         get(_, key) {
           const k = String(key);
           if (k in settersMap) return settersMap[k];
-          return snapshot[k];
+          return (snapshot as Record<string, unknown>)[k];
         },
       }) as UnwrappedStore<TStore>,
     [store, settersMap, snapshot],

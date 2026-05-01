@@ -23,7 +23,7 @@ type Msg<T> =
 
 // ─── Core setup (plain function — shared by broadcast() and useBroadcast()) ───
 
-export function setupBroadcast<TStore extends Record<string, unknown>>(
+export function setupBroadcast<TStore extends object>(
   store: TStore,
   options: BroadcastOptions<TStore>,
 ): () => void {
@@ -285,7 +285,7 @@ export function setupBroadcast<TStore extends Record<string, unknown>>(
  *   onBroadcasterChange: (active) => isBroadcaster.update(active),
  * });
  */
-export function broadcast<TStore extends Record<string, unknown>>(
+export function broadcast<TStore extends object>(
   factory: () => TStore,
   options: BroadcastOptions<TStore>,
 ): () => TStore {

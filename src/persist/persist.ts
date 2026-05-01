@@ -103,7 +103,7 @@ function setupSignalPersist(
 
 // ─── Store-level setup ────────────────────────────────────────────────────────
 
-export function setupPersist<TStore extends Record<string, unknown>>(
+export function setupPersist<TStore extends object>(
   store: TStore,
   options: PersistOptions<TStore>,
 ): {
@@ -292,7 +292,7 @@ export function setupPersist<TStore extends Record<string, unknown>>(
  *   { key: 'game', version: 2, migrate: (stored) => ({ ...stored, xp: stored.xp ?? 0 }) }
  * )
  */
-export function persist<TStore extends Record<string, unknown>>(
+export function persist<TStore extends object>(
   factory: () => TStore,
   options: PersistOptions<TStore>,
 ): () => TStore {

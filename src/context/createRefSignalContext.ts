@@ -79,9 +79,9 @@ export const ALL = 'all' as const;
  *   return <UserContext.Provider value={store}>{children}</UserContext.Provider>
  * }
  */
-export function createRefSignalContextHook<
-  TStore extends Record<string, unknown>,
->(name: string): [Context<TStore | null>, ContextHook<TStore>] {
+export function createRefSignalContextHook<TStore extends object>(
+  name: string,
+): [Context<TStore | null>, ContextHook<TStore>] {
   const capitalizedName = capitalize(name);
   const context = createContext<TStore | null>(null);
   context.displayName = `${capitalizedName}Context`;
@@ -155,7 +155,7 @@ export function createRefSignalContextHook<
  */
 export function createRefSignalContext<
   TName extends string,
-  TStore extends Record<string, unknown>,
+  TStore extends object,
 >(name: TName, factory: () => TStore): RefSignalContextType<TName, TStore> {
   const [context, useContextHook] = createRefSignalContextHook<TStore>(name);
 

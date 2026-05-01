@@ -1,8 +1,6 @@
 import { batch, isRefSignal, RefSignal } from '../refsignal';
 
-export function takeSnapshot(
-  store: Record<string, unknown>,
-): Record<string, unknown> {
+export function takeSnapshot(store: object): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(store)
       .filter(([, v]) => isRefSignal(v))
@@ -11,7 +9,7 @@ export function takeSnapshot(
 }
 
 export function applySnapshot(
-  store: Record<string, unknown>,
+  store: object,
   data: Record<string, unknown>,
 ): void {
   // Batch so subscribers (including the broadcast listener itself) see all
@@ -20,7 +18,7 @@ export function applySnapshot(
   // still-un-updated siblings — a partial-state echo loop between tabs.
   batch(() => {
     for (const [k, v] of Object.entries(data)) {
-      const signal = store[k];
+      const signal = (store as Record<string, unknown>)[k];
       if (isRefSignal(signal)) signal.update(v);
     }
   });

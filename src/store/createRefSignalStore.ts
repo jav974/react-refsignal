@@ -39,7 +39,7 @@
  *   persist(() => ({ score: createRefSignal(0) }), { key: 'game' }),
  * );
  */
-export function createRefSignalStore<TStore extends Record<string, unknown>>(
+export function createRefSignalStore<TStore extends object>(
   factory: () => TStore,
 ): TStore {
   return factory();

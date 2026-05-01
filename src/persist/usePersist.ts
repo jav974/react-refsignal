@@ -29,7 +29,7 @@ const noopAsync = async () => {};
  *   return <GameContext.Provider value={store}>{children}</GameContext.Provider>;
  * }
  */
-export function usePersist<TStore extends Record<string, unknown>>(
+export function usePersist<TStore extends object>(
   store: TStore,
   options: PersistOptions<TStore>,
 ): {
