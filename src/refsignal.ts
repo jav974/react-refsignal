@@ -151,6 +151,12 @@ export function subscribe<T>(
   listenersMap.get(signal)?.add(listener as Listener);
 }
 
+/**
+ * Removes a listener from a signal. Safe to call on a signal whose listener
+ * set has already been cleared (e.g. by `dispose()`) — this is what makes
+ * cleanup closures returned by `watch()`/`subscribe()` no-op safely after
+ * dispose.
+ */
 export function unsubscribe<T>(
   signal: ReadonlySignal<T>,
   listener: Listener<T>,
@@ -210,13 +216,19 @@ export function update<T>(signal: RefSignal<T>, value: T) {
  *
  * @see [Decision Tree §1 — Signal Creation](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#1-signal-creation)
  *
- * Returns a {@link RefSignal} with `.current`, `.update()`, `.reset()`, `.subscribe()`, and notification methods.
- * Inside a React component, prefer {@link useRefSignal} so the signal's lifetime is tied to the component.
+ * Returns a {@link RefSignal} with `.current`, `.update()`, `.reset()`, `.subscribe()`, notification methods,
+ * and `.dispose()`. Inside a React component, prefer {@link useRefSignal} so the signal's lifetime
+ * is tied to the component (the hook's return type intentionally omits `.dispose()` — React owns
+ * cleanup there).
+ *
+ * **Dispose semantics:** calling `.dispose()` runs adapter cleanups (broadcast, persist) and clears
+ * all subscribers from the WeakMap. Idempotent. Cleanup closures returned by prior `watch()` /
+ * `subscribe()` calls become safe no-ops afterwards. Re-subscribing after dispose works normally.
  */
 export function createRefSignal<T = unknown>(
   initialValue: T,
   options?: string | SignalOptions<T>,
-): RefSignal<T> {
+): RefSignal<T> & { readonly dispose: () => void } {
   const resolved =
     typeof options === 'string' ? { debugName: options } : options;
   const { debugName, interceptor, equal } = resolved ?? {};
@@ -226,7 +238,9 @@ export function createRefSignal<T = unknown>(
     : initialValue;
   const safeInitial = intercepted === CANCEL ? initialValue : intercepted;
 
-  const signal: RefSignal<T> = {
+  const cleanups: Array<() => void> = [];
+
+  const signal: RefSignal<T> & { dispose: () => void } = {
     current: safeInitial,
     lastUpdated: 0,
     subscribe: (listener: Listener<T>) => {
@@ -251,16 +265,26 @@ export function createRefSignal<T = unknown>(
       signal.update(safeInitial);
     },
     getDebugName: () => devtoolsAdapter?.getSignalName(signal),
+    dispose: () => {
+      let fn = cleanups.pop();
+      while (fn) {
+        fn();
+        fn = cleanups.pop();
+      }
+      listenersMap.delete(signal);
+    },
   };
 
   devtoolsAdapter?.registerSignal(signal, debugName);
 
   if (resolved?.broadcast) {
-    attachSignalBroadcast(signal, resolved.broadcast);
+    const cleanup = attachSignalBroadcast(signal, resolved.broadcast);
+    if (cleanup) cleanups.push(cleanup);
   }
 
   if (resolved?.persist) {
-    attachSignalPersist(signal, resolved.persist);
+    const cleanup = attachSignalPersist(signal, resolved.persist);
+    if (cleanup) cleanups.push(cleanup);
   }
 
   return signal;
@@ -319,12 +343,14 @@ export function createComputedSignal<T>(
   const recompute = () => {
     signal.update(compute());
   };
-  const cleanups = deps.map((dep) => watch(dep, recompute));
+  const watchCleanups = deps.map((dep) => watch(dep, recompute));
+  const baseDispose = signal.dispose;
   return Object.assign(signal, {
     dispose: () => {
-      cleanups.forEach((stop) => {
+      watchCleanups.forEach((stop) => {
         stop();
       });
+      baseDispose();
     },
   });
 }

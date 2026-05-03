@@ -5,6 +5,7 @@ import {
   CANCEL,
   createComputedSignal,
   watch,
+  listenersMap,
 } from './refsignal';
 import { setupRafMock } from './test-utils/raf';
 
@@ -219,6 +220,108 @@ describe('createRefSignal', () => {
       signal.update(99);
       signal.reset();
       expect(signal.current).toBe(0);
+    });
+  });
+
+  describe('dispose', () => {
+    it('clears subscribers — listener no longer fires after dispose', () => {
+      const signal = createRefSignal(0);
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.dispose();
+      signal.update(1);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('allows re-subscribing after dispose', () => {
+      const signal = createRefSignal(0);
+      signal.dispose();
+      const listener = jest.fn();
+      signal.subscribe(listener);
+      signal.update(1);
+      expect(listener).toHaveBeenCalledWith(1);
+    });
+
+    it('runs broadcast adapter cleanup on dispose', async () => {
+      await jest.isolateModulesAsync(async () => {
+        const { setSignalBroadcastAdapter, createRefSignal: create } =
+          await import('./refsignal');
+        const cleanup = jest.fn();
+        setSignalBroadcastAdapter({ attach: () => cleanup });
+        const signal = create(0, { broadcast: 'channel' });
+        signal.dispose();
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('runs persist adapter cleanup on dispose', async () => {
+      await jest.isolateModulesAsync(async () => {
+        const { setSignalPersistAdapter, createRefSignal: create } =
+          await import('./refsignal');
+        const cleanup = jest.fn();
+        setSignalPersistAdapter({ attach: () => cleanup });
+        const signal = create(0, { persist: 'my-key' });
+        signal.dispose();
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('is idempotent — second dispose does not re-run cleanups', async () => {
+      await jest.isolateModulesAsync(async () => {
+        const { setSignalBroadcastAdapter, createRefSignal: create } =
+          await import('./refsignal');
+        const cleanup = jest.fn();
+        setSignalBroadcastAdapter({ attach: () => cleanup });
+        const signal = create(0, { broadcast: 'channel' });
+        signal.dispose();
+        signal.dispose();
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('supports re-attaching listeners and adapters after dispose', async () => {
+      await jest.isolateModulesAsync(async () => {
+        const {
+          setSignalBroadcastAdapter,
+          setSignalPersistAdapter,
+          attachSignalBroadcast,
+          attachSignalPersist,
+          createRefSignal: create,
+        } = await import('./refsignal');
+
+        const broadcastCleanup = jest.fn();
+        const persistCleanup = jest.fn();
+        setSignalBroadcastAdapter({ attach: () => broadcastCleanup });
+        setSignalPersistAdapter({ attach: () => persistCleanup });
+
+        const signal = create(0, { broadcast: 'channel', persist: 'key' });
+        const original = jest.fn();
+        signal.subscribe(original);
+
+        signal.dispose();
+        expect(broadcastCleanup).toHaveBeenCalledTimes(1);
+        expect(persistCleanup).toHaveBeenCalledTimes(1);
+
+        // Re-attach: signal isn't permanently dead, just released.
+        const replacement = jest.fn();
+        signal.subscribe(replacement);
+        const reBroadcastCleanup = attachSignalBroadcast(signal, 'channel');
+        const rePersistCleanup = attachSignalPersist(signal, 'key');
+
+        signal.update(42);
+        expect(original).not.toHaveBeenCalled();
+        expect(replacement).toHaveBeenCalledWith(42);
+
+        // Cleanups returned from the re-attach are independent of the signal —
+        // calling them tears down only that re-attached binding, listeners stay.
+        reBroadcastCleanup?.();
+        rePersistCleanup?.();
+        expect(broadcastCleanup).toHaveBeenCalledTimes(2);
+        expect(persistCleanup).toHaveBeenCalledTimes(2);
+
+        signal.update(99);
+        expect(replacement).toHaveBeenCalledWith(99);
+      });
     });
   });
 });
@@ -457,6 +560,17 @@ describe('createComputedSignal', () => {
     doubled.dispose();
     source.update(10);
     expect(listener).toHaveBeenCalledWith(10); // other subscribers unaffected
+  });
+
+  it('dispose clears subscribers on the computed signal itself', () => {
+    const source = createRefSignal(1);
+    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    const listener = jest.fn();
+    doubled.subscribe(listener);
+    doubled.dispose();
+    // Even if something forced a value through (e.g. another computed sharing state),
+    // prior subscribers must not fire. The contract is "after dispose, subscribers are released."
+    expect(listenersMap.has(doubled)).toBe(false);
   });
 });
 
