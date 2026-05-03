@@ -21,23 +21,28 @@ describe('useRefSignalMemo', () => {
     expect(result.current.current).toBe(2);
   });
 
-  // Type-level: the returned ReadonlySignal hides every write-flavored API,
+  // Type-level: the returned ReadonlyRefSignal hides every write-flavored API,
   // including the `notify`/`notifyUpdate` escape hatches that only make sense
-  // when the caller mutated `.current` directly. This test compiling is the
-  // assertion.
-  it('returns a ReadonlySignal that hides write-side APIs (compile-time check)', () => {
+  // when the caller mutated `.current` directly. `.current` and `.lastUpdated`
+  // are also readonly — direct mutation is the same shape of misuse as `.update()`.
+  // This test compiling is the assertion.
+  it('returns a ReadonlyRefSignal that hides write-side APIs (compile-time check)', () => {
     const { result } = renderHook(() => {
       const signal = useRefSignal(1);
       const memo = useRefSignalMemo(() => signal.current * 2, [signal]);
 
-      // @ts-expect-error — `update` is not exposed on ReadonlySignal
+      // @ts-expect-error — `update` is not exposed on ReadonlyRefSignal
       void memo.update;
-      // @ts-expect-error — `reset` is not exposed on ReadonlySignal
+      // @ts-expect-error — `reset` is not exposed on ReadonlyRefSignal
       void memo.reset;
-      // @ts-expect-error — `notify` is not exposed on ReadonlySignal
+      // @ts-expect-error — `notify` is not exposed on ReadonlyRefSignal
       void memo.notify;
-      // @ts-expect-error — `notifyUpdate` is not exposed on ReadonlySignal
+      // @ts-expect-error — `notifyUpdate` is not exposed on ReadonlyRefSignal
       void memo.notifyUpdate;
+      // @ts-expect-error — `.current` is readonly on ReadonlyRefSignal
+      memo.current = 99;
+      // @ts-expect-error — `.lastUpdated` is readonly on ReadonlyRefSignal
+      memo.lastUpdated = 0;
 
       return memo;
     });

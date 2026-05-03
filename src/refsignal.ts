@@ -291,21 +291,25 @@ export function createRefSignal<T = unknown>(
 }
 
 /**
- * A read-only signal. Exposes subscription and current value but not
- * `.update()`, `.reset()`, `.notify()`, or `.notifyUpdate()`. Returned by
- * {@link useRefSignalMemo} (where React owns the lifetime — no `dispose`
- * is exposed).
+ * A read-only signal. Exposes subscription and current value but not the
+ * write-side APIs — `.update()`, `.reset()`, `.notify()`, `.notifyUpdate()`
+ * are hidden, and `.current` / `.lastUpdated` are readonly so direct mutation
+ * is rejected at compile time. Returned by {@link useRefSignalMemo} (where
+ * React owns the lifetime — no `dispose` is exposed).
  *
- * Both `notify` and `notifyUpdate` are escape hatches for direct `.current`
- * mutation, which doesn't apply when the value is derived. Supertype of
- * `RefSignal` and the return shape of {@link createComputedRefSignal}:
+ * `notify` / `notifyUpdate` are escape hatches for the direct-`.current`-mutation
+ * pattern on a writable signal — neither applies when the value is derived.
+ * Supertype of `RefSignal` and the return shape of {@link createComputedRefSignal}:
  * anything that accepts `ReadonlyRefSignal<T>` accepts the read-write or
  * computed forms too.
  */
 export type ReadonlyRefSignal<T> = Omit<
   RefSignal<T>,
-  'update' | 'reset' | 'notify' | 'notifyUpdate'
->;
+  'update' | 'reset' | 'notify' | 'notifyUpdate' | 'current' | 'lastUpdated'
+> & {
+  readonly current: T;
+  readonly lastUpdated: number;
+};
 
 /** @deprecated Renamed to {@link ReadonlyRefSignal}. */
 export type ReadonlySignal<T> = ReadonlyRefSignal<T>;
