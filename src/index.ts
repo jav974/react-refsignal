@@ -6,21 +6,32 @@ export * from './hooks/useRefSignalFollow';
 export type {
   Listener,
   RefSignal,
-  ReadonlySignal,
-  ComputedSignal,
+  ReadonlyRefSignal,
   SignalOptions,
   Interceptor,
   DevToolsAdapter,
   SignalBroadcastInput,
   SignalPersistInput,
 } from './refsignal';
+// Deprecated type aliases re-exported for backward compatibility.
+export type {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  ReadonlySignal,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  ComputedSignal,
+} from './refsignal';
 export {
   batch,
   createRefSignal,
   isRefSignal,
   CANCEL,
-  createComputedSignal,
+  createComputedRefSignal,
   watch,
+} from './refsignal';
+// Deprecated factory re-exported for backward compatibility.
+export {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  createComputedSignal,
 } from './refsignal';
 export {
   createRefSignalContext,

@@ -3,7 +3,7 @@ import {
   isRefSignal,
   batch,
   CANCEL,
-  createComputedSignal,
+  createComputedRefSignal,
   watch,
   listenersMap,
 } from './refsignal';
@@ -507,27 +507,33 @@ describe('batch', () => {
   });
 });
 
-// ─── createComputedSignal ─────────────────────────────────────────────────────
+// ─── createComputedRefSignal ─────────────────────────────────────────────────────
 
-describe('createComputedSignal', () => {
+describe('createComputedRefSignal', () => {
   it('initialises with the computed value', () => {
     const a = createRefSignal(2);
     const b = createRefSignal(3);
-    const product = createComputedSignal(() => a.current * b.current, [a, b]);
+    const product = createComputedRefSignal(
+      () => a.current * b.current,
+      [a, b],
+    );
     expect(product.current).toBe(6);
   });
 
   it('recomputes when a dep updates', () => {
     const a = createRefSignal(2);
     const b = createRefSignal(3);
-    const product = createComputedSignal(() => a.current * b.current, [a, b]);
+    const product = createComputedRefSignal(
+      () => a.current * b.current,
+      [a, b],
+    );
     a.update(5);
     expect(product.current).toBe(15);
   });
 
   it('notifies subscribers on recompute', () => {
     const source = createRefSignal(1);
-    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    const doubled = createComputedRefSignal(() => source.current * 2, [source]);
     const listener = jest.fn();
     doubled.subscribe(listener);
     source.update(4);
@@ -537,7 +543,7 @@ describe('createComputedSignal', () => {
   it('does not recompute when value is unchanged', () => {
     const source = createRefSignal(0);
     const compute = jest.fn(() => Math.abs(source.current));
-    const abs = createComputedSignal(compute, [source]);
+    const abs = createComputedRefSignal(compute, [source]);
     compute.mockClear();
     source.update(0); // same value — update() is a no-op on source
     expect(compute).not.toHaveBeenCalled();
@@ -546,7 +552,7 @@ describe('createComputedSignal', () => {
 
   it('stops recomputing after dispose', () => {
     const source = createRefSignal(1);
-    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    const doubled = createComputedRefSignal(() => source.current * 2, [source]);
     doubled.dispose();
     source.update(5);
     expect(doubled.current).toBe(2); // frozen at initial value
@@ -554,7 +560,7 @@ describe('createComputedSignal', () => {
 
   it('dispose does not affect other subscribers', () => {
     const source = createRefSignal(1);
-    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    const doubled = createComputedRefSignal(() => source.current * 2, [source]);
     const listener = jest.fn();
     source.subscribe(listener);
     doubled.dispose();
@@ -564,7 +570,7 @@ describe('createComputedSignal', () => {
 
   it('dispose clears subscribers on the computed signal itself', () => {
     const source = createRefSignal(1);
-    const doubled = createComputedSignal(() => source.current * 2, [source]);
+    const doubled = createComputedRefSignal(() => source.current * 2, [source]);
     const listener = jest.fn();
     doubled.subscribe(listener);
     doubled.dispose();

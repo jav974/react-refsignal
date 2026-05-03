@@ -13,7 +13,7 @@
  * See `WatchOptions` in `./timing` for option semantics.
  */
 
-import { isRefSignal, type ReadonlySignal } from './refsignal';
+import { isRefSignal, type ReadonlyRefSignal } from './refsignal';
 import {
   applyTimingOptions,
   type TimingOptions,
@@ -37,7 +37,7 @@ export interface WatchHandle {
    * static and dynamic deps.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  trackedSignals(): ReadonlySignal<any>[];
+  trackedSignals(): ReadonlyRefSignal<any>[];
 }
 
 /**
@@ -107,10 +107,10 @@ export function watchSignals(
   const filter = options?.filter;
 
   let reconcileNeeded = false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches `createComputedSignal` / `batch` signal-array conventions
-  let tracked: Set<ReadonlySignal<any>> = new Set();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches `createComputedRefSignal` / `batch` signal-array conventions
+  let tracked: Set<ReadonlyRefSignal<any>> = new Set();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let lastTrackedResult: ReadonlyArray<ReadonlySignal<any>> | undefined;
+  let lastTrackedResult: ReadonlyArray<ReadonlyRefSignal<any>> | undefined;
   let disposed = false;
 
   const reconcile = () => {

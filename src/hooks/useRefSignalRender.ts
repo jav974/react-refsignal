@@ -1,5 +1,5 @@
 import { useCallback, useReducer, useRef, useSyncExternalStore } from 'react';
-import { ReadonlySignal } from '../refsignal';
+import { ReadonlyRefSignal } from '../refsignal';
 import { watchSignals, WatchHandle } from '../watchSignals';
 import { useWatchArgs } from './useWatchArgs';
 import type { WatchOptions } from '../timing';
@@ -51,7 +51,7 @@ import type { WatchOptions } from '../timing';
  */
 export function useRefSignalRender(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  deps: ReadonlySignal<any>[],
+  deps: ReadonlyRefSignal<any>[],
   callbackOrOptions?: (() => boolean) | WatchOptions,
 ): () => void {
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
