@@ -5,8 +5,7 @@
 ---
 
 - [`RefSignal<T>`](#refsignalt)
-- [`ReadonlySignal<T>`](#readonlysignalt)
-- [`ComputedSignal<T>`](#computedsignalt)
+- [`ReadonlyRefSignal<T>`](#readonlyrefsignalt)
 - [`createRefSignal<T>(initialValue, options?)`](#createrefsignalt-initialvalue-options)
 - [`SignalOptions<T>` / `Interceptor<T>` / `CANCEL`](#signaloptionst--interceptort--cancel)
 - [`useRefSignal<T>(initialValue, options?)`](#userefsignalt-initialvalue-options)
@@ -19,7 +18,7 @@
 - [`SignalStoreOptions<TStore>`](#signalstoreoptionststore)
 - [`useRefSignalMemo<T>(factory, deps, options?)`](#userefsignalmemot-factory-deps-options)
 - [`useRefSignalFollow<T>(getter, deps, options?)`](#userefsignalfollowt-getter-deps-options)
-- [`createComputedSignal<T>(compute, deps)`](#createcomputedsignalt-compute-deps)
+- [`createComputedRefSignal<T>(compute, deps)`](#createcomputedrefsignalt-compute-deps)
 - [`watch<T>(signal, listener, options?)`](#watcht-signal-listener-options)
 - [`watchSignals(deps, onFire, options?)`](#watchsignalsdeps-onfire-options)
 - [`WatchHandle`](#watchhandle)
@@ -53,28 +52,26 @@ The core interface implemented by all signal objects.
 
 ---
 
-### `ReadonlySignal<T>`
+### `ReadonlyRefSignal<T>`
 
-Read-only view of a signal — `RefSignal<T>` minus the write-side APIs (`.update()`, `.reset()`, `.notify()`, `.notifyUpdate()`). Returned by [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) and [`useRefSignalFollow`](#userefsignalfollowt-getter-deps-options) where React owns the lifetime, so no `.dispose()` is exposed.
+Read-only view of a signal — `RefSignal<T>` minus the write-side APIs (`.update()`, `.reset()`, `.notify()`, `.notifyUpdate()`), with `.current` and `.lastUpdated` marked `readonly` so direct mutation (`signal.current = x`) is a compile-time error. Returned by [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) and [`useRefSignalFollow`](#userefsignalfollowt-getter-deps-options) where React owns the lifetime, so no `.dispose()` is exposed.
 
-`.notify()` and `.notifyUpdate()` are excluded because they are escape hatches for direct `.current` mutation — irrelevant when the value is derived.
+`.notify()` and `.notifyUpdate()` are excluded because they are escape hatches for the direct-`.current`-mutation pattern on a writable signal — irrelevant when the value is derived.
 
-`ReadonlySignal<T>` is the supertype of both `RefSignal<T>` and [`ComputedSignal<T>`](#computedsignalt). Use it as a parameter type whenever you only need to read or subscribe — your function will accept all three forms.
+`ReadonlyRefSignal<T>` is the supertype of `RefSignal<T>` and the return shape of [`createComputedRefSignal`](#createcomputedrefsignalt-compute-deps). Use it as a parameter type whenever you only need to read or subscribe — your function will accept all forms.
 
 ```ts
-function logChanges<T>(signal: ReadonlySignal<T>) {
+function logChanges<T>(signal: ReadonlyRefSignal<T>) {
   return signal.subscribe((v) => console.log(v));
 }
-logChanges(myRefSignal);      // ✓
+logChanges(myRefSignal);       // ✓
 logChanges(myMemoSignal);      // ✓ (from useRefSignalMemo)
-logChanges(myComputedSignal);  // ✓ (from createComputedSignal)
+logChanges(myComputedSignal);  // ✓ (from createComputedRefSignal)
 ```
 
----
+> **Ownership and `dispose`** — if a signal value carries `.dispose()` in its type (created via [`createRefSignal`](#createrefsignalt-initialvalue-options) or [`createComputedRefSignal`](#createcomputedrefsignalt-compute-deps)), you own its lifetime. `ReadonlyRefSignal<T>` itself does not include `.dispose()` — that only appears at creator return sites, so consumer functions taking a `ReadonlyRefSignal` can't accidentally tear down a signal they don't own.
 
-### `ComputedSignal<T>`
-
-`ReadonlySignal<T>` plus `.dispose()` — used at module scope where the lifetime is not React-managed. Returned by [`createComputedSignal`](#createcomputedsignalt-compute-deps). Calling `.dispose()` unsubscribes from dep signals and stops recomputation.
+> **Deprecated aliases** — `ReadonlySignal<T>` is kept as a deprecated alias for `ReadonlyRefSignal<T>`. `ComputedSignal<T>` is kept as a deprecated alias for `ReadonlyRefSignal<T> & { dispose: () => void }`. Both will be removed in a future major release.
 
 ---
 
@@ -112,6 +109,8 @@ const position = createRefSignal(0, {
 `lastUpdated` starts at `0` and is only incremented by `update()` or `notifyUpdate()`.
 
 > **Note:** `interceptor` runs inside `.update()` only. Direct mutation of `.current` bypasses it.
+
+The returned signal also carries `.dispose()`. Call it to tear down `broadcast` / `persist` adapter cleanups and proactively clear all subscribers from the WeakMap. Idempotent. Cleanup closures returned by prior `watch()` / `subscribe()` calls become safe no-ops afterwards. Re-subscribing after dispose works normally — the signal isn't permanently dead, just released. Inside React, prefer [`useRefSignal`](#userefsignalt-initialvalue-options) which manages this lifecycle for you (its return type intentionally omits `.dispose()`).
 
 ---
 
@@ -358,7 +357,7 @@ const result = useRefSignalMemo(
 - The returned signal can be subscribed to like any other signal.
 - `options` is a [`WatchOptions`](#watchoptions) — timing, filter, and `trackSignals` for dynamic-signal traversal.
 
-Returns a [`ReadonlySignal<T>`](#readonlysignalt) — read-side APIs (`.current`, `.lastUpdated`, `.subscribe`/`.unsubscribe`, `.getDebugName`) only; the write-side APIs (`.update`, `.reset`, `.notify`, `.notifyUpdate`) are hidden. The lifetime is tied to the component, so no `.dispose()` either. Pass it as a dep wherever a `ReadonlySignal` is accepted: `useRefSignalRender`, `useRefSignalEffect`, `useRefSignalMemo`, `useRefSignalFollow`, `createComputedSignal`, `watch`, `watchSignals`, and `WatchOptions.trackSignals`.
+Returns a [`ReadonlyRefSignal<T>`](#readonlyrefsignalt) — read-side APIs (`.current`, `.lastUpdated`, `.subscribe`/`.unsubscribe`, `.getDebugName`) only; the write-side APIs (`.update`, `.reset`, `.notify`, `.notifyUpdate`) are hidden. The lifetime is tied to the component, so no `.dispose()` either. Pass it as a dep wherever a `ReadonlyRefSignal` is accepted: `useRefSignalRender`, `useRefSignalEffect`, `useRefSignalMemo`, `useRefSignalFollow`, `createComputedRefSignal`, `watch`, `watchSignals`, and `WatchOptions.trackSignals`.
 
 ---
 
@@ -372,7 +371,7 @@ const node = useRefSignalFollow(
   () => nodes.current.get(focusedId),
   [nodes, focusedId],
 );
-// node: ReadonlySignal<NodeData | undefined>
+// node: ReadonlyRefSignal<NodeData | undefined>
 ```
 
 Shorthand for a [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) that reads `getter()?.current` while auto-tracking `getter()` as a dynamic signal. Use it whenever you would otherwise write a memo + matching `trackSignals` pair by hand.
@@ -382,18 +381,18 @@ Shorthand for a [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) th
 
 ---
 
-### `createComputedSignal<T>(compute, deps)`
+### `createComputedRefSignal<T>(compute, deps)`
 
 Creates a derived signal whose value is recomputed whenever any dep signal updates. The returned signal is read-only — `.update()` and `.reset()` are not exposed.
 
-Use this at module scope or in context factories. Inside a component, prefer [`useRefSignalMemo`](#userefsignalmemot-factory-deps), which ties the signal's lifetime to the component and handles non-signal deps via React's dependency array.
+Use this at module scope or in context factories. Inside a component, prefer [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options), which ties the signal's lifetime to the component and handles non-signal deps via React's dependency array.
 
 ```ts
-import { createRefSignal, createComputedSignal } from 'react-refsignal';
+import { createRefSignal, createComputedRefSignal } from 'react-refsignal';
 
 const price = createRefSignal(10);
 const qty   = createRefSignal(3);
-const total = createComputedSignal(() => price.current * qty.current, [price, qty]);
+const total = createComputedRefSignal(() => price.current * qty.current, [price, qty]);
 
 total.current; // 30
 total.subscribe((v) => console.log('total:', v));
@@ -401,15 +400,17 @@ total.subscribe((v) => console.log('total:', v));
 price.update(20); // total → 60, subscriber called
 ```
 
-The computation stays live as long as at least one dep signal is alive (the computed signal holds subscriptions to each dep). Call `.dispose()` to unsubscribe and stop tracking:
+The computation stays live as long as at least one dep signal is alive (the computed signal holds subscriptions to each dep). Call `.dispose()` to unsubscribe from deps, stop recomputing, and proactively release the computed's own subscribers from the WeakMap:
 
 ```ts
-const total = createComputedSignal(() => price.current * qty.current, [price, qty]);
+const total = createComputedRefSignal(() => price.current * qty.current, [price, qty]);
 
-// Later — detach from deps, stop recomputing
+// Later — detach from deps, stop recomputing, release subscribers
 total.dispose();
 price.update(99); // total.current remains at the last computed value
 ```
+
+> **Deprecated alias** — `createComputedSignal` is kept as a deprecated alias and will be removed in a future major release. Migrate to `createComputedRefSignal` for brand consistency with the rest of the API.
 
 ---
 

@@ -10,6 +10,8 @@
 
 Mutable signal-like refs for React — update values without re-rendering, subscribe to changes, and opt into re-renders exactly where you need them.
 
+> **[Live demo →](https://stackblitz.com/edit/vitejs-vite-jurlgxkf?file=index.html)** — drag the nodes; sixty FPS, zero React re-renders.
+
 ## Why
 
 Imagine a canvas with a hundred draggable nodes, each connected by curves. The user drags one node — its position changes sixty times a second. Every curve attached to it must follow. The other ninety-nine nodes should be completely unaffected.
@@ -109,7 +111,7 @@ The full `docs/` folder is bundled with the npm package — installed at `node_m
 | `useRefSignal` vs `createRefSignal` | Inside a component vs anywhere else — both produce the same signal |
 | `useRefSignalEffect` vs `useRefSignalRender` | Imperative side effects vs triggering React re-renders |
 | `notify()` vs `notifyUpdate()` | Fire subscribers without or with bumping `lastUpdated` |
-| `createComputedSignal` / `useRefSignalMemo` | Derived signals — recompute whenever deps change; module-scope or component-scoped |
+| `createComputedRefSignal` / `useRefSignalMemo` | Derived signals — recompute whenever deps change; module-scope or component-scoped |
 | `watch(signal, listener, options?)` | Subscribe outside React and get a cleanup function back — mirrors `useEffect` return pattern; accepts the same `filter` and timing options as the hooks |
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
 | `createRefSignalStore` / `useRefSignalStore` | Provider-free global store — create at module scope, use in any component with `renderOn` opt-in |

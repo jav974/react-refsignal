@@ -531,7 +531,7 @@ import {
   useRefSignalRender,
   createRefSignalContextHook,
   type RefSignal,
-  type ReadonlySignal,
+  type ReadonlyRefSignal,
 } from 'react-refsignal';
 import { useBroadcast } from 'react-refsignal/broadcast';
 import { usePersist } from 'react-refsignal/persist';
@@ -540,7 +540,7 @@ import { useGetMessagesQuery } from './api';
 
 type MessagesStore = {
   messages: RefSignal<MessagesData | undefined>;
-  unreadCount: ReadonlySignal<number>;
+  unreadCount: ReadonlyRefSignal<number>;
 };
 
 const [MessagesContext, useMessagesContext] =
