@@ -142,7 +142,7 @@ export function isRefSignal<T = unknown>(obj: unknown): obj is RefSignal<T> {
 }
 
 export function subscribe<T>(
-  signal: ReadonlySignal<T>,
+  signal: ReadonlyRefSignal<T>,
   listener: Listener<T>,
 ): void {
   if (!listenersMap.has(signal)) {
@@ -151,8 +151,14 @@ export function subscribe<T>(
   listenersMap.get(signal)?.add(listener as Listener);
 }
 
+/**
+ * Removes a listener from a signal. Safe to call on a signal whose listener
+ * set has already been cleared (e.g. by `dispose()`) — this is what makes
+ * cleanup closures returned by `watch()`/`subscribe()` no-op safely after
+ * dispose.
+ */
 export function unsubscribe<T>(
-  signal: ReadonlySignal<T>,
+  signal: ReadonlyRefSignal<T>,
   listener: Listener<T>,
 ): void {
   const listeners = listenersMap.get(signal);
@@ -210,13 +216,19 @@ export function update<T>(signal: RefSignal<T>, value: T) {
  *
  * @see [Decision Tree §1 — Signal Creation](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#1-signal-creation)
  *
- * Returns a {@link RefSignal} with `.current`, `.update()`, `.reset()`, `.subscribe()`, and notification methods.
- * Inside a React component, prefer {@link useRefSignal} so the signal's lifetime is tied to the component.
+ * Returns a {@link RefSignal} with `.current`, `.update()`, `.reset()`, `.subscribe()`, notification methods,
+ * and `.dispose()`. Inside a React component, prefer {@link useRefSignal} so the signal's lifetime
+ * is tied to the component (the hook's return type intentionally omits `.dispose()` — React owns
+ * cleanup there).
+ *
+ * **Dispose semantics:** calling `.dispose()` runs adapter cleanups (broadcast, persist) and clears
+ * all subscribers from the WeakMap. Idempotent. Cleanup closures returned by prior `watch()` /
+ * `subscribe()` calls become safe no-ops afterwards. Re-subscribing after dispose works normally.
  */
 export function createRefSignal<T = unknown>(
   initialValue: T,
   options?: string | SignalOptions<T>,
-): RefSignal<T> {
+): RefSignal<T> & { readonly dispose: () => void } {
   const resolved =
     typeof options === 'string' ? { debugName: options } : options;
   const { debugName, interceptor, equal } = resolved ?? {};
@@ -226,7 +238,9 @@ export function createRefSignal<T = unknown>(
     : initialValue;
   const safeInitial = intercepted === CANCEL ? initialValue : intercepted;
 
-  const signal: RefSignal<T> = {
+  const cleanups: Array<() => void> = [];
+
+  const signal: RefSignal<T> & { dispose: () => void } = {
     current: safeInitial,
     lastUpdated: 0,
     subscribe: (listener: Listener<T>) => {
@@ -251,43 +265,57 @@ export function createRefSignal<T = unknown>(
       signal.update(safeInitial);
     },
     getDebugName: () => devtoolsAdapter?.getSignalName(signal),
+    dispose: () => {
+      let fn = cleanups.pop();
+      while (fn) {
+        fn();
+        fn = cleanups.pop();
+      }
+      listenersMap.delete(signal);
+    },
   };
 
   devtoolsAdapter?.registerSignal(signal, debugName);
 
   if (resolved?.broadcast) {
-    attachSignalBroadcast(signal, resolved.broadcast);
+    const cleanup = attachSignalBroadcast(signal, resolved.broadcast);
+    if (cleanup) cleanups.push(cleanup);
   }
 
   if (resolved?.persist) {
-    attachSignalPersist(signal, resolved.persist);
+    const cleanup = attachSignalPersist(signal, resolved.persist);
+    if (cleanup) cleanups.push(cleanup);
   }
 
   return signal;
 }
 
 /**
- * A read-only signal. Exposes subscription and current value but not
- * `.update()`, `.reset()`, `.notify()`, or `.notifyUpdate()`. Returned by
- * {@link useRefSignalMemo} (where React owns the lifetime — no `dispose`
- * is exposed).
+ * A read-only signal. Exposes subscription and current value but not the
+ * write-side APIs — `.update()`, `.reset()`, `.notify()`, `.notifyUpdate()`
+ * are hidden, and `.current` / `.lastUpdated` are readonly so direct mutation
+ * is rejected at compile time. Returned by {@link useRefSignalMemo} (where
+ * React owns the lifetime — no `dispose` is exposed).
  *
- * Both `notify` and `notifyUpdate` are escape hatches for direct `.current`
- * mutation, which doesn't apply when the value is derived. Supertype of
- * both {@link RefSignal} and {@link ComputedSignal}: anything that accepts
- * `ReadonlySignal<T>` accepts the read-write or computed forms too.
+ * `notify` / `notifyUpdate` are escape hatches for the direct-`.current`-mutation
+ * pattern on a writable signal — neither applies when the value is derived.
+ * Supertype of `RefSignal` and the return shape of {@link createComputedRefSignal}:
+ * anything that accepts `ReadonlyRefSignal<T>` accepts the read-write or
+ * computed forms too.
  */
-export type ReadonlySignal<T> = Omit<
+export type ReadonlyRefSignal<T> = Omit<
   RefSignal<T>,
-  'update' | 'reset' | 'notify' | 'notifyUpdate'
->;
+  'update' | 'reset' | 'notify' | 'notifyUpdate' | 'current' | 'lastUpdated'
+> & {
+  readonly current: T;
+  readonly lastUpdated: number;
+};
 
-/**
- * A read-only derived signal with a managed lifetime. Adds `.dispose()` to
- * {@link ReadonlySignal} so callers can stop tracking dep signals when the
- * computed value is no longer needed. Returned by {@link createComputedSignal}.
- */
-export type ComputedSignal<T> = ReadonlySignal<T> & {
+/** @deprecated Renamed to {@link ReadonlyRefSignal}. */
+export type ReadonlySignal<T> = ReadonlyRefSignal<T>;
+
+/** @deprecated Use the inline type `ReadonlyRefSignal<T> & { dispose: () => void }`, returned by {@link createComputedRefSignal}. */
+export type ComputedSignal<T> = ReadonlyRefSignal<T> & {
   readonly dispose: () => void;
 };
 
@@ -298,7 +326,8 @@ export type ComputedSignal<T> = ReadonlySignal<T> & {
  *
  *
  * The computed signal is read-only — calling `.update()` or `.reset()` is not exposed.
- * The computation stays live as long as any dep signal is alive.
+ * The returned signal exposes `.dispose()` — call it to stop watching dep signals
+ * and release subscribers on the computed itself.
  *
  * For React components, prefer {@link useRefSignalMemo} which ties the lifetime to the
  * component and handles non-signal deps (props, state) via React's dependency array.
@@ -306,28 +335,33 @@ export type ComputedSignal<T> = ReadonlySignal<T> & {
  * @example
  * const price = createRefSignal(10);
  * const qty   = createRefSignal(3);
- * const total = createComputedSignal(() => price.current * qty.current, [price, qty]);
+ * const total = createComputedRefSignal(() => price.current * qty.current, [price, qty]);
  * total.subscribe(v => console.log('total:', v)); // 30
  * price.update(20); // total → 60
  */
-export function createComputedSignal<T>(
+export function createComputedRefSignal<T>(
   compute: () => T,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  deps: ReadonlySignal<any>[],
-): ComputedSignal<T> {
+  deps: ReadonlyRefSignal<any>[],
+): ReadonlyRefSignal<T> & { readonly dispose: () => void } {
   const signal = createRefSignal(compute());
   const recompute = () => {
     signal.update(compute());
   };
-  const cleanups = deps.map((dep) => watch(dep, recompute));
+  const watchCleanups = deps.map((dep) => watch(dep, recompute));
+  const baseDispose = signal.dispose;
   return Object.assign(signal, {
     dispose: () => {
-      cleanups.forEach((stop) => {
+      watchCleanups.forEach((stop) => {
         stop();
       });
+      baseDispose();
     },
   });
 }
+
+/** @deprecated Renamed to {@link createComputedRefSignal}. */
+export const createComputedSignal = createComputedRefSignal;
 
 /**
  * Subscribes a listener to a signal and returns a cleanup function.
@@ -356,7 +390,7 @@ export function createComputedSignal<T>(
  * const stop = watch(score, (v) => log(v), { filter: () => score.current > 0 });
  */
 export function watch<T>(
-  signal: ReadonlySignal<T>,
+  signal: ReadonlyRefSignal<T>,
   listener: Listener<T>,
   // `trackSignals` is excluded here — `watch()` is single-signal and cannot
   // express "fire my value-delivering listener when a different signal updates"

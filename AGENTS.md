@@ -26,9 +26,10 @@ For everything else, prefer the local copy — it matches the installed types ex
 
 ## Contract worth knowing
 
-- **`RefSignal<T>`** — read + write. Created by `createRefSignal` / `useRefSignal`.
-- **`ReadonlySignal<T>`** — read-only view. Returned by `useRefSignalMemo` / `useRefSignalFollow`. Supertype of the other two — accept this as a parameter type when you only read.
-- **`ComputedSignal<T>`** — read-only + `.dispose()`. Returned by `createComputedSignal` (module scope only).
+- **`RefSignal<T>`** — read + write. The universal contract; use as a function parameter type when you need to read and write. `createRefSignal` returns `RefSignal<T> & { dispose: () => void }` (you own the cleanup); `useRefSignal` returns plain `RefSignal<T>` (React owns it).
+- **`ReadonlyRefSignal<T>`** — read-only view. Returned by `useRefSignalMemo` / `useRefSignalFollow`. Supertype of `RefSignal<T>` — accept this as a parameter type when you only read.
+- **`createComputedRefSignal`** returns `ReadonlyRefSignal<T> & { dispose: () => void }` (module-scope, you own it). `ReadonlySignal<T>` and `ComputedSignal<T>` exist as deprecated aliases.
+- **Ownership rule** — if a signal value's type carries `.dispose()`, you own it. Function parameters take the universal `RefSignal` / `ReadonlyRefSignal` (no dispose) so consumers can't accidentally tear down a signal they don't own.
 
 The lib favors **explicit re-render opt-in**. Components do not re-render on signal changes unless they call `useRefSignalRender([deps])` or read `unwrap: true` from a context hook with `renderOn`. Never assume a signal `.update()` triggers a render — wire `useRefSignalRender` (or the unwrap form) explicitly.
 
@@ -56,7 +57,7 @@ Importing the broadcast or persist subpath is what activates the corresponding s
 
 ## Styles to avoid
 
-- **Don't call `.update()` / `.reset()` / `.notify()` on a `ReadonlySignal`** (e.g. a memo result). The type system rejects it; the operation fights the abstraction.
+- **Don't try to mutate a `ReadonlyRefSignal`** (e.g. a memo result) — `.update()` / `.reset()` / `.notify()` / `.notifyUpdate()` are hidden and `.current` / `.lastUpdated` are `readonly`. The type system rejects all of these; even if you cast around it, the next dep fire overwrites the change.
 - **Don't put `useGetXQuery()` inside the Provider body.** Use the sibling-leaf pattern.
 - **Don't subscribe with bare `signal.subscribe(fn)` inside a component.** Use `useRefSignalEffect` (cleanup is automatic) or `watch(signal, fn)` (returns a cleanup function for non-React code).
-- **Don't widen the type from `ReadonlySignal` back to `RefSignal` to mutate a memo result.** That mutation is overwritten on the next dep change.
+- **Don't cast a `ReadonlyRefSignal` back to `RefSignal` to bypass the readonly view.** That mutation is overwritten on the next dep change. If you need a writable signal, the right shape is a `useRefSignal` paired with the derivation done inline — not a memo result laundered into mutability.

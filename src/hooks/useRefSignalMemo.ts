@@ -1,5 +1,5 @@
 import { DependencyList, useEffect, useMemo, useRef } from 'react';
-import { ReadonlySignal } from '../refsignal';
+import { ReadonlyRefSignal } from '../refsignal';
 import { useRefSignal } from './useRefSignal';
 import { watchSignals } from '../watchSignals';
 import { useWatchArgs } from './useWatchArgs';
@@ -47,22 +47,22 @@ export function useRefSignalMemo<T>(
   factory: () => T,
   deps: DependencyList,
   options?: WatchOptions,
-): ReadonlySignal<T>;
+): ReadonlyRefSignal<T>;
 export function useRefSignalMemo<T>(
   factory: () => T | null,
   deps: DependencyList,
   options?: WatchOptions,
-): ReadonlySignal<T | null>;
+): ReadonlyRefSignal<T | null>;
 export function useRefSignalMemo<T>(
   factory: () => T | undefined,
   deps: DependencyList,
   options?: WatchOptions,
-): ReadonlySignal<T | undefined>;
+): ReadonlyRefSignal<T | undefined>;
 export function useRefSignalMemo<T>(
   factory: () => T | null | undefined,
   deps: DependencyList,
   options?: WatchOptions,
-): ReadonlySignal<T | null | undefined> {
+): ReadonlyRefSignal<T | null | undefined> {
   // Handles non-signal deps: React re-renders when state/props in deps change,
   // useMemo recomputes, and we sync the signal below — no extra factory() call needed.
   const memo = useMemo(factory, deps); // eslint-disable-line react-hooks/exhaustive-deps -- deps forwarded from caller
