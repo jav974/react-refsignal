@@ -1,6 +1,6 @@
 # Concepts
 
-← [Back to README](../README.md) · [API Reference](api.md) · [Patterns](patterns.md) · [Imperative renderers](imperative-renderers.md) · [Broadcast](broadcast.md)
+← [Back to README](../README.md) · [API Reference](api.md) · [Patterns](patterns.md) · [Imperative renderers](imperative-renderers.md) · [Pulse](pulse.md) · [Broadcast](broadcast.md)
 
 ---
 
@@ -8,6 +8,7 @@
 - [`useRefSignal` vs `createRefSignal`](#userefsignal-vs-createrefsignal)
 - [`useRefSignalEffect` vs `useRefSignalRender`](#userefsignaleffect-vs-userefsignalrender)
 - [`notify()` vs `notifyUpdate()`](#notify-vs-notifyupdate)
+- [Pulse signals — clocks with tick-context metadata](#pulse-signals--clocks-with-tick-context-metadata)
 - [Signal lifetime](#signal-lifetime)
 
 ---
@@ -51,6 +52,14 @@ Both fire all subscribers. The difference is whether `lastUpdated` changes:
 - **`notify()`** — fires subscribers only. `lastUpdated` is unchanged, so `useRefSignalRender` does **not** re-render. Only `useRefSignalEffect` listeners run.
 
 This distinction matters: `useRefSignalRender` watches `lastUpdated` via `useSyncExternalStore`. If you want to drive a side effect (canvas draw) but never trigger a React re-render, use `notify()`. If you also need components to re-render, use `update()` or `notifyUpdate()`.
+
+---
+
+## Pulse signals — clocks with tick-context metadata
+
+A [`PulseRefSignal`](pulse.md) is a self-firing read-only signal: `.current` advances to `performance.now()` on a schedule, subscribers fire each tick, the timer is lazy (runs only while at least one subscriber is attached). Conceptually it's a clock primitive — closer to `createComputedRefSignal` than to `RefSignal`, with time playing the role of a dependency.
+
+It also exposes `dt`, `tick`, and `elapsed` alongside `.current`. These look like parallel reactive state but they aren't: you don't `watch(loop.dt, …)`. Read them as **tick-context metadata** — values coherent with `.current` *at the moment subscribers fire*, like `event.timeStamp` inside a DOM event handler. The reactive surface is still `.current`; the metadata rides along for game/sim code that wants `dt` without writing the bookkeeping.
 
 ---
 

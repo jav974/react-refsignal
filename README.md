@@ -98,6 +98,7 @@ The canvas redraws at every frame via `useRefSignalEffect` — React's render cy
 - [API Reference](docs/api.md) — every hook and function with examples.
 - [Concepts](docs/concepts.md) — signals, notify vs notifyUpdate, effect vs render, signal lifetime.
 - [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation.
+- [Pulse](docs/pulse.md) — self-firing signals (`createPulseRefSignal` / `usePulseRefSignal`): clocks, game loops, auth refresh, shared tick across components.
 - [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`.
 - [Persist](docs/persist.md) — persist signals across page loads with `react-refsignal/persist`.
 

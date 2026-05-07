@@ -1,6 +1,6 @@
 # Signals driving imperative renderers
 
-← [Back to README](../README.md) · [Concepts](concepts.md) · [API Reference](api.md) · [Patterns](patterns.md)
+← [Back to README](../README.md) · [Concepts](concepts.md) · [API Reference](api.md) · [Patterns](patterns.md) · [Pulse](pulse.md)
 
 ---
 
