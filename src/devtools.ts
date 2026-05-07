@@ -84,7 +84,7 @@ class DevTools implements DevToolsAdapter {
     }
   }
 
-  registerSignal<T>(signal: RefSignal<T>, name?: string): string {
+  registerSignal<T>(signal: RefSignal<T>, name?: string): () => void {
     const id = name ?? `signal_${String(this.signalIdCounter++)}`;
     this.signals.set(signal as object, id);
 
@@ -92,7 +92,10 @@ class DevTools implements DevToolsAdapter {
       this.signalsByName.set(name, signal as RefSignal);
     }
 
-    return id;
+    return () => {
+      if (name) this.signalsByName.delete(name);
+      this.signals.delete(signal as object);
+    };
   }
 
   trackUpdate<T>(signal: RefSignal<T>, oldValue: T, newValue: T): void {
