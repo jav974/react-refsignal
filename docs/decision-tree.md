@@ -1,6 +1,6 @@
 # Decision Tree
 
-← [Back to README](../README.md) · [API Reference](api.md) · [Concepts](concepts.md) · [Patterns](patterns.md)
+← [Back to README](../README.md) · [API Reference](api.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Pulse](pulse.md)
 
 ---
 
@@ -14,6 +14,7 @@
 - [8. Context / Shared State](#8-context--shared-state)
 - [9. Persistence](#9-persistence)
 - [10. Cross-tab Broadcast](#10-cross-tab-broadcast)
+- [11. Periodic Firing — Clocks, Loops, Heartbeats](#11-periodic-firing--clocks-loops-heartbeats)
 
 ---
 
@@ -278,3 +279,35 @@ flowchart TD
 
     B --> H["Compose with persist:\nbroadcast(persist(factory, persistOpts), broadcastOpts)"]
 ```
+
+---
+
+## 11. Periodic Firing — Clocks, Loops, Heartbeats
+
+> Pulse signals are self-firing. `.current` is `performance.now()` at the last tick. Lazy: the timer only runs while at least one subscriber is attached. See [Pulse](pulse.md) for narrative and recipes.
+
+```mermaid
+flowchart TD
+    Q1{"Do you need a signal that fires itself on a schedule?"}
+    Q1 -->|No| Done0["You probably want plain createRefSignal / useRefSignal"]
+    Q1 -->|Yes| Q2{"Where are you creating it?"}
+
+    Q2 -->|"Inside a React component"| A["usePulseRefSignal(rate)"]
+    Q2 -->|"Module scope / context factory / outside React"| B["createPulseRefSignal(rate)\n→ remember to call .dispose() if you own the lifetime"]
+
+    A & B --> Q3{"What cadence?"}
+    Q3 -->|"Frame-aligned, paused on hidden tabs (animation, game loops)"| F["'60fps' / '30fps' — RAF driver"]
+    Q3 -->|"Time-based, must keep firing on hidden tabs (clocks, polling, heartbeats)"| M["'1000ms' or 1000 — setInterval driver"]
+
+    F & M --> Q4{"Multiple components need the same tick stream?"}
+    Q4 -->|"No — single consumer"| Done1[Done]
+    Q4 -->|"Yes — share one timer across many components"| P["Provide via context:\nN consumers, one timer, perfect sync.\nSee pulse.md → Shared tick via provider."]
+
+    P --> Done1
+
+    Done1 --> Q5{"Do you also want to persist or broadcast something on this cadence?"}
+    Q5 -->|No| End[Done]
+    Q5 -->|"Yes — autosave, cross-tab tick, etc."| W["Two signals, composed at the consumer:\n- a non-pulse signal carries the data and has persist/broadcast\n- the pulse signal drives a subscriber that reads/writes the data signal\n\nDO NOT put a PulseRefSignal inside a persist()- or broadcast()-wrapped store —\nthe value is performance.now() and is meaningless to serialize / send across tabs."]
+    W --> End
+```
+

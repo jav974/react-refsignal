@@ -1,11 +1,13 @@
 # API Reference
 
-← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Imperative renderers](imperative-renderers.md) · [Broadcast](broadcast.md) · [Persist](persist.md)
+← [Back to README](../README.md) · [Concepts](concepts.md) · [Patterns](patterns.md) · [Imperative renderers](imperative-renderers.md) · [Pulse](pulse.md) · [Broadcast](broadcast.md) · [Persist](persist.md)
 
 ---
 
 - [`RefSignal<T>`](#refsignalt)
 - [`ReadonlyRefSignal<T>`](#readonlyrefsignalt)
+- [`PulseRefSignal`](#pulserefsignal)
+- [`PulseRate`](#pulserate)
 - [`createRefSignal<T>(initialValue, options?)`](#createrefsignalt-initialvalue-options)
 - [`SignalOptions<T>` / `Interceptor<T>` / `CANCEL`](#signaloptionst--interceptort--cancel)
 - [`useRefSignal<T>(initialValue, options?)`](#userefsignalt-initialvalue-options)
@@ -18,7 +20,9 @@
 - [`SignalStoreOptions<TStore>`](#signalstoreoptionststore)
 - [`useRefSignalMemo<T>(factory, deps, options?)`](#userefsignalmemot-factory-deps-options)
 - [`useRefSignalFollow<T>(getter, deps, options?)`](#userefsignalfollowt-getter-deps-options)
+- [`usePulseRefSignal(rate)`](#usepulserefsignalrate)
 - [`createComputedRefSignal<T>(compute, deps)`](#createcomputedrefsignalt-compute-deps)
+- [`createPulseRefSignal(rate)`](#createpulserefsignalrate)
 - [`watch<T>(signal, listener, options?)`](#watcht-signal-listener-options)
 - [`watchSignals(deps, onFire, options?)`](#watchsignalsdeps-onfire-options)
 - [`WatchHandle`](#watchhandle)
@@ -72,6 +76,45 @@ logChanges(myComputedSignal);  // ✓ (from createComputedRefSignal)
 > **Ownership and `dispose`** — if a signal value carries `.dispose()` in its type (created via [`createRefSignal`](#createrefsignalt-initialvalue-options) or [`createComputedRefSignal`](#createcomputedrefsignalt-compute-deps)), you own its lifetime. `ReadonlyRefSignal<T>` itself does not include `.dispose()` — that only appears at creator return sites, so consumer functions taking a `ReadonlyRefSignal` can't accidentally tear down a signal they don't own.
 
 > **Deprecated aliases** — `ReadonlySignal<T>` is kept as a deprecated alias for `ReadonlyRefSignal<T>`. `ComputedSignal<T>` is kept as a deprecated alias for `ReadonlyRefSignal<T> & { dispose: () => void }`. Both will be removed in a future major release.
+
+---
+
+### `PulseRefSignal`
+
+A self-firing read-only signal whose `.current` advances to `performance.now()` on every tick. Returned by [`createPulseRefSignal`](#createpulserefsignalrate) and [`usePulseRefSignal`](#usepulserefsignalrate). Conceptually a clock primitive — see [Pulse](pulse.md) for the narrative and recipes.
+
+`PulseRefSignal` extends `ReadonlyRefSignal<number>` with three additional readonly fields. They are **tick-context metadata**, not parallel reactive channels — coherent with `.current` at the moment subscribers fire, like `event.timeStamp` inside a DOM event handler. You read them inside a tick callback; you don't `watch(loop.dt, …)`.
+
+| Member | Description |
+|---|---|
+| `current: number` | `performance.now()` at the most recent tick. Inherited from `ReadonlyRefSignal<number>`. Bumps `lastUpdated`, fires subscribers. |
+| `lastUpdated: number` | Inherited. Advances on every tick. |
+| `dt: number` | Milliseconds since the previous tick in the current session. Reset to `0` whenever the timer (re)starts. |
+| `tick: number` | Number of ticks fired in the current session. `0` before the first fire, increments by `1` each tick. Reset on (re)start. |
+| `elapsed: number` | Milliseconds since the first tick of the current session. `0` until the second tick. Reset on (re)start. |
+| `subscribe(listener)` / `unsubscribe(listener)` | Inherited. Subscribers drive the lazy lifecycle: timer starts on `0 → 1`, stops on `1 → 0`. |
+| `updatePulse(rate)` | Change the cadence of an already-created pulse signal. Validates the new rate, then if the timer is running, stops it and restarts at the new cadence with **continuity preserved** (`tick` and `elapsed` keep accumulating; only `lastTickTime` is reset so the next `dt` reflects the rate change). If no subscribers are attached, the new rate is just stored and applied on the next `0 → 1` start. Driver may switch (`'1000ms'` → `'60fps'` swaps `setInterval` for RAF). See [pulse.md — Reactive cadences](pulse.md#reactive-cadences-with-updatepulse). |
+| `getDebugName?()` | Inherited. |
+
+> **Why a number, not an object?** Most use cases (clocks, "X ago", token TTLs) want `.current` to be a primitive. The metadata-on-the-side shape pays the cost where it lands: game/sim code, where `loop.dt` is one identifier instead of a destructure. See [pulse.md — The shape of a pulse signal](pulse.md#the-shape-of-a-pulse-signal).
+
+---
+
+### `PulseRate`
+
+The cadence accepted by [`createPulseRefSignal`](#createpulserefsignalrate) and [`usePulseRefSignal`](#usepulserefsignalrate).
+
+```ts
+type PulseRate = number | `${number}ms` | `${number}fps`;
+```
+
+| Form | Driver | When to reach for it |
+|---|---|---|
+| `number` (e.g. `100`) | `setInterval` | Same as the `'Nms'` form — a bare number is implicitly milliseconds. |
+| `'Nms'` (e.g. `'250ms'`, `'16.67ms'`) | `setInterval` | Continues firing on hidden tabs (subject to browser background-tab throttling). Use for clocks, polling, heartbeats, token refresh. |
+| `'Nfps'` (e.g. `'60fps'`, `'30fps'`) | `requestAnimationFrame` | Frame-aligned, paused on hidden tabs, capped by display refresh rate. Use for game loops, animations. |
+
+Decimals are accepted in both string forms. A non-positive or non-finite rate throws at construction.
 
 ---
 
@@ -381,6 +424,34 @@ Shorthand for a [`useRefSignalMemo`](#userefsignalmemot-factory-deps-options) th
 
 ---
 
+### `usePulseRefSignal(rate)`
+
+Creates a [`PulseRefSignal`](#pulserefsignal) inside a React component — a self-firing read-only signal whose `.current` advances to `performance.now()` on every tick. The signal is stable for the component's lifetime and disposed on unmount; React owns the lifecycle, so `.dispose()` is not exposed.
+
+```tsx
+import { usePulseRefSignal, useRefSignalRender } from 'react-refsignal';
+
+function Clock() {
+  const now = usePulseRefSignal('1000ms');
+  useRefSignalRender([now]);
+  return <span>{new Date().toLocaleTimeString()}</span>;
+}
+
+function GameLoop() {
+  const loop = usePulseRefSignal('60fps');
+  useRefSignalEffect(() => {
+    advancePhysics(loop.dt);
+  }, [loop]);
+  return null;
+}
+```
+
+- `rate` is captured at mount time. Subsequent renders with a different `rate` keep the original cadence — mirrors the mount-time-options convention used by [`useRefSignal`](#userefsignalt-initialvalue-options).
+- The timer is **lazy**: it starts on the first subscriber and stops when subscribers drop to zero. Multiple consumers (e.g. several `useRefSignalRender` calls or a `useRefSignalEffect`) share one timer.
+- See [Pulse](pulse.md) for narrative, recipes (live timestamps, auth refresh, game loops, shared tick via provider), and what pulse can't compose with (`persist`, `broadcast`, both at signal- and store-level).
+
+---
+
 ### `createComputedRefSignal<T>(compute, deps)`
 
 Creates a derived signal whose value is recomputed whenever any dep signal updates. The returned signal is read-only — `.update()` and `.reset()` are not exposed.
@@ -411,6 +482,28 @@ price.update(99); // total.current remains at the last computed value
 ```
 
 > **Deprecated alias** — `createComputedSignal` is kept as a deprecated alias and will be removed in a future major release. Migrate to `createComputedRefSignal` for brand consistency with the rest of the API.
+
+---
+
+### `createPulseRefSignal(rate)`
+
+Creates a [`PulseRefSignal`](#pulserefsignal) outside React — at module scope, in context factories, or anywhere else. Returns the signal augmented with `.dispose()`.
+
+```ts
+import { createPulseRefSignal } from 'react-refsignal';
+
+const now      = createPulseRefSignal('1000ms');  // every second
+const loop     = createPulseRefSignal('60fps');   // frame-locked
+const everyHalf = createPulseRefSignal(500);      // bare number — same as '500ms'
+```
+
+- The timer is **lazy**: it starts on the `0 → 1` subscriber transition and stops on `1 → 0` and on `.dispose()`. A signal that is never subscribed to never installs a timer.
+- Each subscribe-cycle is a fresh session: `dt`, `tick`, and `elapsed` reset on (re)start, so a brief unsubscribe-then-resubscribe doesn't show up as a giant `dt` spike across the idle gap.
+- Driver: `'Nfps'` → `requestAnimationFrame` (frame-aligned, paused on hidden tabs); `number` / `'Nms'` → `setInterval` (continues firing on hidden tabs, subject to browser throttling).
+- **No `persist` / `broadcast` options.** They're absent intentionally — `performance.now()` is bound to the document's `performance.timeOrigin` and is meaningless to serialize or send across tabs. The same applies when a `PulseRefSignal` is placed inside a store wrapped by `persist()` or `broadcast()`: the type system doesn't catch this, but the runtime behavior is broken in the same ways. See [pulse.md — What pulse can't compose with](pulse.md#what-pulse-cant-compose-with).
+- SSR-safe: construction works in non-browser environments (so server output is stable), but no timer is installed when `typeof window === 'undefined'`. The timer starts naturally on the client after hydration.
+
+For full narrative, recipes, and the store-level composition trap, see [Pulse](pulse.md).
 
 ---
 
