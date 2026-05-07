@@ -25,6 +25,12 @@ describe('createPulseRefSignal', () => {
       s.dispose();
     });
 
+    it("accepts 'raf'", () => {
+      const s = createPulseRefSignal('raf');
+      expect(typeof s.current).toBe('number');
+      s.dispose();
+    });
+
     it('accepts decimal ms and fps', () => {
       const a = createPulseRefSignal('16.67ms');
       const b = createPulseRefSignal('59.94fps');
@@ -62,6 +68,10 @@ describe('createPulseRefSignal', () => {
       expect(() => createPulseRefSignal('hello' as never)).toThrow(
         /Invalid pulse rate/,
       );
+    });
+
+    it("error message lists 'raf' as an accepted form", () => {
+      expect(() => createPulseRefSignal('hello' as never)).toThrow(/'raf'/);
     });
 
     it("rejects '0fps' and '0ms'", () => {
@@ -543,6 +553,99 @@ describe('createPulseRefSignal', () => {
     it('dispose cancels the RAF loop', () => {
       const cafSpy = jest.spyOn(globalThis, 'cancelAnimationFrame');
       const s = createPulseRefSignal('60fps');
+      s.subscribe(jest.fn());
+      s.dispose();
+      expect(cafSpy).toHaveBeenCalledTimes(1);
+      cafSpy.mockRestore();
+    });
+  });
+
+  describe("'raf' driver — native-rate, no throttle", () => {
+    let raf: ReturnType<typeof setupRafMock>;
+    beforeEach(() => {
+      raf = setupRafMock();
+    });
+    afterEach(() => {
+      raf.restore();
+    });
+
+    it('routes through requestAnimationFrame', () => {
+      const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame');
+      const s = createPulseRefSignal('raf');
+      s.subscribe(jest.fn());
+      expect(rafSpy).toHaveBeenCalled();
+      s.dispose();
+      rafSpy.mockRestore();
+    });
+
+    it('fires on every frame regardless of inter-frame interval', () => {
+      let nowVal = 0;
+      const perfSpy = jest
+        .spyOn(performance, 'now')
+        .mockImplementation(() => nowVal);
+
+      const s = createPulseRefSignal('raf');
+      const listener = jest.fn();
+      nowVal = 100;
+      s.subscribe(listener);
+
+      // Frame at +1ms — under any reasonable fps throttle, but 'raf' has none
+      nowVal = 101;
+      raf.fire();
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(s.tick).toBe(1);
+
+      // Frame at +1ms again — still fires
+      nowVal = 102;
+      raf.fire();
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(s.tick).toBe(2);
+
+      // Frame at +8ms — would be skipped at '60fps' (~16.67 threshold), still fires
+      nowVal = 110;
+      raf.fire();
+      expect(listener).toHaveBeenCalledTimes(3);
+      expect(s.tick).toBe(3);
+      expect(s.dt).toBe(8);
+      expect(s.elapsed).toBe(9);
+
+      s.dispose();
+      perfSpy.mockRestore();
+    });
+
+    it("updatePulse('60fps' → 'raf') drops the throttle", () => {
+      let nowVal = 0;
+      const perfSpy = jest
+        .spyOn(performance, 'now')
+        .mockImplementation(() => nowVal);
+
+      const s = createPulseRefSignal('60fps');
+      const listener = jest.fn();
+      nowVal = 0;
+      s.subscribe(listener);
+
+      // 60fps: a 5ms frame is below threshold and skipped
+      nowVal = 5;
+      raf.fire();
+      expect(listener).not.toHaveBeenCalled();
+
+      // Switch to 'raf' — the throttle gate disappears
+      s.updatePulse('raf');
+
+      nowVal = 6;
+      raf.fire();
+      expect(listener).toHaveBeenCalledTimes(1);
+      nowVal = 7;
+      raf.fire();
+      expect(listener).toHaveBeenCalledTimes(2);
+
+      s.dispose();
+      perfSpy.mockRestore();
+    });
+
+    it('cancels the RAF loop on dispose', () => {
+      const cafSpy = jest.spyOn(globalThis, 'cancelAnimationFrame');
+      const s = createPulseRefSignal('raf');
       s.subscribe(jest.fn());
       s.dispose();
       expect(cafSpy).toHaveBeenCalledTimes(1);

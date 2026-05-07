@@ -296,10 +296,11 @@ flowchart TD
     Q2 -->|"Module scope / context factory / outside React"| B["createPulseRefSignal(rate)\n→ remember to call .dispose() if you own the lifetime"]
 
     A & B --> Q3{"What cadence?"}
-    Q3 -->|"Frame-aligned, paused on hidden tabs (animation, game loops)"| F["'60fps' / '30fps' — RAF driver"]
+    Q3 -->|"Every frame at the display's native rate (game loops, FPS counters, smooth animation)"| R["'raf' — RAF driver, no throttle"]
+    Q3 -->|"Throttled to N fps (power-saving, retro framelock, capped animation)"| F["'60fps' / '30fps' — RAF driver, throttled"]
     Q3 -->|"Time-based, must keep firing on hidden tabs (clocks, polling, heartbeats)"| M["'1000ms' or 1000 — setInterval driver"]
 
-    F & M --> Q4{"Multiple components need the same tick stream?"}
+    R & F & M --> Q4{"Multiple components need the same tick stream?"}
     Q4 -->|"No — single consumer"| Done1[Done]
     Q4 -->|"Yes — share one timer across many components"| P["Provide via context:\nN consumers, one timer, perfect sync.\nSee pulse.md → Shared tick via provider."]
 
