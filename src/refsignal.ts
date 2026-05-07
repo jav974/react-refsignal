@@ -5,7 +5,10 @@ export type Listener<T = unknown> = (value: T) => void;
 
 export interface DevToolsAdapter {
   trackUpdate<T>(signal: RefSignal<T>, oldValue: T, newValue: T): void;
-  registerSignal<T>(signal: RefSignal<T>, debugName?: string): void;
+  registerSignal<T>(
+    signal: RefSignal<T>,
+    debugName?: string,
+  ): (() => void) | undefined;
   getSignalName<T>(signal: RefSignal<T>): string | undefined;
 }
 
@@ -275,7 +278,8 @@ export function createRefSignal<T = unknown>(
     },
   };
 
-  devtoolsAdapter?.registerSignal(signal, debugName);
+  const devtoolsCleanup = devtoolsAdapter?.registerSignal(signal, debugName);
+  if (devtoolsCleanup) cleanups.push(devtoolsCleanup);
 
   if (resolved?.broadcast) {
     const cleanup = attachSignalBroadcast(signal, resolved.broadcast);

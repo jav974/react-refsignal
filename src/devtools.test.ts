@@ -300,6 +300,34 @@ describe('DevTools', () => {
     expect(devtools.getUpdateHistory()).toHaveLength(100);
   });
 
+  it('clears named signal from devtools on dispose', () => {
+    const signal = createRefSignal(0, 'disposed');
+    expect(devtools.getSignalByName('disposed')).toBe(signal);
+
+    signal.dispose();
+
+    expect(devtools.getSignalByName('disposed')).toBeUndefined();
+    expect(devtools.getSignalName(signal)).toBeUndefined();
+  });
+
+  it('clears unnamed signal tracking on dispose', () => {
+    const signal = createRefSignal(0);
+    expect(devtools.getSignalName(signal)).toMatch(/^signal_\d+$/);
+
+    signal.dispose();
+
+    expect(devtools.getSignalName(signal)).toBeUndefined();
+  });
+
+  it('dispose is idempotent for devtools cleanup', () => {
+    const signal = createRefSignal(0, 'twice');
+    signal.dispose();
+    expect(() => {
+      signal.dispose();
+    }).not.toThrow();
+    expect(devtools.getSignalByName('twice')).toBeUndefined();
+  });
+
   it('should handle multiple signals independently', () => {
     const counter = createRefSignal(0, 'counter');
     const message = createRefSignal('', 'message');
