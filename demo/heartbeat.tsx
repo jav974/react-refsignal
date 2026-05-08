@@ -11,18 +11,17 @@ import {
   useRefSignalEffect,
   useRefSignalMemo,
   useRefSignalRender,
-  type PulseRate,
 } from 'react-refsignal';
 
 const MIN_MS = 200;
 const MAX_MS = 2000;
 const FAR_PX = 600;
 
-// Distance → ms interval. Linear ramp clamped to [MIN_MS, MAX_MS].
-function rateFromDistance(d: number): PulseRate {
+// Distance → ms interval. Linear ramp clamped to [MIN_MS, MAX_MS]. PulseRate
+// accepts `number` directly, so no template-literal cast needed.
+function rateFromDistance(d: number): number {
   const t = Math.min(1, d / FAR_PX);
-  const ms = Math.round(MIN_MS + t * (MAX_MS - MIN_MS));
-  return `${String(ms)}ms` as PulseRate;
+  return Math.round(MIN_MS + t * (MAX_MS - MIN_MS));
 }
 
 export default function Heartbeat() {
@@ -32,7 +31,7 @@ export default function Heartbeat() {
 
   // Initial cadence is the resting rate; updatePulse below wires it to the
   // computed `heartRate` so cadence becomes reactive data.
-  const heart = usePulseRefSignal(`${String(MAX_MS)}ms` as PulseRate);
+  const heart = usePulseRefSignal(MAX_MS);
 
   // Derived rate: mouse-to-circle distance → ms interval.
   const heartRate = useRefSignalMemo(() => {
@@ -49,14 +48,13 @@ export default function Heartbeat() {
   useRefSignalEffect(() => {
     const el = circleRef.current;
     if (!el) return;
-    const interval = parseInt(String(heartRate.current), 10);
     el.animate(
       [
         { transform: 'scale(1) translateY(0)' },
         { transform: 'scale(1.35) translateY(-10px)', offset: 0.2 },
         { transform: 'scale(1) translateY(0)' },
       ],
-      { duration: interval, easing: 'ease-out' },
+      { duration: heartRate.current, easing: 'ease-out' },
     );
     heart.updatePulse(heartRate.current);
   }, [heart]);
@@ -90,9 +88,7 @@ export default function Heartbeat() {
     };
   }, []);
 
-  // heartRate is always 'Nms' here (rateFromDistance only emits that form).
-  const intervalMs = parseInt(String(heartRate.current), 10);
-  const bpm = Math.round(60000 / intervalMs);
+  const bpm = Math.round(60000 / heartRate.current);
 
   return (
     <div style={pageStyle}>
