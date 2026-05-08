@@ -18,7 +18,11 @@ import React, {
   createContext,
   memo,
 } from 'react';
-import { createRefSignal, useRefSignalEffect } from 'react-refsignal';
+import {
+  createRefSignal,
+  usePulseRefSignal,
+  useRefSignalEffect,
+} from 'react-refsignal';
 import type { RefSignal } from 'react-refsignal';
 import { create } from 'zustand';
 import { atom, useAtom, Provider as JotaiProvider } from 'jotai';
@@ -400,27 +404,32 @@ function RGraph({ count }: { count: number }) {
 function Stats({ mode }: { mode: string }) {
   const fpsRef = useRef<HTMLSpanElement>(null);
   const rpsRef = useRef<HTMLSpanElement>(null);
+  const frame = usePulseRefSignal('raf');
+  const framesRef = useRef(0);
+  const lastSampleRef = useRef(0);
+  const prevRendersRef = useRef(0);
+
   useEffect(() => {
-    let frames = 0;
-    let prevTime = performance.now();
-    let prevRenders = getRenders();
-    let id: number;
-    const tick = () => {
-      frames++;
-      const now = performance.now();
-      if (now - prevTime >= 1000) {
+    framesRef.current = 0;
+    lastSampleRef.current = frame.elapsed;
+    prevRendersRef.current = getRenders();
+  }, [mode, frame]);
+
+  useRefSignalEffect(
+    () => {
+      if (frame.tick === 0) return;
+      framesRef.current++;
+      if (frame.elapsed - lastSampleRef.current >= 1000) {
         const r = getRenders();
-        if (fpsRef.current) fpsRef.current.textContent = String(frames);
-        if (rpsRef.current) rpsRef.current.textContent = String(r - prevRenders);
-        frames = 0;
-        prevRenders = r;
-        prevTime = now;
+        if (fpsRef.current) fpsRef.current.textContent = String(framesRef.current);
+        if (rpsRef.current) rpsRef.current.textContent = String(r - prevRendersRef.current);
+        framesRef.current = 0;
+        prevRendersRef.current = r;
+        lastSampleRef.current = frame.elapsed;
       }
-      id = requestAnimationFrame(tick);
-    };
-    id = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(id);
-  }, [mode]);
+    },
+    [frame],
+  );
   return (
     <>
       <span style={statBadge}>FPS <b ref={fpsRef} style={{ minWidth: 28, display: 'inline-block' }}>--</b></span>
