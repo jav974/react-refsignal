@@ -1,59 +1,42 @@
-// demo/fps.tsx
-//
-// Reusable FPS badge — one shared pulse signal, one rounded-fps signal, any
-// number of consumers. Drop <FpsBadge /> anywhere; or call useFps() for custom
-// UI.
-//
-// The pulse subscription is ref-counted by consumer mounts: zero consumers ⇒
-// no watcher ⇒ pulse subscriber count stays at zero ⇒ pulse doesn't tick. The
-// first useFps() mount installs the watcher; the last unmount tears it down.
+// FPS badge — `<FpsBadge />`, or `useFps()` for custom UI. Pass a custom pulse
+// via `src`; defaults to a shared 'raf' pulse.
 
-import { useEffect } from 'react';
+import { useRef, useState } from 'react';
 import {
   createPulseRefSignal,
-  createRefSignal,
-  useRefSignalRender,
-  watch,
+  useRefSignalEffect,
+  type PulseRefSignal,
 } from 'react-refsignal';
 
-const fpsSignal = createRefSignal(0);
-const frame = createPulseRefSignal('raf');
+const defaultPulse = createPulseRefSignal('raf');
 
-let consumers = 0;
-let stopWatching: (() => void) | null = null;
+export function useFps(src?: PulseRefSignal): number {
+  const pulse = src ?? defaultPulse;
+  const [fps, setFps] = useState(0);
+  const pulseRef = useRef<PulseRefSignal | null>(null);
+  const stateRef = useRef({ frames: 0, last: 0 });
 
-function startWatching(): () => void {
-  let frames = 0;
-  let lastSampleAt = 0;
-  return watch(frame, () => {
-    frames++;
-    const windowMs = frame.elapsed - lastSampleAt;
-    if (windowMs >= 1000) {
-      fpsSignal.update(Math.round((frames * 1000) / windowMs));
-      frames = 0;
-      lastSampleAt = frame.elapsed;
+  useRefSignalEffect(() => {
+    // First tick after mount or pulse swap — anchor `last` to the new pulse's elapsed.
+    if (pulseRef.current !== pulse) {
+      pulseRef.current = pulse;
+      stateRef.current = { frames: 0, last: pulse.elapsed };
+      return;
     }
-  });
+    const s = stateRef.current;
+    s.frames++;
+    if (pulse.elapsed - s.last >= 1000) {
+      setFps(Math.round((s.frames * 1000) / (pulse.elapsed - s.last)));
+      s.frames = 0;
+      s.last = pulse.elapsed;
+    }
+  }, [pulse]);
+
+  return fps;
 }
 
-export function useFps(): number {
-  useEffect(() => {
-    if (consumers === 0) stopWatching = startWatching();
-    consumers++;
-    return () => {
-      consumers--;
-      if (consumers === 0) {
-        stopWatching?.();
-        stopWatching = null;
-      }
-    };
-  }, []);
-  useRefSignalRender([fpsSignal]);
-  return fpsSignal.current;
-}
-
-export function FpsBadge() {
-  const fps = useFps();
+export function FpsBadge({ src }: { src?: PulseRefSignal }) {
+  const fps = useFps(src);
   return (
     <span style={badgeStyle}>
       fps <b>{fps || '--'}</b>

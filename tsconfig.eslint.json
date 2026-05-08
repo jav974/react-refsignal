@@ -3,8 +3,14 @@
   "compilerOptions": {
     "noEmit": true,
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "paths": {
+      "react-refsignal": ["./src/index.ts"],
+      "react-refsignal/persist": ["./src/persist/index.ts"],
+      "react-refsignal/broadcast": ["./src/broadcast/index.ts"]
+    }
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src", "demo"],
+  "exclude": ["node_modules", "dist", "demo/dist", "demo/node_modules"]
 }

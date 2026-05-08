@@ -1,25 +1,8 @@
-// demo/agents.tsx
-//
-// Automated agar.io-style chase/flee simulation. Permadeath — last one standing
-// wins. The actual signal demo:
-//
-//   - Each agent owns position / size / alive / callTarget signals.
-//   - SVG circles update via per-signal `useRefSignalEffect` — no React renders
-//     in the per-frame path.
-//   - Six independent reactive consumers each subscribe to ONLY the signals they
-//     care about: alive count, biggest badge, calls count, leaderboard, team
-//     scoreboard, killcam feed, winner banner. None of them re-render on
-//     simulation ticks unless their slice of state actually changed.
-//   - Inter-agent coordination via signals: each agent broadcasts its current
-//     target via `callTarget`. Same-team allies within HEARING radius adopt
-//     the call when they lack a target of their own — pack-hunting emerges.
-//     The CallLines layer follows each call with `trackSignals` so when an
-//     agent's callTarget changes, the line subscription swaps to the new
-//     target's position signal automatically.
-//
-// This is what signals are actually for: heterogeneous fanout of changes to
-// different consumers without a central re-render or manual invalidation,
-// plus declarative cross-entity communication without a central event bus.
+// Agar.io-style chase/flee simulation, permadeath. Each agent owns
+// position/size/alive/callTarget signals; per-signal effects update the SVG
+// directly — no per-frame React renders. Reactive panels each subscribe only
+// to their slice. Same-team call broadcasts via `callTarget` propagate through
+// `trackSignals` for emergent pack-hunting.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -49,13 +32,10 @@ type Agent = {
   vx: number;
   vy: number;
   kills: number;
-  // Tracked across ticks to avoid flip-flop between equidistant candidates —
-  // each agent sticks with its current target/threat as long as it remains valid.
+  // Sticky picks across ticks — avoids flip-flop between equidistant candidates.
   targetId: number | null;
   threatId: number | null;
-  // Public broadcast of "the target I've committed to." Same-team allies within
-  // HEARING radius can adopt this when they have no target of their own. Pack
-  // hunting emerges as the call propagates outward each tick.
+  // Broadcast for same-team call adoption (HEARING radius).
   callTarget: RefSignal<number | null>;
 };
 
@@ -99,22 +79,46 @@ const GRID_CELL = 80; // spatial-hash cell size — tuned so VISION (220) covers
 const TURN_RATE = 0.15; // steering inertia (0 = no turn, 1 = instant turn)
 
 const ADJ = [
-  'Swift', 'Brave', 'Sneaky', 'Wild', 'Clever', 'Bold', 'Sly', 'Fierce',
-  'Cosmic', 'Thunder', 'Iron', 'Storm', 'Shadow', 'Crystal', 'Nimble',
+  'Swift',
+  'Brave',
+  'Sneaky',
+  'Wild',
+  'Clever',
+  'Bold',
+  'Sly',
+  'Fierce',
+  'Cosmic',
+  'Thunder',
+  'Iron',
+  'Storm',
+  'Shadow',
+  'Crystal',
+  'Nimble',
 ];
 const NOUN = [
-  'Fox', 'Wolf', 'Hawk', 'Bear', 'Tiger', 'Owl', 'Cobra', 'Falcon',
-  'Lynx', 'Raven', 'Lion', 'Shark', 'Eagle', 'Panther', 'Drake',
+  'Fox',
+  'Wolf',
+  'Hawk',
+  'Bear',
+  'Tiger',
+  'Owl',
+  'Cobra',
+  'Falcon',
+  'Lynx',
+  'Raven',
+  'Lion',
+  'Shark',
+  'Eagle',
+  'Panther',
+  'Drake',
 ];
 
-// Killcam feed — one RefSignal holding the last N kills. Subscribed by the
-// Killcam component and (transitively) the leaderboard's "kills" stat.
+// Last N kills — feeds the Killcam component.
 const killFeed = createRefSignal<KillEvent[]>([]);
 
-// Module-scope simulation speed (ticks/sec target). The slider component
-// subscribes via useRefSignalRender; the RAF loop reads `.current` directly
-// without re-subscribing — changing speed never restarts the loop.
-const tickSpeed = createRefSignal<number>(60);
+// Module-scope ticks/sec target. RAF loop reads `.current` directly so speed
+// changes don't restart the subscription.
+const tickSpeed = createRefSignal(60);
 
 function pushKill(ev: KillEvent) {
   killFeed.update([ev, ...killFeed.current].slice(0, KILLCAM_MAX));
@@ -136,9 +140,79 @@ function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function distSq(a: Vec, b: Vec): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
+// X dominates Y when X exceeds Y's mass by the size threshold (eat / flee gate).
+function dominates(predator: number, prey: number): boolean {
+  return predator > prey * SIZE_THRESHOLD;
+}
+
+// Apply steering inertia, clamp to world bounds, write the new position.
+// Shared by player control and AI control — same physics either way.
+function steerAndMove(
+  a: Agent,
+  ap: Vec,
+  ddx: number,
+  ddy: number,
+  speed: number,
+  world: Vec,
+): void {
+  const dlen = Math.hypot(ddx, ddy) || 1;
+  const desVx = (ddx / dlen) * speed;
+  const desVy = (ddy / dlen) * speed;
+  const sVx = a.vx * (1 - TURN_RATE) + desVx * TURN_RATE;
+  const sVy = a.vy * (1 - TURN_RATE) + desVy * TURN_RATE;
+  const sLen = Math.hypot(sVx, sVy) || 1;
+  a.vx = (sVx / sLen) * speed;
+  a.vy = (sVy / sLen) * speed;
+  let nx = ap.x + a.vx;
+  let ny = ap.y + a.vy;
+  if (nx < 0) {
+    nx = 0;
+    a.vx = Math.abs(a.vx);
+  } else if (nx > world.x) {
+    nx = world.x;
+    a.vx = -Math.abs(a.vx);
+  }
+  if (ny < 0) {
+    ny = 0;
+    a.vy = Math.abs(a.vy);
+  } else if (ny > world.y) {
+    ny = world.y;
+    a.vy = -Math.abs(a.vy);
+  }
+  a.position.update({ x: nx, y: ny });
+}
+
+// Pairwise eat-test over two buckets. `sameBucket` short-circuits the i/j
+// pairing so we don't double-test pairs from the same cell.
+function eatPairs(
+  bucketA: Agent[],
+  bucketB: Agent[],
+  sameBucket: boolean,
+): void {
+  for (let i = 0; i < bucketA.length; i++) {
+    const a = bucketA[i];
+    if (!a.alive.current) continue;
+    const jStart = sameBucket ? i + 1 : 0;
+    for (let j = jStart; j < bucketB.length; j++) {
+      const b = bucketB[j];
+      if (!b.alive.current) continue;
+      tryEat(a, b);
+      // tryEat may flip a.alive
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (!a.alive.current) break;
+    }
+  }
+}
+
 function makeAgent(id: number, world: Vec): Agent {
   const team = id % N_TEAMS;
-  const baseHue = TEAM_HUES[team];
+  const baseHue = TEAM_HUES[team]!;
   // Slight per-agent jitter within team color band.
   const hue = (baseHue + rand(-12, 12) + 360) % 360;
   return {
@@ -146,7 +220,7 @@ function makeAgent(id: number, world: Vec): Agent {
     team,
     hue,
     name: `${pick(ADJ)}${pick(NOUN)}`,
-    position: createRefSignal<Vec>({
+    position: createRefSignal({
       x: rand(40, world.x - 40),
       y: rand(40, world.y - 40),
     }),
@@ -182,30 +256,31 @@ function tryEat(a: Agent, b: Agent) {
   const bp = b.position.current;
   const aSize = a.size.current;
   const bSize = b.size.current;
-  const ar = radiusOf(aSize);
-  const br = radiusOf(bSize);
-  const dx = ap.x - bp.x;
-  const dy = ap.y - bp.y;
-  const d2 = dx * dx + dy * dy;
-  const eatD = Math.max(ar, br) * 0.6;
-  if (d2 >= eatD * eatD) return;
-  if (aSize > bSize * SIZE_THRESHOLD) {
+  const eatD = Math.max(radiusOf(aSize), radiusOf(bSize)) * 0.6;
+  if (distSq(ap, bp) >= eatD * eatD) return;
+  if (dominates(aSize, bSize)) {
     a.size.update(aSize + bSize * MASS_GAIN);
     b.alive.update(false);
     b.callTarget.update(null);
     a.kills++;
     pushKill({
-      killerId: a.id, killerName: a.name, killerHue: a.hue,
-      victimName: b.name, victimHue: b.hue,
+      killerId: a.id,
+      killerName: a.name,
+      killerHue: a.hue,
+      victimName: b.name,
+      victimHue: b.hue,
     });
-  } else if (bSize > aSize * SIZE_THRESHOLD) {
+  } else if (dominates(bSize, aSize)) {
     b.size.update(bSize + aSize * MASS_GAIN);
     a.alive.update(false);
     a.callTarget.update(null);
     b.kills++;
     pushKill({
-      killerId: b.id, killerName: b.name, killerHue: b.hue,
-      victimName: a.name, victimHue: a.hue,
+      killerId: b.id,
+      killerName: b.name,
+      killerHue: b.hue,
+      victimName: a.name,
+      victimHue: a.hue,
     });
   }
 }
@@ -216,20 +291,24 @@ function tick(
   world: Vec,
   control: ControlState,
 ): TickResult {
-  // ─── Spatial hash: bucket alive agents + pellets into a coarse grid. ───
-  // AI and collision queries become O(local density) instead of O(N).
+  // Spatial hash → AI and collision queries are O(local density), not O(N).
   const cw = ((world.x / GRID_CELL) | 0) + 2;
   const ch = ((world.y / GRID_CELL) | 0) + 2;
   const total = cw * ch;
   const aGrid: Agent[][] = new Array(total);
   const pGrid: Pellet[][] = new Array(total);
-  for (let i = 0; i < total; i++) { aGrid[i] = []; pGrid[i] = []; }
+  for (let i = 0; i < total; i++) {
+    aGrid[i] = [];
+    pGrid[i] = [];
+  }
 
   const cellAt = (x: number, y: number) => {
     let cx = (x / GRID_CELL) | 0;
     let cy = (y / GRID_CELL) | 0;
-    if (cx < 0) cx = 0; else if (cx >= cw) cx = cw - 1;
-    if (cy < 0) cy = 0; else if (cy >= ch) cy = ch - 1;
+    if (cx < 0) cx = 0;
+    else if (cx >= cw) cx = cw - 1;
+    if (cy < 0) cy = 0;
+    else if (cy >= ch) cy = ch - 1;
     return cy * cw + cx;
   };
 
@@ -262,60 +341,47 @@ function tick(
       const aSize = a.size.current;
       const speed = BASE_SPEED / Math.sqrt(Math.max(1, aSize / 5));
 
-      // ── Player control: bypass AI entirely. ──────────────────────────
-      // Controlled agent steers toward the mouse cursor. No automatic
-      // threat avoidance — getting eaten is the player's responsibility.
+      // Player control: steer toward cursor, bypass AI (no auto threat avoidance).
       if (control.agentId === a.id) {
         a.targetId = null;
         a.threatId = null;
         a.callTarget.update(null);
-        const ddx = control.mouse.x - ap.x;
-        const ddy = control.mouse.y - ap.y;
-        const dlen = Math.hypot(ddx, ddy) || 1;
-        const desVx = (ddx / dlen) * speed;
-        const desVy = (ddy / dlen) * speed;
-        const sVx = a.vx * (1 - TURN_RATE) + desVx * TURN_RATE;
-        const sVy = a.vy * (1 - TURN_RATE) + desVy * TURN_RATE;
-        const sLen = Math.hypot(sVx, sVy) || 1;
-        a.vx = (sVx / sLen) * speed;
-        a.vy = (sVy / sLen) * speed;
-        let nx = ap.x + a.vx;
-        let ny = ap.y + a.vy;
-        if (nx < 0) { nx = 0; a.vx = Math.abs(a.vx); }
-        else if (nx > world.x) { nx = world.x; a.vx = -Math.abs(a.vx); }
-        if (ny < 0) { ny = 0; a.vy = Math.abs(a.vy); }
-        else if (ny > world.y) { ny = world.y; a.vy = -Math.abs(a.vy); }
-        a.position.update({ x: nx, y: ny });
+        steerAndMove(
+          a,
+          ap,
+          control.mouse.x - ap.x,
+          control.mouse.y - ap.y,
+          speed,
+          world,
+        );
         continue;
       }
 
       const acx = (ap.x / GRID_CELL) | 0;
       const acy = (ap.y / GRID_CELL) | 0;
 
-      // ── Persistence: keep last tick's target/threat if still valid. ──
-      // This is the main fix for "bouncing": instead of re-picking from
-      // scratch each tick (which flip-flops between equidistant candidates),
-      // we stick with the current pick until it dies, leaves vision, or
-      // ceases to satisfy the size threshold.
+      // Keep last tick's pick if still valid — avoids flip-flop between equidistant candidates.
       let target: Agent | null = null;
       let threat: Agent | null = null;
 
       if (a.targetId !== null) {
         const c = agents[a.targetId];
-        if (c && c.alive.current && aSize > c.size.current * SIZE_THRESHOLD) {
-          const cp = c.position.current;
-          const cdx = cp.x - ap.x;
-          const cdy = cp.y - ap.y;
-          if (cdx * cdx + cdy * cdy <= visionD2) target = c;
+        if (
+          c?.alive.current &&
+          dominates(aSize, c.size.current) &&
+          distSq(c.position.current, ap) <= visionD2
+        ) {
+          target = c;
         }
       }
       if (a.threatId !== null) {
         const c = agents[a.threatId];
-        if (c && c.alive.current && c.size.current > aSize * SIZE_THRESHOLD) {
-          const cp = c.position.current;
-          const cdx = cp.x - ap.x;
-          const cdy = cp.y - ap.y;
-          if (cdx * cdx + cdy * cdy <= visionD2) threat = c;
+        if (
+          c?.alive.current &&
+          dominates(c.size.current, aSize) &&
+          distSq(c.position.current, ap) <= visionD2
+        ) {
+          threat = c;
         }
       }
 
@@ -333,25 +399,26 @@ function tick(
             for (let bi = 0; bi < bucket.length; bi++) {
               const b = bucket[bi];
               if (b === a) continue;
-              const bp = b.position.current;
-              const dxx = bp.x - ap.x;
-              const dyy = bp.y - ap.y;
-              const d2 = dxx * dxx + dyy * dyy;
+              const d2 = distSq(b.position.current, ap);
               if (d2 > visionD2) continue;
               const bSize = b.size.current;
-              if (!target && aSize > bSize * SIZE_THRESHOLD) {
-                if (d2 < bestTargetD2) { target = b; bestTargetD2 = d2; }
-              } else if (!threat && bSize > aSize * SIZE_THRESHOLD) {
-                if (d2 < bestThreatD2) { threat = b; bestThreatD2 = d2; }
+              if (!target && dominates(aSize, bSize)) {
+                if (d2 < bestTargetD2) {
+                  target = b;
+                  bestTargetD2 = d2;
+                }
+              } else if (!threat && dominates(bSize, aSize)) {
+                if (d2 < bestThreatD2) {
+                  threat = b;
+                  bestThreatD2 = d2;
+                }
               }
             }
           }
         }
       }
-      // Same-team call adoption — listen for nearby allies broadcasting a target.
-      // If we have no target of our own and no threat, adopt the closest hearable
-      // ally's call (prey must still pass our own size threshold). Calls then
-      // propagate as we re-broadcast below — pack-hunting emerges across the team.
+      // Adopt nearest hearable ally's call when idle. Pack-hunting emerges as
+      // calls propagate via the re-broadcast below.
       if (!target && !threat) {
         const xLo = Math.max(0, acx - hearingRad);
         const xHi = Math.min(cw - 1, acx + hearingRad);
@@ -364,16 +431,13 @@ function tick(
             for (let bi = 0; bi < bucket.length; bi++) {
               const ally = bucket[bi];
               if (ally === a || ally.team !== a.team) continue;
-              const aap = ally.position.current;
-              const ddx = aap.x - ap.x;
-              const ddy = aap.y - ap.y;
-              const d2 = ddx * ddx + ddy * ddy;
+              const d2 = distSq(ally.position.current, ap);
               if (d2 > hearingD2 || d2 >= bestD2) continue;
               const calledId = ally.callTarget.current;
               if (calledId === null) continue;
               const called = agents[calledId];
-              if (!called || !called.alive.current) continue;
-              if (aSize <= called.size.current * SIZE_THRESHOLD) continue;
+              if (!called?.alive.current) continue;
+              if (!dominates(aSize, called.size.current)) continue;
               target = called;
               bestD2 = d2;
             }
@@ -383,9 +447,7 @@ function tick(
 
       a.targetId = target ? target.id : null;
       a.threatId = threat ? threat.id : null;
-      // Broadcast the target only when actively hunting — never while fleeing
-      // (would propagate panic) and never when there's no target. `update()` is
-      // a no-op when the value is unchanged, so this is cheap each tick.
+      // Only broadcast while hunting — fleeing would propagate panic.
       a.callTarget.update(!threat && target ? target.id : null);
 
       // Pellet seek when no agent priority.
@@ -401,11 +463,12 @@ function tick(
             const bucket = pGrid[cy * cw + cx];
             for (let bi = 0; bi < bucket.length; bi++) {
               const p = bucket[bi];
-              const dxx = p.x - ap.x;
-              const dyy = p.y - ap.y;
-              const d2 = dxx * dxx + dyy * dyy;
+              const d2 = distSq(p, ap);
               if (d2 > visionD2) continue;
-              if (d2 < pelletD2) { pelletT = p; pelletD2 = d2; }
+              if (d2 < pelletD2) {
+                pelletT = p;
+                pelletD2 = d2;
+              }
             }
           }
         }
@@ -430,60 +493,27 @@ function tick(
         ddy = a.vy + rand(-0.4, 0.4);
       }
 
-      const dlen = Math.hypot(ddx, ddy) || 1;
-      const desVx = (ddx / dlen) * speed;
-      const desVy = (ddy / dlen) * speed;
-
-      // Steering inertia: blend toward desired velocity. Smooths out
-      // direction flips and removes the "bouncing" feel for agents
-      // hesitating between candidates.
-      const sVx = a.vx * (1 - TURN_RATE) + desVx * TURN_RATE;
-      const sVy = a.vy * (1 - TURN_RATE) + desVy * TURN_RATE;
-      const sLen = Math.hypot(sVx, sVy) || 1;
-      a.vx = (sVx / sLen) * speed;
-      a.vy = (sVy / sLen) * speed;
-
-      let nx = ap.x + a.vx;
-      let ny = ap.y + a.vy;
-      if (nx < 0) { nx = 0; a.vx = Math.abs(a.vx); }
-      else if (nx > world.x) { nx = world.x; a.vx = -Math.abs(a.vx); }
-      if (ny < 0) { ny = 0; a.vy = Math.abs(a.vy); }
-      else if (ny > world.y) { ny = world.y; a.vy = -Math.abs(a.vy); }
-      a.position.update({ x: nx, y: ny });
+      steerAndMove(a, ap, ddx, ddy, speed, world);
     }
 
     // ─── 2. Agent-agent collisions via grid. ──────────────────────────
     // For each cell: pairs within + pairs with 4 "later" neighbor cells.
+    // 4 neighbors (E, SW, S, SE) covers each cross-cell pair exactly once.
+    const neigh: [number, number][] = [
+      [1, 0],
+      [-1, 1],
+      [0, 1],
+      [1, 1],
+    ];
     for (let cy = 0; cy < ch; cy++) {
       for (let cx = 0; cx < cw; cx++) {
         const bucket = aGrid[cy * cw + cx];
-        for (let i = 0; i < bucket.length; i++) {
-          const a = bucket[i];
-          if (!a.alive.current) continue;
-          for (let j = i + 1; j < bucket.length; j++) {
-            const b = bucket[j];
-            if (!b.alive.current) continue;
-            tryEat(a, b);
-            if (!a.alive.current) break;
-          }
-        }
-        // 4 neighbors: E, SW, S, SE — covers each pair exactly once.
-        const neigh: [number, number][] = [[1, 0], [-1, 1], [0, 1], [1, 1]];
+        eatPairs(bucket, bucket, true);
         for (let n = 0; n < neigh.length; n++) {
           const ncx = cx + neigh[n][0];
           const ncy = cy + neigh[n][1];
           if (ncx < 0 || ncx >= cw || ncy < 0 || ncy >= ch) continue;
-          const nbucket = aGrid[ncy * cw + ncx];
-          for (let i = 0; i < bucket.length; i++) {
-            const a = bucket[i];
-            if (!a.alive.current) continue;
-            for (let j = 0; j < nbucket.length; j++) {
-              const b = nbucket[j];
-              if (!b.alive.current) continue;
-              tryEat(a, b);
-              if (!a.alive.current) break;
-            }
-          }
+          eatPairs(bucket, aGrid[ncy * cw + ncx], false);
         }
       }
     }
@@ -506,9 +536,7 @@ function tick(
           for (let bi = 0; bi < bucket.length; bi++) {
             const p = bucket[bi];
             if (!p.alive.current) continue;
-            const dxx = ap.x - p.x;
-            const dyy = ap.y - p.y;
-            if (dxx * dxx + dyy * dyy < ar2) {
+            if (distSq(ap, p) < ar2) {
               a.size.update(a.size.current + PELLET_VALUE);
               p.alive.update(false);
               p.deadTicks = 0;
@@ -531,14 +559,23 @@ function tick(
     }
   });
 
-  return { gameOver: aliveCount <= 1, survivor: aliveCount === 1 ? last : null };
+  return {
+    gameOver: aliveCount <= 1,
+    survivor: aliveCount === 1 ? last : null,
+  };
 }
 
 // ---------------------------------------------------------------
 // AgentDot — vision ring + body + name. Three per-signal effects.
 // ---------------------------------------------------------------
 
-function AgentDot({ agent, showName, showVision, controlled, onTakeControl }: {
+function AgentDot({
+  agent,
+  showName,
+  showVision,
+  controlled,
+  onTakeControl,
+}: {
   agent: Agent;
   showName: boolean;
   showVision: boolean;
@@ -558,7 +595,10 @@ function AgentDot({ agent, showName, showVision, controlled, onTakeControl }: {
     const g = gRef.current;
     if (!g) return;
     const p = agent.position.current;
-    g.setAttribute('transform', `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`);
+    g.setAttribute(
+      'transform',
+      `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`,
+    );
   }, [agent.position]);
 
   useRefSignalEffect(() => {
@@ -704,8 +744,7 @@ function CallLine({ agent, agents }: { agent: Agent; agents: Agent[] }) {
     },
     [agent.callTarget, agent.position, agent.alive],
     {
-      // Dynamic dep — when callTarget swaps, the subscription follows the new
-      // target's position/alive without needing to tear down + recreate the effect.
+      // Dynamic dep — re-subscribes to the new target's signals when callTarget swaps.
       trackSignals: () => {
         const id = agent.callTarget.current;
         if (id === null) return [];
@@ -754,12 +793,12 @@ function BiggestBadge({ agents }: { agents: Agent[] }) {
 }
 
 function CallsCount({ agents }: { agents: Agent[] }) {
-  // Subscribes only to the callTarget slice — re-renders when agents start
-  // or stop broadcasting, never on plain position updates.
+  // callTarget slice only — never re-renders on plain position updates.
   const sigs = useMemo(() => agents.map((a) => a.callTarget), [agents]);
   useRefSignalRender(sigs, { rAF: true });
   let n = 0;
-  for (const a of agents) if (a.alive.current && a.callTarget.current !== null) n++;
+  for (const a of agents)
+    if (a.alive.current && a.callTarget.current !== null) n++;
   return <Stat label="calls" value={n} />;
 }
 
@@ -782,7 +821,17 @@ function Leaderboard({ agents }: { agents: Agent[] }) {
         <div key={a.id} style={leaderRow}>
           <span style={rankCell}>#{i + 1}</span>
           <Dot hue={a.hue} />
-          <span style={{ fontSize: 11, opacity: 0.85, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span
+            style={{
+              fontSize: 11,
+              opacity: 0.85,
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {a.name}
           </span>
           <span style={{ fontFamily: 'monospace', fontSize: 11 }}>
@@ -814,8 +863,7 @@ function TeamRow({ team, agents }: { team: number; agents: Agent[] }) {
     () => teamAgents.flatMap((a) => [a.size, a.alive]),
     [teamAgents],
   );
-  // KEY POINT: this row only re-renders when its own team's signals fire.
-  // Other teams' changes don't trigger anything here.
+  // Re-renders only on its own team's signals — other teams don't trigger anything here.
   useRefSignalRender(sigs, { rAF: true });
 
   let alive = 0;
@@ -848,10 +896,26 @@ function TeamRow({ team, agents }: { team: number; agents: Agent[] }) {
         }}
       />
       <span style={{ fontSize: 11, flex: 1 }}>{TEAM_NAMES[team]}</span>
-      <span style={{ fontFamily: 'monospace', fontSize: 11, opacity: 0.7, minWidth: 30, textAlign: 'right' }}>
+      <span
+        style={{
+          fontFamily: 'monospace',
+          fontSize: 11,
+          opacity: 0.7,
+          minWidth: 30,
+          textAlign: 'right',
+        }}
+      >
         {alive}/{teamAgents.length}
       </span>
-      <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#4a9eff', minWidth: 36, textAlign: 'right' }}>
+      <span
+        style={{
+          fontFamily: 'monospace',
+          fontSize: 11,
+          color: '#4a9eff',
+          minWidth: 36,
+          textAlign: 'right',
+        }}
+      >
         {mass.toFixed(0)}
       </span>
     </div>
@@ -859,7 +923,6 @@ function TeamRow({ team, agents }: { team: number; agents: Agent[] }) {
 }
 
 function Killcam() {
-  // Subscribes only to the killFeed signal — re-renders only on kills.
   useRefSignalRender([killFeed]);
   const events = killFeed.current;
 
@@ -885,14 +948,29 @@ function Killcam() {
   );
 }
 
-function WinnerBanner({ winner, onReset }: { winner: Agent; onReset: () => void }) {
-  // Subscribe to the winner's size in case mass keeps creeping from pellets.
+function WinnerBanner({
+  winner,
+  onReset,
+}: {
+  winner: Agent;
+  onReset: () => void;
+}) {
+  // Track winner's size — pellets keep adding mass post-victory.
   useRefSignalRender([winner.size]);
   return (
     <div style={winnerOverlayStyle}>
       <div style={winnerCardStyle}>
-        <div style={{ fontSize: 12, opacity: 0.55, letterSpacing: 1 }}>WINNER</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+        <div style={{ fontSize: 12, opacity: 0.55, letterSpacing: 1 }}>
+          WINNER
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginTop: 8,
+          }}
+        >
           <span
             style={{
               width: 28,
@@ -905,11 +983,15 @@ function WinnerBanner({ winner, onReset }: { winner: Agent; onReset: () => void 
           <div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{winner.name}</div>
             <div style={{ fontSize: 12, opacity: 0.6 }}>
-              {TEAM_NAMES[winner.team]} · {winner.kills} kills · {winner.size.current.toFixed(1)} mass
+              {TEAM_NAMES[winner.team]} · {winner.kills} kills ·{' '}
+              {winner.size.current.toFixed(1)} mass
             </div>
           </div>
         </div>
-        <button onClick={onReset} style={{ ...btnStyle(false, '#10b981'), marginTop: 14 }}>
+        <button
+          onClick={onReset}
+          style={{ ...btnStyle(false, '#10b981'), marginTop: 14 }}
+        >
           New round
         </button>
       </div>
@@ -928,9 +1010,8 @@ export default function Agents() {
   const [tickN, setTickN] = useState(0);
   const [winner, setWinner] = useState<Agent | null>(null);
   const [controlledId, setControlledId] = useState<number | null>(null);
-  // Mouse position in WORLD coords. Updated on every pointermove; read by
-  // tick() each frame. A ref (not state) — no re-renders on mouse motion.
-  const mouseRef = useRef<Vec>({ x: 0, y: 0 });
+  // World-coord mouse — ref (not state) so motion doesn't trigger re-renders.
+  const mouseRef = useRef({ x: 0, y: 0 });
 
   const stageRef = useRef<HTMLDivElement>(null);
   const [world, setWorld] = useState<Vec>(() => ({
@@ -955,10 +1036,9 @@ export default function Agents() {
     };
   }, []);
 
-  // Pellets scale with agent count so density of food stays meaningful.
   const pelletCount = count * 2;
 
-  // Recreate agents/pellets on count change, world change, OR reset (seed bump).
+  // Recreate on count/world change or seed bump (reset).
   const agents = useMemo(
     () => Array.from({ length: count }, (_, i) => makeAgent(i, world)),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed deliberately invalidates the memo on reset
@@ -970,7 +1050,7 @@ export default function Agents() {
     [pelletCount, world, seed],
   );
 
-  // Reset round-state when agents identity changes (count change, world resize, or reset).
+  // Reset round-state on agent-identity change.
   useEffect(() => {
     killFeed.update([]);
     setWinner(null);
@@ -993,42 +1073,42 @@ export default function Agents() {
     };
   }, [controlledId, agents]);
 
-  // Tick loop. Stops on game over. Rate-gated by the module-scope `tickSpeed`
-  // signal — read directly inside the effect so speed changes don't restart
-  // the subscription (and don't need to be in the dep array).
+  // Tick loop, rate-gated by `tickSpeed.current` (read directly so speed
+  // changes don't restart the subscription).
   const frame = usePulseRefSignal('raf');
   const lastTickRef = useRef(0);
   useEffect(() => {
     if (!running || winner) return;
     lastTickRef.current = 0;
   }, [running, agents, pellets, world, winner, controlledId]);
-  useRefSignalEffect(
-    () => {
-      if (!running || winner) return;
-      const now = frame.elapsed;
-      const interval = 1000 / Math.max(1, tickSpeed.current);
-      if (now - lastTickRef.current >= interval) {
-        const result = tick(agents, pellets, world, {
-          agentId: controlledId,
-          mouse: mouseRef.current,
-        });
-        lastTickRef.current = now;
-        setTickN((n) => n + 1);
-        if (result.gameOver) {
-          setWinner(result.survivor);
-        }
+  useRefSignalEffect(() => {
+    if (!running || winner) return;
+    const now = frame.elapsed;
+    const interval = 1000 / Math.max(1, tickSpeed.current);
+    if (now - lastTickRef.current >= interval) {
+      const result = tick(agents, pellets, world, {
+        agentId: controlledId,
+        mouse: mouseRef.current,
+      });
+      lastTickRef.current = now;
+      setTickN((n) => n + 1);
+      if (result.gameOver) {
+        setWinner(result.survivor);
       }
-    },
-    [frame, running, agents, pellets, world, winner, controlledId],
-  );
+    }
+  }, [frame, running, agents, pellets, world, winner, controlledId]);
 
-  const reset = () => setSeed((s) => s + 1);
+  const reset = () => {
+    setSeed((s) => s + 1);
+  };
 
   return (
     <div style={pageStyle}>
       <div style={toolbarStyle}>
         <button
-          onClick={() => setRunning((r) => !r)}
+          onClick={() => {
+            setRunning((r) => !r);
+          }}
           disabled={!!winner}
           style={btnStyle(running && !winner, running ? '#f97316' : '#10b981')}
         >
@@ -1042,7 +1122,9 @@ export default function Agents() {
           Agents
           <select
             value={count}
-            onChange={(e) => setCount(+e.target.value as Count)}
+            onChange={(e) => {
+              setCount(+e.target.value as Count);
+            }}
             style={selectStyle}
           >
             {COUNTS.map((c) => (
@@ -1068,23 +1150,19 @@ export default function Agents() {
       </div>
 
       <div style={hintStyle}>
-        {count} agents in 4 teams, permadeath. Bigger eats smaller (any team).
-        Pellets refill mass. <b>Click any agent to take control</b> — it&apos;ll steer
-        toward your cursor; auto-released when it dies. Each agent owns four signals
-        (<code style={codeStyle}>position</code>, <code style={codeStyle}>size</code>,{' '}
-        <code style={codeStyle}>alive</code>, <code style={codeStyle}>callTarget</code>)
-        — that&apos;s {count * 4} reactive cells. <b>Pack hunting via signals:</b> when
-        an agent locks a target it broadcasts via <code style={codeStyle}>callTarget</code>;
-        same-team allies within hearing range adopt the call when they have no target
-        of their own — propagating outward each tick. The dashed lines visualize
-        live calls; their subscriptions follow the called target dynamically via{' '}
-        <code style={codeStyle}>trackSignals</code>. The reactive panels each subscribe
-        only to their slice — TeamRows re-render only when their team changes; the
-        Killcam subscribes only to <code style={codeStyle}>killFeed</code>; no central
-        re-render anywhere.
+        {count} agents, 4 teams, permadeath — bigger eats smaller.{' '}
+        <b>Click any agent</b> to control it (steers toward cursor). Each agent
+        owns 4 signals = {count * 4} reactive cells. <b>Pack hunting:</b> agents
+        broadcast their target via <code style={codeStyle}>callTarget</code>;
+        teammates within hearing range adopt it. Dashed lines follow each call
+        through <code style={codeStyle}>trackSignals</code>. Panels subscribe
+        only to their slice — no central re-render.
       </div>
 
-      <div ref={stageRef} style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+      <div
+        ref={stageRef}
+        style={{ flex: 1, overflow: 'hidden', position: 'relative' }}
+      >
         <svg
           viewBox={`0 0 ${world.x} ${world.y}`}
           preserveAspectRatio="none"
@@ -1133,9 +1211,6 @@ export default function Agents() {
 // UI bits
 // ---------------------------------------------------------------
 
-// SpeedControl — controlled slider over the module-scope `tickSpeed` signal.
-// Re-renders only on speed changes (its own input or anything else updating
-// the signal). The RAF loop reads `tickSpeed.current` directly each frame.
 function SpeedControl() {
   useRefSignalRender([tickSpeed]);
   return (
@@ -1146,10 +1221,20 @@ function SpeedControl() {
         min={1}
         max={120}
         value={tickSpeed.current}
-        onChange={(e) => tickSpeed.update(+e.target.value)}
+        onChange={(e) => {
+          tickSpeed.update(+e.target.value);
+        }}
         style={{ width: 100 }}
       />
-      <span style={{ fontFamily: 'monospace', fontSize: 11, opacity: 0.7, minWidth: 36, textAlign: 'right' }}>
+      <span
+        style={{
+          fontFamily: 'monospace',
+          fontSize: 11,
+          opacity: 0.7,
+          minWidth: 36,
+          textAlign: 'right',
+        }}
+      >
         {tickSpeed.current}/s
       </span>
     </label>
@@ -1171,16 +1256,26 @@ function Dot({ hue }: { hue: number }) {
   );
 }
 
-function Stat({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
+function Stat({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string | number;
+  highlight?: boolean;
+}) {
   return (
-    <span style={{
-      background: '#0d1117',
-      padding: '4px 10px',
-      borderRadius: 4,
-      fontSize: 12,
-      fontFamily: 'monospace',
-      border: highlight ? '1px solid #4a9eff' : '1px solid transparent',
-    }}>
+    <span
+      style={{
+        background: '#0d1117',
+        padding: '4px 10px',
+        borderRadius: 4,
+        fontSize: 12,
+        fontFamily: 'monospace',
+        border: highlight ? '1px solid #4a9eff' : '1px solid transparent',
+      }}
+    >
       {label} <b style={{ color: highlight ? '#4a9eff' : '#fff' }}>{value}</b>
     </span>
   );
@@ -1239,7 +1334,10 @@ const selectStyle: React.CSSProperties = {
   fontSize: 12,
 };
 
-function panelStyle(corner: 'top' | 'left' | 'bottom-right', offset: number): React.CSSProperties {
+function panelStyle(
+  corner: 'top' | 'left' | 'bottom-right',
+  offset: number,
+): React.CSSProperties {
   const base: React.CSSProperties = {
     position: 'absolute',
     background: 'rgba(13, 17, 23, 0.85)',

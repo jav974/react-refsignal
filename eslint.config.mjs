@@ -104,4 +104,25 @@ export default tseslint.config(
       'react/display-name': 'off',
     },
   },
+
+  // ── Demo files: relax rules for application-style code ──────────────────────
+  // Demos use DOM-known-non-null asserts, numbers in SVG template literals,
+  // void-returning arrow shorthands in event handlers, and other patterns
+  // that aren't load-bearing for library correctness.
+  {
+    files: ['demo/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/restrict-template-expressions': 'off',
+      '@typescript-eslint/no-confusing-void-expression': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-redundant-type-constituents': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
 )

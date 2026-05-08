@@ -4,15 +4,17 @@ import GraphBenchmark from './graph-benchmark';
 import ThemeDemo from './theme-demo';
 import GameOfLife from './game-of-life';
 import Agents from './agents';
+import Heartbeat from './heartbeat';
 
-// StrictMode removed for clean benchmark numbers (it double-renders in dev).
+// No StrictMode — its dev-mode double renders skew benchmark numbers.
 
-type Route = 'graph' | 'theme' | 'gol' | 'agents';
+type Route = 'graph' | 'theme' | 'gol' | 'agents' | 'heart';
 
 function parseRoute(): Route {
   if (window.location.hash === '#theme') return 'theme';
   if (window.location.hash === '#gol') return 'gol';
   if (window.location.hash === '#agents') return 'agents';
+  if (window.location.hash === '#heart') return 'heart';
   return 'graph';
 }
 
@@ -60,11 +62,15 @@ function Demos() {
         <a href="#agents" style={navBtn(route === 'agents')}>
           Agents
         </a>
+        <a href="#heart" style={navBtn(route === 'heart')}>
+          Heartbeat (pulse)
+        </a>
       </nav>
       {route === 'graph' && <GraphBenchmark />}
       {route === 'theme' && <ThemeDemo />}
       {route === 'gol' && <GameOfLife />}
       {route === 'agents' && <Agents />}
+      {route === 'heart' && <Heartbeat />}
     </>
   );
 }

@@ -30,9 +30,10 @@
     "test": "jest",
     "coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
-    "typecheck:all": "tsc --noEmit -p tsconfig.eslint.json",
-    "lint": "eslint 'src/**/*.{ts,tsx}'",
-    "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
+    "typecheck:demo": "tsc --noEmit -p demo/tsconfig.json",
+    "typecheck:all": "npm run typecheck && npm run typecheck:demo",
+    "lint": "eslint 'src/**/*.{ts,tsx}' 'demo/**/*.{ts,tsx}'",
+    "lint:fix": "eslint 'src/**/*.{ts,tsx}' 'demo/**/*.{ts,tsx}' --fix",
     "prettier:fix": "prettier --write 'src/**/*.{ts,tsx}'",
     "prepublishOnly": "npm run typecheck && npm run build",
     "size": "size-limit"
