@@ -8,23 +8,31 @@
 [![bundlephobia](https://badgen.net/bundlephobia/minzip/react-refsignal)](https://bundlephobia.com/result?p=react-refsignal)
 [![MIT License](https://img.shields.io/github/license/jav974/react-refsignal.svg)](LICENSE)
 
-Mutable signal-like refs for React — update values without re-rendering, subscribe to changes, and opt into re-renders exactly where you need them.
+Mutable signal-like refs for React where every consumer dictates its own subscription contract — *what* to observe, *when* to react, *whether* to trigger a re-render — independently, per call site.
+
+The same signal can drive a 60 FPS canvas in one place, a throttled HUD label elsewhere, and a normal React component watching a derived boolean — at the same time, with no coordination between them.
+
+Built for UIs where React's render cycle is the bottleneck: **node editors (n8n-class), real-time simulations, drag-heavy canvases**. Scales down cleanly to ordinary state.
 
 > **[Live demo →](https://stackblitz.com/edit/vitejs-vite-jurlgxkf?file=index.html)** — drag the nodes; sixty FPS, zero React re-renders.
 
 ## Why
 
-Imagine a canvas with a hundred draggable nodes, each connected by curves. The user drags one node — its position changes sixty times a second. Every curve attached to it must follow. The other ninety-nine nodes should be completely unaffected.
+Most React state libraries are *producer-driven*: the store decides when consumers are notified, and selectors, equality functions, or observer wrappers narrow it from there. The producer dictates the contract.
 
-React's render cycle is the wrong layer for this. You don't want a re-render — you want a targeted notification: *this value changed, only the things watching it should react*.
+refsignal inverts that. The signal is just a value with a channel. **Each consumer, at its call site, decides three things independently:**
 
-`useRef` gets you out of the render cycle, but a ref is silent. Nothing can subscribe to it. You end up building a manual event emitter per node — registration, cleanup, ordering. That's the library you'd be writing from scratch.
+- **What** to observe — the whole signal, a projection, a derived value
+- **When** to react — synchronous, throttled, debounced, `rAF`, or a custom `filter`
+- **Whether** to render — pure side-effect, or opt into a React re-render
 
-`react-refsignal` is that primitive: **a ref with a subscription channel**. When a position signal updates, only its subscribers run — directly, synchronously, with no React scheduler involved. One effect redraws the curve. Another updates a HUD label. Everything else is untouched.
+Take a draggable node in a canvas editor. Its position updates sixty times a second. One consumer redraws the connecting curve every frame (`rAF`-paced, no render). Another updates a HUD label, throttled to 100 ms (no render). A third logs to analytics every second. A fourth is a React component watching a derived `isOnscreen` boolean — re-renders only when that flips. **Same signal, four contracts, no coordination.**
 
-Outside of high-frequency scenarios, the same model scales down cleanly. Components opt into re-renders explicitly — no selector callbacks, no wrapper components, no observability magic. Just `useRefSignalRender([signal])` where you need it and nothing elsewhere.
+Producers can be time-driven too: a pulse signal ticks on a schedule (`'1000ms'`, `'60fps'`, `'raf'`) and slots into the same model — one shared timer per cadence, lazily started, with each consumer rate-limiting on top.
 
-The API stays within React's public contract: `useSyncExternalStore` for render subscriptions, direct listener callbacks for effects. No compiler, no proxy, no patched internals.
+That model is why refsignal holds 60 FPS where a conventional store crawls below 1 FPS in a dense node-editor benchmark: high-frequency consumers don't pay for the render policy of low-frequency ones. Reconciliation isn't on the path unless a consumer explicitly opts in. Outside high-frequency scenarios the same model scales down — components opt into re-renders explicitly via `useRefSignalRender([signal])`, and nothing renders elsewhere.
+
+`useRef` gets you out of the render cycle, but a ref is silent — nothing can subscribe. Build the subscription channel yourself and you're writing this library from scratch. refsignal is that primitive: **a ref with a per-consumer subscription channel**, built on stable, public React APIs (`useSyncExternalStore` for renders, direct listeners for effects). No compiler, no proxy, no patched internals.
 
 ## Installation
 
@@ -36,7 +44,28 @@ Requires React ≥ 18.0.0.
 
 ## Quick Start
 
-The simplest use: a signal that drives a re-render.
+The model shines when you want updates _without_ re-renders — like driving a canvas from a game loop. A pulse signal ticks every frame; the canvas redraws on each tick; React's render cycle is never involved.
+
+```tsx
+import { useRef } from 'react';
+import { usePulseRefSignal, useRefSignalEffect } from 'react-refsignal';
+
+function GameCanvas() {
+  const loop = usePulseRefSignal('raf');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useRefSignalEffect(() => {
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 800, 600);
+    ctx.fillRect(loop.tick, 0, 20, 20);
+  }, [loop]);
+
+  return <canvas ref={canvasRef} width={800} height={600} />;
+}
+```
+
+The same model scales down to ordinary state — opt into a re-render exactly where you want one:
 
 ```tsx
 import { useRefSignal, useRefSignalRender } from 'react-refsignal';
@@ -57,52 +86,82 @@ function Counter() {
 
 Without `useRefSignalRender`, `count.update()` updates the value and notifies subscribers — but the component never re-renders. That is the point: renders are opt-in.
 
-The real power shows when you want updates _without_ re-renders — for example, driving a canvas from a game loop:
+The producer can also be a clock — pulse signals tick on a schedule and slot into the same graph:
 
 ```tsx
-import { useEffect, useRef } from 'react';
-import { useRefSignal, useRefSignalEffect } from 'react-refsignal';
+import { createPulseRefSignal, useRefSignalRender } from 'react-refsignal';
 
-function GameCanvas() {
-  const position = useRefSignal({ x: 0, y: 0 });
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+// Module scope: one timer for the whole app, lazily started by the first reader.
+const now = createPulseRefSignal('60000ms'); // every minute
 
-  useEffect(() => {
-    let id: number;
-    const tick = () => {
-      position.current.x += 1;
-      position.notify(); // fire subscribers — no React re-render
-      id = requestAnimationFrame(tick);
-    };
-    id = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  useRefSignalEffect(() => {
-    const ctx = canvasRef.current?.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, 800, 600);
-    ctx.fillRect(position.current.x, position.current.y, 20, 20);
-  }, [position]);
-
-  return <canvas ref={canvasRef} width={800} height={600} />;
+function RelativeTime({ at }: { at: number }) {
+  useRefSignalRender([now]);
+  return <time>{formatAgo(at, now.current)}</time>;
 }
 ```
 
-The canvas redraws at every frame via `useRefSignalEffect` — React's render cycle is never involved.
+Mount fifty `<RelativeTime />` cells; you get fifty subscribers on one `setInterval`. Unmount them all and the timer stops. The timer never installs at all if no consumer subscribes.
+
+## Per-consumer subscription
+
+Every consumer of a signal picks its own **what / when / whether** at the call site. The signal doesn't know — and doesn't care — what its consumers do.
+
+Same `position` signal, four contracts, no coordination between them:
+
+```tsx
+const position = useRefSignal({ x: 0, y: 0 });
+
+// 1. Redraw a curve every frame — no React render
+useRefSignalEffect(() => {
+  drawCurve(canvasRef.current, position.current);
+}, [position], { rAF: true });
+
+// 2. Update a HUD label, throttled to 100 ms — no React render
+useRefSignalEffect(() => {
+  hudRef.current!.textContent = `${position.current.x}, ${position.current.y}`;
+}, [position], { throttle: 100 });
+
+// 3. Log to analytics, debounced to fire on idle — no React render
+useRefSignalEffect(() => {
+  analytics.track('position', position.current);
+}, [position], { debounce: 1000 });
+
+// 4. A derived boolean — re-render only when it flips
+const isOnscreen = useRefSignalMemo(
+  () => position.current.x >= 0 && position.current.x < viewportWidth,
+  [position],
+);
+useRefSignalRender([isOnscreen]);
+```
+
+Adding or removing any one of these doesn't affect the others. Reconciliation is on the path only for consumer #4 — and only when the boolean actually flips.
+
+Every hook that subscribes (`useRefSignalEffect`, `useRefSignalRender`, `useRefSignalMemo`, and the framework-agnostic `watch()`) accepts the same options: `throttle`, `debounce`, `rAF`, `filter`, `maxWait`. The producer never participates in the timing decision.
 
 ## Docs
 
-- **[Decision Tree](docs/decision-tree.md)** — start here. Picks the right API for any scenario (signal creation, derived values, persistence, broadcast, context, batching). Useful as a navigation index for humans and as a generation reference for AI tools.
-- [Patterns](docs/patterns.md) — full worked examples: draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders, the sibling-leaf pattern for data hooks, and the cross-tab notification badge recipe.
-- [API Reference](docs/api.md) — every hook and function with examples.
-- [Concepts](docs/concepts.md) — signals, notify vs notifyUpdate, effect vs render, signal lifetime.
-- [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation.
-- [Pulse](docs/pulse.md) — self-firing signals (`createPulseRefSignal` / `usePulseRefSignal`): clocks, game loops, auth refresh, shared tick across components.
-- [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs with `react-refsignal/broadcast`.
-- [Persist](docs/persist.md) — persist signals across page loads with `react-refsignal/persist`.
+Organized by intent, not by API surface.
 
-The full `docs/` folder is bundled with the npm package — installed at `node_modules/react-refsignal/docs/`. AI coding tools and IDEs can read it directly without fetching from GitHub.
+**Start here**
+- **[Decision Tree](docs/decision-tree.md)** — pick the right API for any scenario (signal creation, derived values, persistence, broadcast, context, batching). Doubles as a generation reference for AI tools.
+
+**Foundations**
+- [Concepts](docs/concepts.md) — `RefSignal` vs `ReadonlyRefSignal` vs `ComputedSignal`, `notify()` vs `notifyUpdate()`, effect vs render, signal lifetime.
+- [API Reference](docs/api.md) — every hook and function with examples.
+
+**Building with it**
+- [Pulse](docs/pulse.md) — time-driven signals: clocks, frame loops, "X ago" timestamps, adaptive cadences via `updatePulse`.
+- [Patterns](docs/patterns.md) — draggable graphs, signal stores, collections, batching, high-frequency consumers, filtered renders, the sibling-leaf pattern, cross-tab notification badges.
+- [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation.
+- [Persist](docs/persist.md) — persist signals across page loads (`localStorage`, `sessionStorage`, IndexedDB, custom adapters).
+- [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs.
+- [Benchmark](docs/benchmark.md) — the methodology behind the 60-FPS numbers.
+
+## Built for AI-assisted coding
+
+The `docs/` folder ships inside the npm package — installed at `node_modules/react-refsignal/docs/`. Cursor, Claude Code, and other LLM-backed editors read it directly, no GitHub fetch required.
+
+The [Decision Tree](docs/decision-tree.md) is intentionally written as a generation reference: when an AI assistant asks "which API fits here?", it has a deterministic answer instead of guessing between `useRefSignal`, `useRefSignalEffect`, `useRefSignalRender`, `useRefSignalMemo`, and a store. Fewer wrong-shape suggestions, fewer stray re-renders.
 
 ## Concepts
 
@@ -115,6 +174,8 @@ The full `docs/` folder is bundled with the npm package — installed at `node_m
 | `createComputedRefSignal` / `useRefSignalMemo` | Derived signals — recompute whenever deps change; module-scope or component-scoped |
 | `watch(signal, listener, options?)` | Subscribe outside React and get a cleanup function back — mirrors `useEffect` return pattern; accepts the same `filter` and timing options as the hooks |
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
+| `createPulseRefSignal` / `usePulseRefSignal` | A signal that ticks on a schedule — `'1000ms'`, `'60fps'`, `'raf'`. Lazy: the timer runs only while subscribed. Carries `dt`, `tick`, `elapsed` metadata |
+| `updatePulse(rate)` | Change a pulse signal's cadence reactively — drive it from another signal for adaptive heartbeats, backoff, perf-budgeted frames |
 | `createRefSignalStore` / `useRefSignalStore` | Provider-free global store — create at module scope, use in any component with `renderOn` opt-in |
 | `createRefSignalContext` | Per-subtree store with auto-generated Provider and hook — for isolated state per route or section |
 | Signal lifetime | Listeners are in a `WeakMap` — GC'd when the signal has no references |
@@ -179,7 +240,7 @@ Use `createRefSignalContext` instead when you need per-subtree isolation — a s
 | Redux | No | Selector-based | Narrowable via selector, but always renders |
 | `useRef` (plain React) | N/A | None | No subscription possible |
 
-react-refsignal is the only entry that can subscribe to a value via a stable React API and not re-render at all.
+react-refsignal is the only entry that can subscribe to a value via a stable React API and not re-render at all. It's also the only entry where each consumer picks its own subscription rate — synchronous, `throttle`, `debounce`, `rAF`, or a custom `filter` — at the call site, independently of the producer.
 
 **The closest alternative is @preact/signals-react.** Both libraries let you update values outside React's render cycle and subscribe to those updates. The difference is how:
 

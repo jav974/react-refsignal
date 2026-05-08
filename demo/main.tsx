@@ -2,13 +2,18 @@ import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import GraphBenchmark from './graph-benchmark';
 import ThemeDemo from './theme-demo';
+import GameOfLife from './game-of-life';
+import Agents from './agents';
 
 // StrictMode removed for clean benchmark numbers (it double-renders in dev).
 
-type Route = 'graph' | 'theme';
+type Route = 'graph' | 'theme' | 'gol' | 'agents';
 
 function parseRoute(): Route {
-  return window.location.hash === '#theme' ? 'theme' : 'graph';
+  if (window.location.hash === '#theme') return 'theme';
+  if (window.location.hash === '#gol') return 'gol';
+  if (window.location.hash === '#agents') return 'agents';
+  return 'graph';
 }
 
 function Demos() {
@@ -49,8 +54,17 @@ function Demos() {
         <a href="#theme" style={navBtn(route === 'theme')}>
           Theme sync (persist + broadcast)
         </a>
+        <a href="#gol" style={navBtn(route === 'gol')}>
+          Game of Life
+        </a>
+        <a href="#agents" style={navBtn(route === 'agents')}>
+          Agents
+        </a>
       </nav>
-      {route === 'graph' ? <GraphBenchmark /> : <ThemeDemo />}
+      {route === 'graph' && <GraphBenchmark />}
+      {route === 'theme' && <ThemeDemo />}
+      {route === 'gol' && <GameOfLife />}
+      {route === 'agents' && <Agents />}
     </>
   );
 }
