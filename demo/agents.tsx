@@ -1145,7 +1145,7 @@ export default function Agents() {
           <AliveCount agents={agents} />
           <BiggestBadge agents={agents} />
           <CallsCount agents={agents} />
-          <FpsBadge />
+          <FpsBadge src={frame} />
         </span>
       </div>
 

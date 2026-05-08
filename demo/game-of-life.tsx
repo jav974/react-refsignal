@@ -707,7 +707,7 @@ export default function GameOfLife() {
             highlight
           />
           <Stat label="renders/s" value={stats.rps || '--'} />
-          <FpsBadge />
+          <FpsBadge src={frame} />
         </span>
       </div>
 
