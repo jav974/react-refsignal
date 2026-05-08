@@ -155,7 +155,6 @@ Organized by intent, not by API surface.
 - [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation.
 - [Persist](docs/persist.md) — persist signals across page loads (`localStorage`, `sessionStorage`, IndexedDB, custom adapters).
 - [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs.
-- [Benchmark](docs/benchmark.md) — the methodology behind the 60-FPS numbers.
 
 ## Built for AI-assisted coding
 
