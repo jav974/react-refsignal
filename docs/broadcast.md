@@ -261,7 +261,7 @@ broadcast(factory, {
 
 ## Rate-limiting with timing options
 
-All timing options from `EffectOptions` are available — `throttle`, `debounce`, `maxWait`, and `rAF`. They apply to **outgoing** sends only.
+All timing options from `EffectOptions` are available — `throttle`, `debounce`, `maxWait`, and `frame`. They apply to **outgoing** sends only.
 
 ```ts
 // High-frequency signal — throttle to avoid flooding the channel
@@ -276,7 +276,7 @@ const searchQuery = createRefSignal('', {
 
 // Animation — one send per frame maximum
 const animatedValue = createRefSignal(0, {
-  broadcast: { channel: 'anim', rAF: true },
+  broadcast: { channel: 'anim', frame: true },
 });
 
 // Store-level — same options available
@@ -302,7 +302,8 @@ Options for the `broadcast` field on `createRefSignal` / `useRefSignal`.
 | `throttle` | `number` | — | At most one send per N ms (leading + trailing). |
 | `debounce` | `number` | — | Send after N ms of quiet. |
 | `maxWait` | `number` | — | With `debounce`: guaranteed flush every N ms even if the signal keeps firing. |
-| `rAF` | `boolean` | — | One send per animation frame. |
+| `frame` | `boolean` | — | One send per animation frame. |
+| `rAF` | `boolean` | — | **Deprecated** alias for `frame`. |
 | `onBroadcasterChange` | `(active: boolean) => void` | — | `one-to-many` only: called when this tab gains or loses broadcaster status. |
 | `heartbeatInterval` | `number` | `300` | `one-to-many` only: how often each tab broadcasts a `hello` for peer discovery, in ms. |
 | `heartbeatTimeout` | `number` | `5000` | `one-to-many` only: consider a tab dead after this silence, in ms. |

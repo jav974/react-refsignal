@@ -49,12 +49,12 @@ function Cursor({ position }: { position: RefSignal<Point> }) {
 - Every signal update fires the effect synchronously. The effect reads `position.current`, clears the canvas, and draws. ~0 React work per frame.
 - At 60 pointer events / sec with React + `memo`, you would reconcile the Cursor component 60 times per second. Here you reconcile it *never*. The effect is the only thing that runs, and it only does the draw work.
 
-**Coalescing multiple fires per frame:** if several signals feed the same renderer, updates can arrive faster than the display refreshes. Use `{ rAF: true }` to batch into one draw per animation frame:
+**Coalescing multiple fires per frame:** if several signals feed the same renderer, updates can arrive faster than the display refreshes. Use `{ frame: true }` to batch into one draw per animation frame:
 
 ```tsx
 useRefSignalEffect(() => {
   drawScene();
-}, [cameraX, cameraY, zoom, selection], { rAF: true });
+}, [cameraX, cameraY, zoom, selection], { frame: true });
 ```
 
 One scene redraw per frame regardless of how many of those four signals fire in between. This is the default pattern for anything heavier than a few state mutations per frame.
@@ -90,7 +90,7 @@ function SignalGraphics({ draw, drawDeps = [], ...props }: SignalGraphicsProps) 
   useRefSignalEffect(() => {
     const g = ref.current;
     if (g) draw(g);
-  }, [draw, ...drawDeps], { rAF: true });
+  }, [draw, ...drawDeps], { frame: true });
 
   return <pixiGraphics ref={ref} draw={emptyDraw} {...props} />;
 }
@@ -171,7 +171,7 @@ function BezierCurve({
     const f = fromSig.current;
     const t = toSig.current;
     path.setAttribute('d', `M ${f.x},${f.y} C ${f.x + 50},${f.y} ${t.x - 50},${t.y} ${t.x},${t.y}`);
-  }, [fromSig, toSig], { rAF: true });
+  }, [fromSig, toSig], { frame: true });
 
   return <path ref={ref} stroke="#4a9eff" fill="none" strokeWidth={2} />;
 }

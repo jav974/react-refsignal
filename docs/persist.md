@@ -404,7 +404,7 @@ persist(factory, { key: 'game', debounce: 300 });
 persist(factory, { key: 'game', debounce: 300, maxWait: 1000 });
 
 // Coalesce writes into one per animation frame (~16ms at 60 Hz)
-persist(factory, { key: 'game', rAF: true });
+persist(factory, { key: 'game', frame: true });
 ```
 
 The same options work at the signal level:
@@ -506,7 +506,8 @@ Options for the `persist` field on `createRefSignal` / `useRefSignal`.
 | `throttle` | `number` | — | At most one write per N ms (leading + trailing). |
 | `debounce` | `number` | — | Write after N ms of quiet. |
 | `maxWait` | `number` | — | With `debounce` only: guaranteed flush every N ms even if the signal keeps firing. |
-| `rAF` | `boolean` | — | Coalesce writes into one per animation frame. |
+| `frame` | `boolean` | — | Coalesce writes into one per animation frame. |
+| `rAF` | `boolean` | — | **Deprecated** alias for `frame`. |
 
 The timing options are mutually exclusive — combining them is a type error.
 

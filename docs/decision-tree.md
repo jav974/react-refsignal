@@ -66,7 +66,7 @@ flowchart TD
 
 > Use `watch(signal, listener, options?)` instead of `subscribe`/`unsubscribe` pairs when outside React — it returns a cleanup function and supports the same timing and filter options as hooks.
 >
-> For high-frequency imperative renderers (Pixi / Canvas / WebGL / Web Audio), see [Imperative renderers](imperative-renderers.md) — the canonical pattern is `useRefSignalEffect` + `{ rAF: true }` mutating a `ref`-held handle.
+> For high-frequency imperative renderers (Pixi / Canvas / WebGL / Web Audio), see [Imperative renderers](imperative-renderers.md) — the canonical pattern is `useRefSignalEffect` + `{ frame: true }` mutating a `ref`-held handle.
 
 ```mermaid
 flowchart TD
@@ -86,7 +86,7 @@ flowchart TD
     Q3 -->|"No — react to changes only"| G["skipMount: true"]
 
     B --> Q3b{"Driving an imperative renderer at frame rate?"}
-    Q3b -->|"Yes — collapse multiple fires per frame"| Ga["Use { rAF: true } — see Imperative renderers doc"]
+    Q3b -->|"Yes — collapse multiple fires per frame"| Ga["Use { frame: true } — see Imperative renderers doc"]
     Q3b -->|No| F
 
     A & B & C & CS --> Q4{"Gate the callback conditionally?"}
@@ -109,7 +109,7 @@ flowchart TD
     C --> Q2{"Guarantee a flush even if signal keeps firing?"}
     Q2 -->|Yes| D["Add maxWait: N"]
     Q2 -->|No| E[Done]
-    Q1 -->|"Sync to animation frame — collapse multiple fires per frame"| F["rAF: true"]
+    Q1 -->|"Sync to animation frame — collapse multiple fires per frame"| F["frame: true"]
 ```
 
 ---
@@ -136,7 +136,7 @@ flowchart TD
     Q1 -->|"Outside React — module scope, context factory"| B["createComputedRefSignal(compute, deps)\nDeps accept RefSignal / ReadonlyRefSignal\nReturns ReadonlyRefSignal + .dispose() — you own cleanup"]
 
     A --> Q3{"Need to rate-limit, filter, or follow dynamic signals?"}
-    Q3 -->|Rate-limit the recompute| E["Add throttle / debounce / rAF — see Section 4"]
+    Q3 -->|Rate-limit the recompute| E["Add throttle / debounce / frame — see Section 4"]
     Q3 -->|Skip recompute conditionally| F["options.filter: () => boolean"]
     Q3 -->|"Factor resolves through another signal's value"| G["options.trackSignals — see Section 7"]
     Q3 -->|No| H[Done]
@@ -230,7 +230,7 @@ flowchart TD
     Q5 -->|No| Qf
     Q5 -->|"At most once per N ms"| J["throttle: N"]
     Q5 -->|"After N ms of quiet"| K["debounce: N\n+ optional maxWait: N"]
-    Q5 -->|"One write per animation frame"| L["rAF: true"]
+    Q5 -->|"One write per animation frame"| L["frame: true"]
 
     J & K & L --> Qf
     Qf{"Skip writes conditionally?\n(e.g., not logged in, paused, offline)"}

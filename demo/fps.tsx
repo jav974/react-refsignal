@@ -1,5 +1,5 @@
 // FPS badge — `<FpsBadge />`, or `useFps()` for custom UI. Pass a custom pulse
-// via `src`; defaults to a shared 'raf' pulse.
+// via `src`; defaults to a shared 'frame' pulse.
 
 import { useRef, useState } from 'react';
 import {
@@ -8,7 +8,7 @@ import {
   type PulseRefSignal,
 } from 'react-refsignal';
 
-const defaultPulse = createPulseRefSignal('raf');
+const defaultPulse = createPulseRefSignal('frame');
 
 export function useFps(src?: PulseRefSignal): number {
   const pulse = src ?? defaultPulse;

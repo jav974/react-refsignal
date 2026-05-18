@@ -105,7 +105,7 @@ A self-firing read-only signal whose `.current` advances to `performance.now()` 
 The cadence accepted by [`createPulseRefSignal`](#createpulserefsignalrate) and [`usePulseRefSignal`](#usepulserefsignalrate).
 
 ```ts
-type PulseRate = number | `${number}ms` | `${number}fps` | 'raf';
+type PulseRate = number | `${number}ms` | `${number}fps` | 'frame' | 'raf';
 ```
 
 | Form | Driver | When to reach for it |
@@ -113,7 +113,7 @@ type PulseRate = number | `${number}ms` | `${number}fps` | 'raf';
 | `number` (e.g. `100`) | `setInterval` | Same as the `'Nms'` form — a bare number is implicitly milliseconds. |
 | `'Nms'` (e.g. `'250ms'`, `'16.67ms'`) | `setInterval` | Continues firing on hidden tabs (subject to browser background-tab throttling). Use for clocks, polling, heartbeats, token refresh. |
 | `'Nfps'` (e.g. `'60fps'`, `'30fps'`) | `requestAnimationFrame` | Throttled to at most N/sec. Use when you specifically want a capped rate (power-saving, retro framelock, sub-display-refresh animation). |
-| `'raf'` | `requestAnimationFrame` | Every frame at the display's native rate (60Hz / 120Hz / 144Hz / …), no throttle. Use for game loops, FPS counters, anything that should run as fast as the screen draws. |
+| `'frame'` / `'raf'` | `requestAnimationFrame` | Every frame at the display's native rate (60Hz / 120Hz / 144Hz / …), no throttle. Use for game loops, FPS counters, anything that should run as fast as the screen draws. Both names are first-class. |
 
 Decimals are accepted in both numeric string forms. A non-positive or non-finite rate throws at construction.
 
@@ -244,7 +244,7 @@ useRefSignalEffect(() => {
 // Collapse multiple signal fires per frame into one effect run
 useRefSignalEffect(() => {
   ctx.fillRect(position.current.x, position.current.y, 20, 20);
-}, [position], { rAF: true });
+}, [position], { frame: true });
 
 // Expensive effect — at most once per 100ms
 useRefSignalEffect(() => {
@@ -281,11 +281,11 @@ return <div>Score: {score.current}</div>;
 // Legacy callback — still supported
 useRefSignalRender([count], () => count.current % 10 === 0);
 
-// Options object — filter, throttle, debounce, rAF
+// Options object — filter, throttle, debounce, frame
 useRefSignalRender([price], { throttle: 100 });
 useRefSignalRender([query], { debounce: 200 });
 useRefSignalRender([query], { debounce: 200, maxWait: 1000 });
-useRefSignalRender([position], { rAF: true });
+useRefSignalRender([position], { frame: true });
 useRefSignalRender([count], { filter: () => count.current % 10 === 0 });
 ```
 
@@ -314,7 +314,7 @@ TimingOptions
 |---|---|---|
 | `filter` | `() => boolean` | Skip the callback when this returns `false`. Does not gate the dynamic-tracking reconcile pass — the subscription set stays consistent regardless of filter state. |
 | `trackSignals` | `() => ReadonlyArray<RefSignal<unknown>>` | Resolves additional signals to subscribe to dynamically. Re-evaluated only on fires of static `deps` signals (not on fires of the returned set itself). The diff runs with ref-equal and content-equal shortcuts, so returning a memoized array or the same content each call costs nothing. Use for nested-signal traversal where an inner signal's identity comes from another signal's current value. Prefer [`useRefSignalFollow`](#userefsignalfollowt-getter-deps-options) for the common single-signal case. |
-| `throttle` / `debounce` / `maxWait` / `rAF` | — | See [`TimingOptions`](#timingoptions). |
+| `throttle` / `debounce` / `maxWait` / `frame` | — | See [`TimingOptions`](#timingoptions). |
 
 ---
 
@@ -331,14 +331,15 @@ Options accepted by `useRefSignalEffect`. Extends [`WatchOptions`](#watchoptions
 | `throttle` | `number` | At most one trigger per N ms (leading + trailing). |
 | `debounce` | `number` | Trigger after N ms of quiet. |
 | `maxWait` | `number` | With `debounce` only: guaranteed flush every N ms even if the signal keeps firing. |
-| `rAF` | `boolean` | Schedule on the next animation frame; multiple fires per frame collapse into one. |
+| `frame` | `boolean` | Schedule on the next animation frame (`requestAnimationFrame`); multiple fires per frame collapse into one. |
+| `rAF` | `boolean` | **Deprecated** alias for `frame`. Still works; will be removed in a future major version. |
 
 The timing options are mutually exclusive — combining them is a type error:
 
 ```ts
 { throttle: 100, debounce: 200 } // ✗ type error
 { maxWait: 500 }                 // ✗ type error — maxWait requires debounce
-{ rAF: true, throttle: 50 }     // ✗ type error
+{ frame: true, throttle: 50 }   // ✗ type error
 { debounce: 200, maxWait: 1000 } // ✓
 ```
 
@@ -363,7 +364,7 @@ Options accepted by `useRefSignalStore`, `createRefSignalContext`, and `createRe
 | `renderOn` | `Array<RefSignalKeys<TStore>>` \| `'all'` | Signal keys that trigger a re-render. Omit to never re-render. |
 | `unwrap` | `boolean` | If `true`, returns plain values with auto-generated setters instead of raw signals. Requires `renderOn`. |
 | `filter` | `(store: StoreSnapshot<TStore>) => boolean` | Only re-render if this returns `true`. Receives the store snapshot — signals unwrapped to their current values. |
-| `throttle` / `debounce` / `maxWait` / `rAF` | — | Same as [`TimingOptions`](#timingoptions). |
+| `throttle` / `debounce` / `maxWait` / `frame` | — | Same as [`TimingOptions`](#timingoptions). |
 
 ```tsx
 // Only re-render when score crosses the 100 threshold
@@ -495,7 +496,7 @@ import { createPulseRefSignal } from 'react-refsignal';
 
 const now      = createPulseRefSignal('1000ms');  // every second
 const loop     = createPulseRefSignal('60fps');   // throttled to 60
-const frame    = createPulseRefSignal('raf');     // every frame, native rate
+const frame    = createPulseRefSignal('frame');   // every frame, native rate
 const everyHalf = createPulseRefSignal(500);      // bare number — same as '500ms'
 ```
 
@@ -530,7 +531,7 @@ const stop = watch(score, (v) => draw(v), { throttle: 100 });
 const stop = watch(score, (v) => save(v), { debounce: 300, maxWait: 1000 });
 
 // Frame-synced — collapses rapid updates into one call per animation frame
-const stop = watch(position, (v) => render(v), { rAF: true });
+const stop = watch(position, (v) => render(v), { frame: true });
 
 // Filtered — only reacts when score is positive
 const stop = watch(score, (v) => log(v), { filter: () => score.current > 0 });
@@ -542,7 +543,7 @@ const stop = watch(score, (v) => sync(v), {
 });
 ```
 
-**`options`** — accepts [`WatchOptions`](#watchoptions) *minus* `trackSignals`. Supports `filter`, `throttle`, `debounce`, `maxWait`, `rAF`. Timing options are mutually exclusive.
+**`options`** — accepts [`WatchOptions`](#watchoptions) *minus* `trackSignals`. Supports `filter`, `throttle`, `debounce`, `maxWait`, `frame`. Timing options are mutually exclusive.
 
 When timing is active, `listener` receives the **latest captured value** at the moment the timer fires — intermediate values between fires are not replayed.
 
@@ -584,7 +585,7 @@ const sub2 = watchSignals(
       const s = nodes.current.get(id);
       return s ? [s] : [];
     },
-    rAF: true,
+    frame: true,
   },
 );
 ```
@@ -596,7 +597,7 @@ const sub2 = watchSignals(
 
 **`onFire`** takes no arguments — read whatever signals you need via `.current` inside. This is different from `watch()`'s value-delivering listener; it's what allows `watchSignals` to bind to many signals of different types.
 
-**`options`** — full [`WatchOptions`](#watchoptions): `filter`, `throttle`, `debounce`, `maxWait`, `rAF`, and `trackSignals`.
+**`options`** — full [`WatchOptions`](#watchoptions): `filter`, `throttle`, `debounce`, `maxWait`, `frame`, and `trackSignals`.
 
 **Returns** a [`WatchHandle`](#watchhandle):
 - `dispose()` — cancels pending timers, unsubscribes all static + dynamic signals. Idempotent.
@@ -727,7 +728,7 @@ const { UserProvider, useUserContext } = createRefSignalContext('User', () => ({
 **`renderOn`** — controls which signal updates trigger a re-render:
 
 ```tsx
-// No re-renders — read signals imperatively (game loops, rAF callbacks)
+// No re-renders — read signals imperatively (game loops, frame callbacks)
 const store = useUserContext();
 store.name.current; // 'Alice'
 
@@ -749,7 +750,7 @@ Passing a non-signal key in `renderOn` is a TypeScript error.
 const store = useUserContext({ renderOn: ['score'], throttle: 100 });
 
 // Re-render on the next animation frame when any signal changes
-const store = useUserContext({ renderOn: ALL, rAF: true });
+const store = useUserContext({ renderOn: ALL, frame: true });
 
 // Re-render only when score exceeds 100 — store snapshot passed in, no closure needed
 const store = useUserContext({
@@ -924,7 +925,7 @@ const { GameProvider, useGameContext } = createRefSignalContext(
 useBroadcast(store, { channel: 'game', throttle: 100 });
 ```
 
-`BroadcastOptions` and `BroadcastSignalOptions` accept the same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `rAF`) plus broadcast-specific fields. See the [full reference](broadcast.md#api-reference).
+`BroadcastOptions` and `BroadcastSignalOptions` accept the same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `frame`) plus broadcast-specific fields. See the [full reference](broadcast.md#api-reference).
 
 ---
 
@@ -995,12 +996,12 @@ persist(factory, {
 });
 ```
 
-**Rate-limiting writes** — same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `rAF`) prevent high-frequency updates from hammering storage:
+**Rate-limiting writes** — same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `frame`) prevent high-frequency updates from hammering storage:
 
 ```ts
 persist(factory, { key: 'game', throttle: 200 });       // at most one write per 200ms
 persist(factory, { key: 'game', debounce: 300 });        // write after 300ms quiet
-persist(factory, { key: 'game', rAF: true });            // one write per animation frame
+persist(factory, { key: 'game', frame: true });          // one write per animation frame
 ```
 
 **Filtering writes** — skip writes conditionally without unsubscribing:

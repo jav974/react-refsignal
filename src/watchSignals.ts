@@ -94,7 +94,7 @@ export interface WatchHandle {
  *       const s = outer.current.get(id);
  *       return s ? [s] : [];
  *     },
- *     rAF: true,
+ *     frame: true,
  *   },
  * );
  */

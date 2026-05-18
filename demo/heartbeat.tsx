@@ -59,8 +59,8 @@ export default function Heartbeat() {
     heart.updatePulse(heartRate.current);
   }, [heart]);
 
-  // Badge re-renders on rate change. rAF coalesces the mousemove fan-out.
-  useRefSignalRender([heartRate], { rAF: true });
+  // Badge re-renders on rate change. frame coalesces the mousemove fan-out.
+  useRefSignalRender([heartRate], { frame: true });
 
   // Mouse tracking.
   useEffect(() => {

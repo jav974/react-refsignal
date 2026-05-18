@@ -346,7 +346,7 @@ const Cell = memo(function Cell({
   );
 });
 
-// Same per-cell signal model, but listeners mark pixels dirty and one rAF
+// Same per-cell signal model, but listeners mark pixels dirty and one frame
 // flush does a single putImageData per frame — ~100× faster than DOM mode.
 function CanvasGrid({
   grid,
@@ -361,7 +361,7 @@ function CanvasGrid({
   const { w, h } = dimsOf(grid);
 
   // Per-cell listeners push indices into `dirty` and bump `dirtyBump`. The
-  // flush below subscribes to it with `rAF: true` — N bumps coalesce into one frame.
+  // flush below subscribes to it with `frame: true` — N bumps coalesce into one frame.
   const dirty = useRef(new Set<number>()).current;
   const dirtyBump = useRefSignal(0);
   const paintRef = useRef<{
@@ -426,7 +426,7 @@ function CanvasGrid({
       ctx.putImageData(imgData, 0, 0);
     },
     [dirtyBump, grid, w, h, dirty],
-    { rAF: true },
+    { frame: true },
   );
 
   const handlePointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -519,7 +519,7 @@ export default function GameOfLife() {
   }, [grid, dims.w, dims.h]);
 
   // Tick loop, rate-gated against `frame.elapsed`.
-  const frame = usePulseRefSignal('raf');
+  const frame = usePulseRefSignal('frame');
   const lastTickRef = useRef(0);
   const sampleStartRef = useRef(0);
   useEffect(() => {

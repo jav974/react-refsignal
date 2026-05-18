@@ -638,12 +638,12 @@ describe('watch', () => {
       expect(listener).toHaveBeenCalledWith(3);
     });
 
-    it('rAF: collapses updates into one call per frame', () => {
+    it('frame: collapses updates into one call per frame', () => {
       const raf = setupRafMock();
       try {
         const signal = createRefSignal(0);
         const listener = jest.fn();
-        watch(signal, listener, { rAF: true });
+        watch(signal, listener, { frame: true });
         signal.update(1);
         signal.update(2);
         expect(listener).not.toHaveBeenCalled();
