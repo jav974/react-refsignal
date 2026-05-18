@@ -7,7 +7,7 @@
 - [Signals are mutable refs with subscriptions](#signals-are-mutable-refs-with-subscriptions)
 - [`useRefSignal` vs `createRefSignal`](#userefsignal-vs-createrefsignal)
 - [`useRefSignalEffect` vs `useRefSignalRender`](#userefsignaleffect-vs-userefsignalrender)
-- [`notify()` vs `notifyUpdate()`](#notify-vs-notifyupdate)
+- [Three write paths — `update`, `notifyUpdate`, `notify`](#three-write-paths--update-notifyupdate-notify)
 - [Pulse signals — clocks with tick-context metadata](#pulse-signals--clocks-with-tick-context-metadata)
 - [Signal lifetime](#signal-lifetime)
 
@@ -35,23 +35,24 @@ Two ways to react to signal changes, with different guarantees:
 |---|---|---|
 | Purpose | Run a side effect | Trigger a React re-render |
 | Runs on mount | Yes | No |
-| Concurrent-safe | No | Yes (`useSyncExternalStore`) |
-| Cleanup between fires | No | N/A |
+| Tearing-safe in renders | N/A — runs after commit, not during render | Yes (`useSyncExternalStore`) |
+| Cleanup model | On unmount / deps change (same as `useEffect`) — no per-fire teardown, so 60 FPS consumers don't pay setup cost per frame | On unmount / deps change |
 
 Use `useRefSignalEffect` for imperative work (canvas draws, audio, logging). Use `useRefSignalRender` when JSX needs to reflect the signal's value.
 
 ---
 
-## `notify()` vs `notifyUpdate()`
+## Three write paths — `update`, `notifyUpdate`, `notify`
 
-Both fire all subscribers. The difference is whether `lastUpdated` changes:
+Three distinct jobs, picked by what you did to `.current`:
 
-- **`update(value)`** — runs the interceptor (if any), sets `.current`, bumps `lastUpdated`, fires subscribers.
-- **`reset()`** — calls `.update(initialValue)`, so the interceptor runs, `lastUpdated` is bumped, and subscribers are notified. No-op if already at initial value.
-- **`notifyUpdate()`** — bumps `lastUpdated`, fires subscribers. Use when mutating `.current` directly.
-- **`notify()`** — fires subscribers only. `lastUpdated` is unchanged, so `useRefSignalRender` does **not** re-render. Only `useRefSignalEffect` listeners run.
+- **`update(value)`** — replacement updates. Runs the interceptor (if any) and the equality check, sets `.current`, bumps `lastUpdated`, fires subscribers. Default choice.
+- **`notifyUpdate()`** — you mutated `.current` directly (deep object, large array, hot-path patch). Bumps `lastUpdated`, fires subscribers. The node-editor pattern: one signal per node, mutate position in place, fire.
+- **`notify()`** — fire effects **without** triggering renders. Use when the signal drives an imperative consumer (canvas, audio) and no component renders from it. `useRefSignalRender` watches `lastUpdated` via `useSyncExternalStore`, so it will not pick this up — that's the point.
 
-This distinction matters: `useRefSignalRender` watches `lastUpdated` via `useSyncExternalStore`. If you want to drive a side effect (canvas draw) but never trigger a React re-render, use `notify()`. If you also need components to re-render, use `update()` or `notifyUpdate()`.
+`reset()` is sugar for `update(initialValue)` — same code path, same notifications, no-op if already at initial value.
+
+**Pick by what you did to `.current`, not by frequency.** Assigned a new value → `update`. Mutated in place and components render from it → `notifyUpdate`. Mutated in place and only effects consume it → `notify`.
 
 ---
 

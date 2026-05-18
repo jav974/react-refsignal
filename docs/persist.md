@@ -417,7 +417,7 @@ const position = createRefSignal({ x: 0, y: 0 }, {
 
 These are the same `TimingOptions` used by `useRefSignalRender`, `useRefSignalEffect`, and `broadcast` — the four options are mutually exclusive.
 
-> **Cleanup:** when using `usePersist`, any pending debounce or throttle timer is cancelled on unmount. Use `onUnmount` with `flush` to guarantee the last update is saved despite cancellation.
+> **Cleanup:** pending debounced or throttled writes are cancelled on unmount. Use `onUnmount` with `flush` when the component should own the final write — see below.
 
 ---
 
@@ -426,7 +426,9 @@ These are the same `TimingOptions` used by `useRefSignalRender`, `useRefSignalEf
 `onUnmount` runs when the component unmounts. It receives the current store snapshot and a `flush` function that writes to storage immediately, bypassing `filter` and any pending timer.
 
 ```ts
-// Close the debounce footgun — pending write survives unmount
+// Pending debounced writes are cancelled on unmount.
+// Use onUnmount to flush when the component should own the final write
+// (no broadcast leader logic).
 usePersist(store, {
   key: 'game',
   debounce: 500,

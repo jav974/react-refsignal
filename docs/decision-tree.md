@@ -4,6 +4,10 @@
 
 ---
 
+**Five core hooks**: `useRefSignal`, `useRefSignalEffect`, `useRefSignalRender`, `useRefSignalMemo`, and `usePulseRefSignal`. This tree exists so AI assistants and humans can answer *"which API fits here?"* deterministically — not because the surface is large. The eleven sections below cover every adjacent decision (creation options, derived values, persistence, broadcast, context, batching, periodic firing) so you never have to guess between two near-neighbors.
+
+---
+
 - [1. Signal Creation](#1-signal-creation)
 - [2. Signal Updates](#2-signal-updates)
 - [3. Reacting to Changes](#3-reacting-to-changes)
