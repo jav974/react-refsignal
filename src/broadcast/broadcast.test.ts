@@ -1348,12 +1348,12 @@ describe('branch coverage', () => {
     }
   });
 
-  it('rAF option: collapses rapid updates into one send per frame', () => {
+  it('frame option: collapses rapid updates into one send per frame', () => {
     const raf = setupRafMock();
 
     const store = mountScoreBroadcaster({
       channel: 'raf-bc',
-      rAF: true,
+      frame: true,
     });
 
     const received: unknown[] = [];

@@ -23,10 +23,10 @@ Most React state libraries are *producer-driven*: the store decides when consume
 refsignal inverts that. The signal is just a value with a channel. **Each consumer, at its call site, decides three things independently:**
 
 - **What** to observe — the whole signal, a projection, a derived value
-- **When** to react — synchronous, throttled, debounced, `rAF`, or a custom `filter`
+- **When** to react — synchronous, throttled, debounced, frame-synced, or a custom `filter`
 - **Whether** to render — pure side-effect, or opt into a React re-render
 
-Take a draggable node in a canvas editor. Its position updates sixty times a second. One consumer redraws the connecting curve every frame (`rAF`-paced, no render). Another updates a HUD label, throttled to 100 ms (no render). A third logs to analytics every second. A fourth is a React component watching a derived `isOnscreen` boolean — re-renders only when that flips. **Same signal, four contracts, no coordination.**
+Take a draggable node in a canvas editor. Its position updates sixty times a second. One consumer redraws the connecting curve every frame (frame-synced, no render). Another updates a HUD label, throttled to 100 ms (no render). A third logs to analytics every second. A fourth is a React component watching a derived `isOnscreen` boolean — re-renders only when that flips. **Same signal, four contracts, no coordination.**
 
 Producers can be time-driven too: a pulse signal ticks on a schedule (`'1000ms'`, `'60fps'`, `'raf'`) and slots into the same model — one shared timer per cadence, lazily started, with each consumer rate-limiting on top.
 
@@ -114,7 +114,7 @@ const position = useRefSignal({ x: 0, y: 0 });
 // 1. Redraw a curve every frame — no React render
 useRefSignalEffect(() => {
   drawCurve(canvasRef.current, position.current);
-}, [position], { rAF: true });
+}, [position], { frame: true });
 
 // 2. Update a HUD label, throttled to 100 ms — no React render
 useRefSignalEffect(() => {
@@ -136,7 +136,7 @@ useRefSignalRender([isOnscreen]);
 
 Adding or removing any one of these doesn't affect the others. Reconciliation is on the path only for consumer #4 — and only when the boolean actually flips.
 
-Every hook that subscribes (`useRefSignalEffect`, `useRefSignalRender`, `useRefSignalMemo`, and the framework-agnostic `watch()`) accepts the same options: `throttle`, `debounce`, `rAF`, `filter`, `maxWait`. The producer never participates in the timing decision.
+Every hook that subscribes (`useRefSignalEffect`, `useRefSignalRender`, `useRefSignalMemo`, and the framework-agnostic `watch()`) accepts the same options: `throttle`, `debounce`, `frame`, `filter`, `maxWait`. The producer never participates in the timing decision.
 
 ## Docs
 
@@ -172,7 +172,7 @@ The [Decision Tree](docs/decision-tree.md) is intentionally written as a generat
 | `notify()` vs `notifyUpdate()` | Fire subscribers without or with bumping `lastUpdated` |
 | `createComputedRefSignal` / `useRefSignalMemo` | Derived signals — recompute whenever deps change; module-scope or component-scoped |
 | `watch(signal, listener, options?)` | Subscribe outside React and get a cleanup function back — mirrors `useEffect` return pattern; accepts the same `filter` and timing options as the hooks |
-| `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `rAF` |
+| `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `frame` |
 | `createPulseRefSignal` / `usePulseRefSignal` | A signal that ticks on a schedule — `'1000ms'`, `'60fps'`, `'raf'`. Lazy: the timer runs only while subscribed. Carries `dt`, `tick`, `elapsed` metadata |
 | `updatePulse(rate)` | Change a pulse signal's cadence reactively — drive it from another signal for adaptive heartbeats, backoff, perf-budgeted frames |
 | `createRefSignalStore` / `useRefSignalStore` | Provider-free global store — create at module scope, use in any component with `renderOn` opt-in |
@@ -239,7 +239,7 @@ Use `createRefSignalContext` instead when you need per-subtree isolation — a s
 | Redux | No | Selector-based | Narrowable via selector, but always renders |
 | `useRef` (plain React) | N/A | None | No subscription possible |
 
-react-refsignal is the only entry that can subscribe to a value via a stable React API and not re-render at all. It's also the only entry where each consumer picks its own subscription rate — synchronous, `throttle`, `debounce`, `rAF`, or a custom `filter` — at the call site, independently of the producer.
+react-refsignal is the only entry that can subscribe to a value via a stable React API and not re-render at all. It's also the only entry where each consumer picks its own subscription rate — synchronous, `throttle`, `debounce`, `frame`, or a custom `filter` — at the call site, independently of the producer.
 
 **The closest alternative is @preact/signals-react.** Both libraries let you update values outside React's render cycle and subscribe to those updates. The difference is how:
 

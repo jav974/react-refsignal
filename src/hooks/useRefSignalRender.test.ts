@@ -278,12 +278,12 @@ describe('useRefSignalRender — timing options', () => {
     expect(renders()).toBe(2);
   });
 
-  it('rAF: coalesces any number of updates per frame into one render', () => {
+  it('frame: coalesces any number of updates per frame into one render', () => {
     const raf = setupRafMock();
 
     try {
       const signal = createRefSignal(0);
-      const { renders } = renderWithSignals([signal], { rAF: true });
+      const { renders } = renderWithSignals([signal], { frame: true });
       const fireFrame = () => {
         act(() => {
           raf.fire();
@@ -307,6 +307,28 @@ describe('useRefSignalRender — timing options', () => {
       expect(renders()).toBe(2);
       fireFrame();
       expect(renders()).toBe(3);
+    } finally {
+      raf.restore();
+    }
+  });
+
+  it('rAF (legacy alias): behaves identically to frame', () => {
+    const raf = setupRafMock();
+
+    try {
+      const signal = createRefSignal(0);
+      const { renders } = renderWithSignals([signal], { rAF: true });
+
+      act(() => {
+        signal.update(1);
+        signal.update(2);
+      });
+      expect(renders()).toBe(1);
+
+      act(() => {
+        raf.fire();
+      });
+      expect(renders()).toBe(2);
     } finally {
       raf.restore();
     }

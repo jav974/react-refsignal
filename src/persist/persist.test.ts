@@ -473,12 +473,12 @@ describe('persist() — timing options', () => {
     expect(JSON.parse(storage.store['sig-deb']).data).toBe(2);
   });
 
-  it('store-level rAF: batches writes into animation frames', async () => {
+  it('store-level frame: batches writes into animation frames', async () => {
     const storage = mockStorage();
     const store = mountScoreStore({
       key: 'game',
       storage,
-      rAF: true,
+      frame: true,
     });
     await flush();
 
@@ -486,26 +486,26 @@ describe('persist() — timing options', () => {
     store.score.update(2);
     store.score.update(3);
 
-    // rAF pending — nothing written yet
+    // frame pending — nothing written yet
     expect(storage.store['game']).toBeUndefined();
 
     jest.runAllTimers(); // flush rAF (fake-timers covers requestAnimationFrame)
     expect(JSON.parse(storage.store['game']).data.score).toBe(3);
   });
 
-  it('signal-level rAF: batches writes into animation frames', async () => {
+  it('signal-level frame: batches writes into animation frames', async () => {
     const storage = mockStorage();
     const signal = createRefSignal(0, {
-      persist: { key: 'sig-raf', storage, rAF: true },
+      persist: { key: 'sig-frame', storage, frame: true },
     });
     await flush();
 
     signal.update(1);
     signal.update(2);
-    expect(storage.store['sig-raf']).toBeUndefined();
+    expect(storage.store['sig-frame']).toBeUndefined();
 
     jest.runAllTimers();
-    expect(JSON.parse(storage.store['sig-raf']).data).toBe(2);
+    expect(JSON.parse(storage.store['sig-frame']).data).toBe(2);
   });
 });
 

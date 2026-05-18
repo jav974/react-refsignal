@@ -773,7 +773,7 @@ function CallLine({ agent, agents }: { agent: Agent; agents: Agent[] }) {
 
 function AliveCount({ agents }: { agents: Agent[] }) {
   const sigs = useMemo(() => agents.map((a) => a.alive), [agents]);
-  useRefSignalRender(sigs, { rAF: true });
+  useRefSignalRender(sigs, { frame: true });
   let n = 0;
   for (const a of agents) if (a.alive.current) n++;
   return <Stat label="alive" value={`${n}/${agents.length}`} />;
@@ -784,7 +784,7 @@ function BiggestBadge({ agents }: { agents: Agent[] }) {
     () => agents.flatMap((a) => [a.size, a.alive]),
     [agents],
   );
-  useRefSignalRender(sigs, { rAF: true });
+  useRefSignalRender(sigs, { frame: true });
   let max = 0;
   for (const a of agents) {
     if (a.alive.current && a.size.current > max) max = a.size.current;
@@ -795,7 +795,7 @@ function BiggestBadge({ agents }: { agents: Agent[] }) {
 function CallsCount({ agents }: { agents: Agent[] }) {
   // callTarget slice only — never re-renders on plain position updates.
   const sigs = useMemo(() => agents.map((a) => a.callTarget), [agents]);
-  useRefSignalRender(sigs, { rAF: true });
+  useRefSignalRender(sigs, { frame: true });
   let n = 0;
   for (const a of agents)
     if (a.alive.current && a.callTarget.current !== null) n++;
@@ -807,7 +807,7 @@ function Leaderboard({ agents }: { agents: Agent[] }) {
     () => agents.flatMap((a) => [a.size, a.alive]),
     [agents],
   );
-  useRefSignalRender(sigs, { rAF: true });
+  useRefSignalRender(sigs, { frame: true });
   // Re-sort top-5 in the body. Cheap at N=60.
   const top = [...agents]
     .filter((a) => a.alive.current)
@@ -864,7 +864,7 @@ function TeamRow({ team, agents }: { team: number; agents: Agent[] }) {
     [teamAgents],
   );
   // Re-renders only on its own team's signals — other teams don't trigger anything here.
-  useRefSignalRender(sigs, { rAF: true });
+  useRefSignalRender(sigs, { frame: true });
 
   let alive = 0;
   let mass = 0;

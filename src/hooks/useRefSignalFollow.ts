@@ -49,7 +49,7 @@ export type FollowOptions = Omit<WatchOptions, 'trackSignals'>;
  * const pos = useRefSignalFollow(
  *   () => positions.current.get(id),
  *   [positions, id],
- *   { rAF: true },
+ *   { frame: true },
  * );
  */
 export function useRefSignalFollow<T>(
