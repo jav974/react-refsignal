@@ -8,16 +8,22 @@ import {
 /**
  * The cadence at which a {@link PulseRefSignal} fires.
  *
- * - `number` — fixed interval in milliseconds (uses `setInterval`).
- * - `'Nms'`  — same as the number form, with explicit unit.
- * - `'Nfps'` — frame-aligned cadence throttled to at most N times per
+ * - `number`   — fixed interval in milliseconds (uses `setInterval`).
+ * - `'Nms'`    — same as the number form, with explicit unit.
+ * - `'Nfps'`   — frame-aligned cadence throttled to at most N times per
  *   second (uses `requestAnimationFrame`, so the loop pauses on hidden
  *   tabs).
- * - `'raf'`  — every animation frame, with no throttle. Follows the
+ * - `'frame'`  — every animation frame, with no throttle. Follows the
  *   display's refresh rate (60Hz, 120Hz, 144Hz, …). Use this when you
  *   want "as fast as the screen draws" rather than a target fps.
+ *   `'raf'` is an accepted synonym — both are first-class.
  */
-export type PulseRate = number | `${number}ms` | `${number}fps` | 'raf';
+export type PulseRate =
+  | number
+  | `${number}ms`
+  | `${number}fps`
+  | 'frame'
+  | 'raf';
 
 /**
  * A read-only signal that fires on a schedule. Conceptually a clock primitive.
@@ -88,10 +94,10 @@ function parsePulseRate(rate: PulseRate): ParsedRate {
     return { driver: 'interval', intervalMs: rate };
   }
 
-  // 'raf' — every frame, no throttle. intervalMs: 0 makes the driver's
-  // threshold gate a no-op (see startRAFTimer), so it fires on every
+  // 'frame' / 'raf' — every frame, no throttle. intervalMs: 0 makes the
+  // driver's threshold gate a no-op (see startRAFTimer), so it fires on every
   // requestAnimationFrame callback at the display's native rate.
-  if (rate === 'raf') {
+  if (rate === 'frame' || rate === 'raf') {
     return { driver: 'raf', intervalMs: 0 };
   }
 
@@ -118,7 +124,7 @@ function parsePulseRate(rate: PulseRate): ParsedRate {
   }
 
   throw new Error(
-    `[refsignal] Invalid pulse rate: ${rate}. Expected number | 'Nms' | 'Nfps' | 'raf'.`,
+    `[refsignal] Invalid pulse rate: ${rate}. Expected number | 'Nms' | 'Nfps' | 'frame' (or 'raf').`,
   );
 }
 
@@ -166,16 +172,16 @@ function startIntervalTimer(intervalMs: number, tick: () => void): () => void {
  * stops when subscribers drop back to zero (or on `.dispose()`). Multiple
  * subscribers share a single underlying timer.
  *
- * @param rate Cadence — number of ms, `'Nms'`, `'Nfps'`, or `'raf'`. fps
+ * @param rate Cadence — number of ms, `'Nms'`, `'Nfps'`, or `'frame'`. fps
  *   notation throttles `requestAnimationFrame` to at most N times per
- *   second; `'raf'` fires on every frame at the display's native rate
- *   (60Hz / 120Hz / 144Hz / …); ms notation uses `setInterval`.
+ *   second; `'frame'` (alias `'raf'`) fires on every frame at the display's
+ *   native rate (60Hz / 120Hz / 144Hz / …); ms notation uses `setInterval`.
  *
  * @example
- * const now = createPulseRefSignal('1000ms');  // every second
- * const loop = createPulseRefSignal('60fps');  // throttled to 60
- * const frame = createPulseRefSignal('raf');   // every frame, native rate
- * const tick = createPulseRefSignal(250);      // every 250 ms
+ * const now = createPulseRefSignal('1000ms');   // every second
+ * const loop = createPulseRefSignal('60fps');   // throttled to 60
+ * const frame = createPulseRefSignal('frame');  // every frame, native rate
+ * const tick = createPulseRefSignal(250);       // every 250 ms
  *
  * @example
  * // Auth-token refresh — replaces a setInterval-in-useEffect dance with a

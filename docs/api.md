@@ -105,7 +105,7 @@ A self-firing read-only signal whose `.current` advances to `performance.now()` 
 The cadence accepted by [`createPulseRefSignal`](#createpulserefsignalrate) and [`usePulseRefSignal`](#usepulserefsignalrate).
 
 ```ts
-type PulseRate = number | `${number}ms` | `${number}fps` | 'raf';
+type PulseRate = number | `${number}ms` | `${number}fps` | 'frame' | 'raf';
 ```
 
 | Form | Driver | When to reach for it |
@@ -113,7 +113,7 @@ type PulseRate = number | `${number}ms` | `${number}fps` | 'raf';
 | `number` (e.g. `100`) | `setInterval` | Same as the `'Nms'` form — a bare number is implicitly milliseconds. |
 | `'Nms'` (e.g. `'250ms'`, `'16.67ms'`) | `setInterval` | Continues firing on hidden tabs (subject to browser background-tab throttling). Use for clocks, polling, heartbeats, token refresh. |
 | `'Nfps'` (e.g. `'60fps'`, `'30fps'`) | `requestAnimationFrame` | Throttled to at most N/sec. Use when you specifically want a capped rate (power-saving, retro framelock, sub-display-refresh animation). |
-| `'raf'` | `requestAnimationFrame` | Every frame at the display's native rate (60Hz / 120Hz / 144Hz / …), no throttle. Use for game loops, FPS counters, anything that should run as fast as the screen draws. |
+| `'frame'` / `'raf'` | `requestAnimationFrame` | Every frame at the display's native rate (60Hz / 120Hz / 144Hz / …), no throttle. Use for game loops, FPS counters, anything that should run as fast as the screen draws. Both names are first-class. |
 
 Decimals are accepted in both numeric string forms. A non-positive or non-finite rate throws at construction.
 
@@ -496,7 +496,7 @@ import { createPulseRefSignal } from 'react-refsignal';
 
 const now      = createPulseRefSignal('1000ms');  // every second
 const loop     = createPulseRefSignal('60fps');   // throttled to 60
-const frame    = createPulseRefSignal('raf');     // every frame, native rate
+const frame    = createPulseRefSignal('frame');   // every frame, native rate
 const everyHalf = createPulseRefSignal(500);      // bare number — same as '500ms'
 ```
 

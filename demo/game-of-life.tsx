@@ -519,7 +519,7 @@ export default function GameOfLife() {
   }, [grid, dims.w, dims.h]);
 
   // Tick loop, rate-gated against `frame.elapsed`.
-  const frame = usePulseRefSignal('raf');
+  const frame = usePulseRefSignal('frame');
   const lastTickRef = useRef(0);
   const sampleStartRef = useRef(0);
   useEffect(() => {

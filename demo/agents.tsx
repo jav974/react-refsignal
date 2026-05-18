@@ -1075,7 +1075,7 @@ export default function Agents() {
 
   // Tick loop, rate-gated by `tickSpeed.current` (read directly so speed
   // changes don't restart the subscription).
-  const frame = usePulseRefSignal('raf');
+  const frame = usePulseRefSignal('frame');
   const lastTickRef = useRef(0);
   useEffect(() => {
     if (!running || winner) return;

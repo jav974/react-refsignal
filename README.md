@@ -28,7 +28,7 @@ refsignal inverts that. The signal is just a value with a channel. **Each consum
 
 Take a draggable node in a canvas editor. Its position updates sixty times a second. One consumer redraws the connecting curve every frame (frame-synced, no render). Another updates a HUD label, throttled to 100 ms (no render). A third logs to analytics every second. A fourth is a React component watching a derived `isOnscreen` boolean — re-renders only when that flips. **Same signal, four contracts, no coordination.**
 
-Producers can be time-driven too: a pulse signal ticks on a schedule (`'1000ms'`, `'60fps'`, `'raf'`) and slots into the same model — one shared timer per cadence, lazily started, with each consumer rate-limiting on top.
+Producers can be time-driven too: a pulse signal ticks on a schedule (`'1000ms'`, `'60fps'`, `'frame'`) and slots into the same model — one shared timer per cadence, lazily started, with each consumer rate-limiting on top.
 
 That model is why refsignal holds 60 FPS where a conventional store crawls below 1 FPS in a dense node-editor benchmark: high-frequency consumers don't pay for the render policy of low-frequency ones. Reconciliation isn't on the path unless a consumer explicitly opts in. Outside high-frequency scenarios the same model scales down — components opt into re-renders explicitly via `useRefSignalRender([signal])`, and nothing renders elsewhere.
 
@@ -51,7 +51,7 @@ import { useRef } from 'react';
 import { usePulseRefSignal, useRefSignalEffect } from 'react-refsignal';
 
 function GameCanvas() {
-  const loop = usePulseRefSignal('raf');
+  const loop = usePulseRefSignal('frame');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useRefSignalEffect(() => {
@@ -173,7 +173,7 @@ The [Decision Tree](docs/decision-tree.md) is intentionally written as a generat
 | `createComputedRefSignal` / `useRefSignalMemo` | Derived signals — recompute whenever deps change; module-scope or component-scoped |
 | `watch(signal, listener, options?)` | Subscribe outside React and get a cleanup function back — mirrors `useEffect` return pattern; accepts the same `filter` and timing options as the hooks |
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `frame` |
-| `createPulseRefSignal` / `usePulseRefSignal` | A signal that ticks on a schedule — `'1000ms'`, `'60fps'`, `'raf'`. Lazy: the timer runs only while subscribed. Carries `dt`, `tick`, `elapsed` metadata |
+| `createPulseRefSignal` / `usePulseRefSignal` | A signal that ticks on a schedule — `'1000ms'`, `'60fps'`, `'frame'`. Lazy: the timer runs only while subscribed. Carries `dt`, `tick`, `elapsed` metadata |
 | `updatePulse(rate)` | Change a pulse signal's cadence reactively — drive it from another signal for adaptive heartbeats, backoff, perf-budgeted frames |
 | `createRefSignalStore` / `useRefSignalStore` | Provider-free global store — create at module scope, use in any component with `renderOn` opt-in |
 | `createRefSignalContext` | Per-subtree store with auto-generated Provider and hook — for isolated state per route or section |
