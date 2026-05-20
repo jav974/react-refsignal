@@ -209,6 +209,25 @@ Set `initialElectionDelay: 0` to elect synchronously if you know the tab is alwa
 
 Non-broadcaster tabs still receive incoming updates — they just don't send any.
 
+#### Smoothing leadership transitions — `gracePeriod`
+
+Opt-in window that handles two problems at leadership transitions:
+
+1. **Trailing-emit grace.** A former broadcaster retains emit privileges for `gracePeriod` ms after losing leadership. In-flight work that fires `update()` within this window still propagates to other tabs rather than being silently dropped on the floor.
+2. **Delayed `isStableBroadcaster`.** `useBroadcast` returns a second signal — `isStableBroadcaster` — that flips `true` only after `gracePeriod` ms have elapsed since gaining leadership. Useful for gating work that shouldn't fire during election ambiguity (a fresh leader's first poll, an exclusive write, etc.).
+
+```ts
+const { isBroadcaster, isStableBroadcaster } = useBroadcast(store, {
+  channel: 'metric-poll',
+  mode: 'one-to-many',
+  gracePeriod: 5000,
+});
+```
+
+The delayed flip is **skipped when this tab is alone at election time** (no observed peers) — single-tab initial loads activate `isStableBroadcaster` synchronously with `isBroadcaster`, no useless wait. Grace only applies when there's an actual contested transition to ride out.
+
+Without `gracePeriod` (default): `isStableBroadcaster` always tracks `isBroadcaster` exactly. No trailing emits.
+
 #### Restricting localStorage writes to the leader tab
 
 When `persist` and `broadcast` are combined in `one-to-many` mode, all tabs write to storage by default (each tab reacts to the broadcast update and persists it). If you want only the leader to write, use `useBroadcast`'s `isBroadcaster` signal as the `filter` for `usePersist`:
@@ -230,6 +249,63 @@ function GameProvider({ children }: { children: ReactNode }) {
   return <GameContext.Provider value={store}>{children}</GameContext.Provider>;
 }
 ```
+
+#### Polling under broadcast — preventing fetch-flicker on tab switch
+
+A common pattern: only the elected tab polls an API, but as users switch tabs, leadership changes. Without precaution, each new leader fires a fresh request on transition — a "flicker" of redundant network calls.
+
+Compose `gracePeriod` with a broadcast-shared `lastCompletedAt` so the polling cadence is shared across tabs:
+
+```tsx
+function LeaderPoller() {
+  const store = useMemo(() => ({
+    data:            createRefSignal<Result | null>(null),
+    lastCompletedAt: createRefSignal(0),
+  }), []);
+
+  const { isStableBroadcaster } = useBroadcast(store, {
+    channel: 'metric-poll',
+    mode: 'one-to-many',
+    gracePeriod: 5000,
+  });
+
+  // Use the LAZY variant. The non-lazy `useGetMetricQuery(args, { skip })`
+  // auto-fires when `skip` flips false — that would bypass our cadence gate
+  // and cause a fresh request every time a new tab inherits leadership.
+  // Lazy returns an imperative `trigger`; the cadence effect decides when.
+  const [trigger, { data, fulfilledTimeStamp }] = useLazyGetMetricQuery();
+
+  // Mirror RTK results into shared signals (only the tab that triggered
+  // the fetch sees `data` change from this hook).
+  useEffect(() => {
+    if (fulfilledTimeStamp) store.lastCompletedAt.update(fulfilledTimeStamp);
+    if (data) store.data.update(data);
+  }, [fulfilledTimeStamp, data]);
+
+  // Cadence: only fire if the shared lastCompletedAt is older than the
+  // interval. Gated on isStableBroadcaster — leadership churn doesn't fire
+  // anything, the threshold against shared lastCompletedAt is the only gate.
+  const tick = usePulseRefSignal('500ms');
+  useRefSignalEffect(() => {
+    if (!isStableBroadcaster.current) return;
+    if (Date.now() - store.lastCompletedAt.current < 5000) return;
+    void trigger(undefined);
+  }, [tick, isStableBroadcaster, store.lastCompletedAt, trigger]);
+
+  return <DataView data={store.data} />;
+}
+```
+
+What composes here:
+
+- **Cadence preserved across tab switches.** With the lazy variant, only the cadence effect fires a request. When a new tab inherits leadership mid-cycle, its check `Date.now() - lastCompletedAt < 5000` skips until the threshold is genuinely met. A user rapidly switching between tabs never triggers a fresh request — the global "5 s between polls" invariant holds.
+- **Single network cost per cycle**, even across leadership churn.
+- **Single-tab loads activate instantly** — alone at election time, `isStableBroadcaster` flips synchronously, no 5 s wait before the first poll.
+- **Trailing-emit grace earns its keep.** If a former leader's lazy query was in flight when leadership flipped, the response landing within `gracePeriod` ms still writes to `store.data` and propagates across tabs (the emit gate accepts the write). Other tabs see fresh data without anyone making a second request.
+
+**`isStableBroadcaster` semantics are asymmetric on purpose**: true-flip is delayed by `gracePeriod` (settle before starting work), false-flip is synchronous (stop scheduling new work the moment leadership is lost). The synchronous false-flip stops the cadence effect from firing on a non-leader; in-flight lazy-query promises are *not* automatically aborted — that's why trailing-emit grace works. If you want to abort, capture the trigger's returned promise and call `.abort()` from a separate effect watching leadership loss.
+
+**Why not the non-lazy `useGetMetricQuery` + `skip` pattern?** RTK Query auto-subscribes and fetches when `skip` flips `false`. That bypasses the cadence gate — every new leader fires immediately on the tab switch, defeating the whole point of the shared `lastCompletedAt` invariant.
 
 ---
 
@@ -305,9 +381,11 @@ Options for the `broadcast` field on `createRefSignal` / `useRefSignal`.
 | `frame` | `boolean` | — | One send per animation frame. |
 | `rAF` | `boolean` | — | **Deprecated** alias for `frame`. |
 | `onBroadcasterChange` | `(active: boolean) => void` | — | `one-to-many` only: called when this tab gains or loses broadcaster status. |
+| `onStableBroadcasterChange` | `(active: boolean) => void` | — | `one-to-many` only: called when this tab's *stable* broadcaster state changes. Fires `true` once this tab has been broadcaster for `gracePeriod` ms (or synchronously if alone or `gracePeriod` is unset); fires `false` synchronously on losing broadcaster status. |
 | `heartbeatInterval` | `number` | `300` | `one-to-many` only: how often each tab broadcasts a `hello` for peer discovery, in ms. |
 | `heartbeatTimeout` | `number` | `5000` | `one-to-many` only: consider a tab dead after this silence, in ms. |
 | `initialElectionDelay` | `number` | `400` | `one-to-many` only: grace period in ms before the first election after setup or resume. Should be `≥ heartbeatInterval` so the joiner reliably hears the current leader. Set to `0` for synchronous election (accepts the join-flicker). |
+| `gracePeriod` | `number` | — | `one-to-many` only, opt-in. When set, (a) former broadcaster retains emit privileges for this many ms after losing leadership (trailing-emit window), and (b) `useBroadcast`'s `isStableBroadcaster` signal flips `true` only after this many ms have elapsed since gaining leadership — unless alone at election time, in which case the flip is synchronous. See [Smoothing leadership transitions](#smoothing-leadership-transitions--graceperiod). |
 
 ### `BroadcastOptions<TStore>`
 
@@ -340,12 +418,16 @@ import { useBroadcast } from 'react-refsignal/broadcast';
 function useBroadcast<TStore>(
   store: TStore,
   options: BroadcastOptions<TStore>,
-): { isBroadcaster: RefSignal<boolean> }
+): {
+  isBroadcaster: ReadonlyRefSignal<boolean>;
+  isStableBroadcaster: ReadonlyRefSignal<boolean>;
+}
 ```
 
 Hook variant. Sets up broadcast inside a React Provider; tears down on unmount.
 
-- `isBroadcaster` — a `RefSignal<boolean>` that is `true` when this tab is currently sending updates. Always `true` in `many-to-many` mode. In `one-to-many` mode starts `false` and becomes `true` once this tab wins the leader election.
+- `isBroadcaster` — `true` when this tab is currently sending updates. Always `true` in `many-to-many` mode. In `one-to-many` mode starts `false` and becomes `true` once this tab wins the leader election.
+- `isStableBroadcaster` — `true` when this tab is broadcaster *and* has been for at least `gracePeriod` ms — or synchronously, if alone at election time. Identical to `isBroadcaster` when `gracePeriod` is unset. Use to gate work that shouldn't fire during election ambiguity (e.g., `skip: !isStableBroadcaster.current` on an RTK Query hook). See [Smoothing leadership transitions](#smoothing-leadership-transitions--graceperiod).
 
 ---
 
