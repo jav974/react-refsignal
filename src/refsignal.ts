@@ -387,7 +387,7 @@ export const createComputedSignal = createComputedRefSignal;
  *
  * @example
  * // Frame-synced — collapses rapid updates into one call per animation frame
- * const stop = watch(position, (v) => render(v), { rAF: true });
+ * const stop = watch(position, (v) => render(v), { frame: true });
  *
  * @example
  * // Filtered — only reacts when score is positive

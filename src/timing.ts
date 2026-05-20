@@ -1,5 +1,5 @@
 /**
- * Internal timing utilities for throttle, debounce, and rAF-based scheduling.
+ * Internal timing utilities for throttle, debounce, and frame-based scheduling.
  * Used by useRefSignalRender, useRefSignalEffect, useRefSignalStore, persist, and broadcast
  * to rate-limit re-renders, effects, storage writes, and cross-tab messages.
  */
@@ -9,7 +9,7 @@ import type { ReadonlyRefSignal } from './refsignal';
 
 /**
  * Discriminated union of mutually exclusive timing strategies.
- * Prevents invalid combinations such as `throttle + debounce`, `rAF + throttle`,
+ * Prevents invalid combinations such as `throttle + debounce`, `frame + throttle`,
  * or `maxWait` without `debounce`.
  *
  * Valid shapes:
@@ -17,13 +17,47 @@ import type { ReadonlyRefSignal } from './refsignal';
  * - `{ throttle: N }` — at most one run per N ms (leading + trailing)
  * - `{ debounce: N }` — run after N ms of quiet
  * - `{ debounce: N, maxWait: M }` — debounce with guaranteed flush every M ms
- * - `{ rAF: true }` — one run per animation frame
+ * - `{ frame: true }` — one run per animation frame (uses `requestAnimationFrame`)
+ *
+ * `rAF: true` is a deprecated alias for `frame: true` and still works.
  */
 export type TimingOptions =
-  | { throttle?: never; debounce?: never; maxWait?: never; rAF?: never }
-  | { throttle: number; debounce?: never; maxWait?: never; rAF?: never }
-  | { throttle?: never; debounce: number; maxWait?: number; rAF?: never }
-  | { throttle?: never; debounce?: never; maxWait?: never; rAF: true };
+  | {
+      throttle?: never;
+      debounce?: never;
+      maxWait?: never;
+      frame?: never;
+      rAF?: never;
+    }
+  | {
+      throttle: number;
+      debounce?: never;
+      maxWait?: never;
+      frame?: never;
+      rAF?: never;
+    }
+  | {
+      throttle?: never;
+      debounce: number;
+      maxWait?: number;
+      frame?: never;
+      rAF?: never;
+    }
+  | {
+      throttle?: never;
+      debounce?: never;
+      maxWait?: never;
+      frame: true;
+      rAF?: never;
+    }
+  | {
+      throttle?: never;
+      debounce?: never;
+      maxWait?: never;
+      frame?: never;
+      /** @deprecated Use `frame: true` instead. `rAF` will be removed in a future major version. */
+      rAF: true;
+    };
 
 export interface TimingWrapper {
   call: () => void;
@@ -161,13 +195,14 @@ export function applyTimingOptions(
   fn: () => void,
   options: TimingOptions,
 ): TimingWrapper {
-  const { rAF, throttle, debounce, maxWait } = options as {
+  const { frame, rAF, throttle, debounce, maxWait } = options as {
+    frame?: true;
     rAF?: true;
     throttle?: number;
     debounce?: number;
     maxWait?: number;
   };
-  if (rAF) return createRAF(fn);
+  if (frame || rAF) return createRAF(fn);
   if (throttle !== undefined) return createThrottle(fn, throttle);
   if (debounce !== undefined) return createDebounce(fn, debounce, maxWait);
   return { call: fn, cancel: () => {} };

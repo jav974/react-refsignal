@@ -245,7 +245,7 @@ function SigEdge({ from, to }: { from: RefSignal<Pos>; to: RefSignal<Pos> }) {
       el.setAttribute('y2', String(to.current.y));
     },
     [from, to],
-    { rAF: true },
+    { frame: true },
   );
   return (
     <line

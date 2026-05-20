@@ -47,7 +47,7 @@ import type { WatchOptions } from '../timing';
  * // Options object
  * useRefSignalRender([count], { filter: () => count.current > 5, throttle: 100 });
  * useRefSignalRender([count], { debounce: 200, maxWait: 1000 });
- * useRefSignalRender([count], { rAF: true });
+ * useRefSignalRender([count], { frame: true });
  */
 export function useRefSignalRender(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

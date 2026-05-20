@@ -708,7 +708,7 @@ function WaveformCanvas() {
   useRefSignalEffect(
     () => { drawWaveform(canvasRef.current, store.buffer.current); },
     [store.buffer],
-    { rAF: true },
+    { frame: true },
   );
 
   return <canvas ref={canvasRef} width={800} height={200} />;

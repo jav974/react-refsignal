@@ -101,7 +101,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  *   level: createRefSignal(1),
  * }));
  *
- * // No re-renders — read imperatively (game loops, rAF callbacks)
+ * // No re-renders — read imperatively (game loops, frame callbacks)
  * const store = useRefSignalStore(gameStore);
  *
  * // Re-render when score changes

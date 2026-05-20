@@ -37,7 +37,7 @@ import { createPulseRefSignal, usePulseRefSignal } from 'react-refsignal';
 // Outside React — module scope, context factories, anywhere.
 const now      = createPulseRefSignal('1000ms'); // every second
 const loop     = createPulseRefSignal('60fps');  // throttled to 60
-const frame    = createPulseRefSignal('raf');    // every frame, native rate
+const frame    = createPulseRefSignal('frame');  // every frame, native rate
 const everyHalf = createPulseRefSignal(500);     // number — same as '500ms'
 
 // Inside React — lifetime tied to the component.
@@ -55,7 +55,7 @@ Four accepted rate formats:
 | `number` (e.g. `100`) | `setInterval` | ms — same as the `'Nms'` form |
 | `'Nms'` (e.g. `'250ms'`, `'16.67ms'`) | `setInterval` | ms with explicit unit |
 | `'Nfps'` (e.g. `'60fps'`, `'30fps'`) | `requestAnimationFrame` | throttled to at most N/sec, paused on hidden tabs |
-| `'raf'` | `requestAnimationFrame` | every frame at the display's native rate (60Hz / 120Hz / 144Hz / …), no throttle |
+| `'frame'` | `requestAnimationFrame` | every frame at the display's native rate (60Hz / 120Hz / 144Hz / …), no throttle. `'raf'` is an accepted synonym — both are first-class. |
 
 Decimals are accepted in both numeric string forms.
 
@@ -107,8 +107,8 @@ A pulse signal that is never subscribed to never installs a timer. It costs noth
 
 The rate format picks the driver:
 
-- **`'raf'` → `requestAnimationFrame`, every frame.** Follows the display's native refresh rate — 60Hz, 120Hz, 144Hz, whatever the user has. No throttle gate, no target fps to pick, no skipped frames on a faster display. Pauses on hidden tabs. Use this when "as fast as the screen draws" is what you actually want — game loops, frame-based animation, FPS counters.
-- **`'Nfps'` → `requestAnimationFrame`, throttled to N.** Same RAF driver, but skips frames to cap firing at N/sec. Useful for power-saving (`'30fps'` for a passive animation) or for a target rate that should hold even on a 144Hz display. Note that `'60fps'` on a 60Hz display effectively matches `'raf'`; on a 120Hz display it actively throttles you to ~60. If you're not sure which you want, `'raf'` is usually it.
+- **`'frame'` → `requestAnimationFrame`, every frame.** Follows the display's native refresh rate — 60Hz, 120Hz, 144Hz, whatever the user has. No throttle gate, no target fps to pick, no skipped frames on a faster display. Pauses on hidden tabs. Use this when "as fast as the screen draws" is what you actually want — game loops, frame-based animation, FPS counters. `'raf'` is an accepted synonym.
+- **`'Nfps'` → `requestAnimationFrame`, throttled to N.** Same RAF driver, but skips frames to cap firing at N/sec. Useful for power-saving (`'30fps'` for a passive animation) or for a target rate that should hold even on a 144Hz display. Note that `'60fps'` on a 60Hz display effectively matches `'frame'`; on a 120Hz display it actively throttles you to ~60. If you're not sure which you want, `'frame'` is usually it.
 - **`number` / `'Nms'` → `setInterval`.** Continues firing on hidden tabs (subject to browser's background-tab throttling). Drift may accumulate over long sessions. Use this for clocks, polling, heartbeats, token refresh — anything where missing a tick on a hidden tab would be a bug, not a feature.
 
 You'd reach for `'Nms'` over a number when you want the unit to show up in code review (`'250ms'` reads as a duration; `250` could be anything).
@@ -181,7 +181,7 @@ That's it. No `useEffect`, no stale-closure ref dance, no cleanup forgotten on a
 
 ```tsx
 function Particles() {
-  const loop = usePulseRefSignal('raf');
+  const loop = usePulseRefSignal('frame');
 
   useRefSignalEffect(() => {
     advancePhysics(loop.dt);   // ms since previous tick

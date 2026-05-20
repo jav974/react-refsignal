@@ -200,13 +200,13 @@ describe('useRefSignalEffect — timing options', () => {
     expect(effect).toHaveBeenCalledTimes(2); // one run after quiet
   });
 
-  it('rAF: signal fires collapse into one effect run per frame', () => {
+  it('frame: signal fires collapse into one effect run per frame', () => {
     const raf = setupRafMock();
     const effect = jest.fn();
 
     const { result } = renderHook(() => {
       const signal = useRefSignal(0);
-      useRefSignalEffect(effect, [signal], { rAF: true });
+      useRefSignalEffect(effect, [signal], { frame: true });
       return signal;
     });
 
@@ -223,6 +223,32 @@ describe('useRefSignalEffect — timing options', () => {
       raf.fire();
     });
     expect(effect).toHaveBeenCalledTimes(2); // exactly one run
+
+    raf.restore();
+  });
+
+  it('rAF (legacy alias): behaves identically to frame', () => {
+    const raf = setupRafMock();
+    const effect = jest.fn();
+
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(effect, [signal], { rAF: true });
+      return signal;
+    });
+
+    expect(effect).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.update(1);
+      result.current.update(2);
+    });
+    expect(effect).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      raf.fire();
+    });
+    expect(effect).toHaveBeenCalledTimes(2);
 
     raf.restore();
   });

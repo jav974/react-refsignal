@@ -137,7 +137,7 @@ export function createRefSignalContextHook<TStore extends object>(
  *   sessionId: 'abc123',
  * }))
  *
- * // No re-renders — safe for game loops, PixiJS, rAF callbacks
+ * // No re-renders — safe for game loops, PixiJS, frame callbacks
  * const store = useUserContext()
  * store.name.current // 'Alice'
  *

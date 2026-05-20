@@ -270,7 +270,19 @@ describe('applyTimingOptions', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('rAF: returns a rAF wrapper', () => {
+  it('frame: returns a rAF wrapper', () => {
+    jest.useRealTimers();
+    const raf = setupRafMock();
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { frame: true });
+    wrapper.call();
+    expect(fn).not.toHaveBeenCalled();
+    raf.fire();
+    expect(fn).toHaveBeenCalledTimes(1);
+    raf.restore();
+  });
+
+  it('rAF (legacy alias): returns a rAF wrapper', () => {
     jest.useRealTimers();
     const raf = setupRafMock();
     const fn = jest.fn();

@@ -25,7 +25,13 @@ describe('createPulseRefSignal', () => {
       s.dispose();
     });
 
-    it("accepts 'raf'", () => {
+    it("accepts 'frame'", () => {
+      const s = createPulseRefSignal('frame');
+      expect(typeof s.current).toBe('number');
+      s.dispose();
+    });
+
+    it("accepts 'raf' as a synonym for 'frame'", () => {
       const s = createPulseRefSignal('raf');
       expect(typeof s.current).toBe('number');
       s.dispose();
@@ -70,8 +76,8 @@ describe('createPulseRefSignal', () => {
       );
     });
 
-    it("error message lists 'raf' as an accepted form", () => {
-      expect(() => createPulseRefSignal('hello' as never)).toThrow(/'raf'/);
+    it("error message lists 'frame' as an accepted form", () => {
+      expect(() => createPulseRefSignal('hello' as never)).toThrow(/'frame'/);
     });
 
     it("rejects '0fps' and '0ms'", () => {

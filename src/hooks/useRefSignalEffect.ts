@@ -56,7 +56,7 @@ export type EffectOptions = WatchOptions & {
  * // Frame-synced — multiple signal fires per frame collapse into one effect run
  * useRefSignalEffect(() => {
  *   ctx.fillRect(position.current.x, position.current.y, 20, 20);
- * }, [position], { rAF: true });
+ * }, [position], { frame: true });
  *
  * @example
  * // Throttled — expensive effect runs at most once per 100ms
