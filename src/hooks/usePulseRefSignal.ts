@@ -28,9 +28,12 @@ import { createPulseRefSignal, PulseRate, PulseRefSignal } from '../pulse';
  *   return <TickContext.Provider value={tick}>{children}</TickContext.Provider>;
  * }
  */
-export function usePulseRefSignal(rate: PulseRate): PulseRefSignal {
+export function usePulseRefSignal(
+  rate: PulseRate,
+  debugName?: string,
+): PulseRefSignal {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pulse rate is captured at mount, like other useRefSignal options
-  const signal = useMemo(() => createPulseRefSignal(rate), []);
+  const signal = useMemo(() => createPulseRefSignal(rate, debugName), []);
 
   useEffect(
     () => () => {

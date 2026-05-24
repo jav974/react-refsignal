@@ -1,5 +1,6 @@
 import {
   batch,
+  getDevToolsAdapter,
   isRefSignal,
   RefSignal,
   setSignalPersistAdapter,
@@ -56,6 +57,7 @@ function setupSignalPersist(
   // the signal was updated (e.g. via broadcast state-handoff) while the read
   // was in flight. If it was, hydration is skipped — the newer in-memory state wins.
   const counterAtSetup = signal.lastUpdated;
+  const hydrateStartedAt = performance.now();
 
   void storage.get(key).then((raw) => {
     if (raw !== null && signal.lastUpdated === counterAtSetup) {
@@ -75,6 +77,14 @@ function setupSignalPersist(
         // corrupt — ignore, keep default
       }
     }
+    getDevToolsAdapter()?.emit({
+      kind: 'persist:hydrate',
+      key,
+      scope: 'signal',
+      durationMs: performance.now() - hydrateStartedAt,
+      hadValue: raw !== null,
+      t: Date.now(),
+    });
     onHydrated?.();
   });
 
@@ -90,6 +100,12 @@ function setupSignalPersist(
       .catch(() => {
         // write failed — silently skip
       });
+    getDevToolsAdapter()?.emit({
+      kind: 'persist:write',
+      key,
+      scope: 'signal',
+      t: Date.now(),
+    });
   };
 
   const wrapper = applyTimingOptions(save, options as TimingOptions);
@@ -138,6 +154,7 @@ export function setupPersist<TStore extends object>(
     signalKeys.map((k) => [k, (store[k] as RefSignal).lastUpdated]),
   );
 
+  const hydrateStartedAt = performance.now();
   void storage.get(key).then((raw) => {
     if (raw !== null) {
       try {
@@ -177,6 +194,15 @@ export function setupPersist<TStore extends object>(
         // corrupt — ignore, keep defaults
       }
     }
+    getDevToolsAdapter()?.emit({
+      kind: 'persist:hydrate',
+      key,
+      scope: 'store',
+      durationMs: performance.now() - hydrateStartedAt,
+      hadValue: raw !== null,
+      signalCount: signalKeys.length,
+      t: Date.now(),
+    });
     onHydrated?.(store);
   });
 
@@ -219,6 +245,13 @@ export function setupPersist<TStore extends object>(
       .catch(() => {
         // write failed — silently skip
       });
+    getDevToolsAdapter()?.emit({
+      kind: 'persist:write',
+      key,
+      scope: 'store',
+      signalCount: signalKeys.length,
+      t: Date.now(),
+    });
   };
 
   const wrapper = applyTimingOptions(save, options as TimingOptions);

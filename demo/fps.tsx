@@ -8,7 +8,7 @@ import {
   type PulseRefSignal,
 } from 'react-refsignal';
 
-const defaultPulse = createPulseRefSignal('frame');
+const defaultPulse = createPulseRefSignal('frame', 'fps.defaultPulse');
 
 export function useFps(src?: PulseRefSignal): number {
   const pulse = src ?? defaultPulse;

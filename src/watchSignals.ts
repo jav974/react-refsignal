@@ -13,7 +13,13 @@
  * See `WatchOptions` in `./timing` for option semantics.
  */
 
-import { isRefSignal, type ReadonlyRefSignal } from './refsignal';
+import {
+  getDevToolsAdapter,
+  isRefSignal,
+  nextEffectId,
+  type ReadonlyRefSignal,
+  type RefSignal,
+} from './refsignal';
 import {
   applyTimingOptions,
   type TimingOptions,
@@ -150,13 +156,32 @@ export function watchSignals(
     tracked = nextSet;
   };
 
+  const effectId = nextEffectId('ws');
+  const depCache: RefSignal[] = [];
+
   const flush = () => {
     if (reconcileNeeded) {
       reconcile();
       reconcileNeeded = false;
     }
     if (filter && !filter()) return;
-    onFire();
+
+    const adapter = getDevToolsAdapter();
+    if (!adapter) {
+      onFire();
+      return;
+    }
+    depCache.length = 0;
+    for (const dep of deps) {
+      if (isRefSignal(dep)) depCache.push(dep);
+    }
+    for (const s of tracked) depCache.push(s as RefSignal);
+    adapter.trackEffectStart(effectId, depCache);
+    try {
+      onFire();
+    } finally {
+      adapter.trackEffectEnd(effectId);
+    }
   };
 
   // Cast is safe: applyTimingOptions only reads timing fields.

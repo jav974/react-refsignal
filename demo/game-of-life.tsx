@@ -149,11 +149,13 @@ function dimsOf(grid: RefSignal<number>[][]): { w: number; h: number } {
   return { h: grid.length, w: grid[0]?.length ?? 0 };
 }
 
+type CellSignal = RefSignal<number> & { dispose: () => void };
+
 // Cell value is "age": 0 = dead, n > 0 = alive for n ticks (drives coloring).
-function makeGrid(w: number, h: number): RefSignal<number>[][] {
-  const g: RefSignal<number>[][] = [];
+function makeGrid(w: number, h: number): CellSignal[][] {
+  const g: CellSignal[][] = [];
   for (let y = 0; y < h; y++) {
-    const row: RefSignal<number>[] = [];
+    const row: CellSignal[] = [];
     for (let x = 0; x < w; x++) row.push(createRefSignal(0));
     g.push(row);
   }
@@ -363,7 +365,7 @@ function CanvasGrid({
   // Per-cell listeners push indices into `dirty` and bump `dirtyBump`. The
   // flush below subscribes to it with `frame: true` — N bumps coalesce into one frame.
   const dirty = useRef(new Set<number>()).current;
-  const dirtyBump = useRefSignal(0);
+  const dirtyBump = useRefSignal(0, 'gol.dirtyBump');
   const paintRef = useRef<{
     ctx: CanvasRenderingContext2D;
     pixels: Uint32Array;
@@ -508,6 +510,15 @@ export default function GameOfLife() {
 
   const grid = useMemo(() => makeGrid(dims.w, dims.h), [dims.w, dims.h]);
 
+  // Dispose every cell signal when the grid re-rolls (dims change) or on
+  // unmount. The grid is ~thousands of signals; without cleanup, every
+  // resize would stack the previous generation in the devtools registry.
+  useEffect(() => {
+    return () => {
+      for (const row of grid) for (const cell of row) cell.dispose();
+    };
+  }, [grid]);
+
   // Seed with pulsar, fall back to glider if it doesn't fit.
   useEffect(() => {
     const initial = patternFits(PATTERNS[1], dims.w, dims.h)
@@ -519,7 +530,7 @@ export default function GameOfLife() {
   }, [grid, dims.w, dims.h]);
 
   // Tick loop, rate-gated against `frame.elapsed`.
-  const frame = usePulseRefSignal('frame');
+  const frame = usePulseRefSignal('frame', 'gol.frame');
   const lastTickRef = useRef(0);
   const sampleStartRef = useRef(0);
   useEffect(() => {

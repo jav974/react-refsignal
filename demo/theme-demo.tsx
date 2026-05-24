@@ -24,9 +24,9 @@ const themeStore = createRefSignalStore<ThemeStore>(
   broadcast<ThemeStore>(
     persist<ThemeStore>(
       () => ({
-        bg: createRefSignal('#1a1a2e'),
-        fg: createRefSignal('#e2e8f0'),
-        accent: createRefSignal('#4a9eff'),
+        bg: createRefSignal('#1a1a2e', 'theme.bg'),
+        fg: createRefSignal('#e2e8f0', 'theme.fg'),
+        accent: createRefSignal('#4a9eff', 'theme.accent'),
       }),
       { key: 'refsignal-theme-demo', version: 1 },
     ),
@@ -39,7 +39,7 @@ const themeStore = createRefSignalStore<ThemeStore>(
 type StatusStore = { message: RefSignal<string> };
 
 const statusStore = createRefSignalStore<StatusStore>(() => ({
-  message: createRefSignal(''),
+  message: createRefSignal('', 'theme.status.message'),
 }));
 
 const PRESETS: { name: string; bg: string; fg: string; accent: string }[] = [

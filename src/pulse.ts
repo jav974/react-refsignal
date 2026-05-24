@@ -1,5 +1,6 @@
 import {
   createRefSignal,
+  getDevToolsAdapter,
   Listener,
   listenersMap,
   ReadonlyRefSignal,
@@ -177,6 +178,8 @@ function startIntervalTimer(intervalMs: number, tick: () => void): () => void {
  *   second; `'frame'` (alias `'raf'`) fires on every frame at the display's
  *   native rate (60Hz / 120Hz / 144Hz / …); ms notation uses `setInterval`.
  *
+ * @param debugName string — Signal's name in devtools
+ *
  * @example
  * const now = createPulseRefSignal('1000ms');   // every second
  * const loop = createPulseRefSignal('60fps');   // throttled to 60
@@ -196,10 +199,11 @@ function startIntervalTimer(intervalMs: number, tick: () => void): () => void {
  */
 export function createPulseRefSignal(
   rate: PulseRate,
+  debugName?: string,
 ): PulseRefSignal & { readonly dispose: () => void } {
   let parsed = parsePulseRate(rate);
 
-  const signal = createRefSignal(performance.now());
+  const signal = createRefSignal(performance.now(), debugName);
 
   let dt = 0;
   let tickCount = 0;
@@ -221,6 +225,16 @@ export function createPulseRefSignal(
     tickCount++;
     signal.current = now;
     signal.notifyUpdate();
+
+    getDevToolsAdapter()?.emit({
+      kind: 'pulse:tick',
+      signal,
+      dt,
+      tickCount,
+      elapsed,
+      fps: dt > 0 ? 1000 / dt : 0,
+      t: Date.now(),
+    });
   };
 
   const installTimer = () => {

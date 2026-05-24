@@ -155,6 +155,7 @@ Organized by intent, not by API surface.
 - [Imperative renderers](docs/imperative-renderers.md) — Canvas / Pixi / WebGL / audio driven by signals, bypassing React reconciliation.
 - [Persist](docs/persist.md) — persist signals across page loads (`localStorage`, `sessionStorage`, IndexedDB, custom adapters).
 - [Cross-tab Broadcast](docs/broadcast.md) — sync signals across tabs.
+- [Devtools](docs/devtools.md) — in-page overlay: signals table, update timeline, cascade graph, broadcast/persist/pulse panels.
 
 ## Built for AI-assisted coding
 

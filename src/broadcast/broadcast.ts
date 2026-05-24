@@ -1,4 +1,5 @@
 import {
+  getDevToolsAdapter,
   isRefSignal,
   RefSignal,
   setSignalBroadcastAdapter,
@@ -49,6 +50,10 @@ export function setupBroadcast<TStore extends object>(
 
   // In many-to-many every tab is always a broadcaster; in one-to-many election decides.
   let isBroadcaster = mode === 'many-to-many';
+  // Stability mirror — true means consumers can act on this tab's broadcaster
+  // status without risking races against an in-flight election. Many-to-many
+  // has no election so it's always stable.
+  let isStable = mode === 'many-to-many';
 
   // Grace-period state (one-to-many only).
   // `lostBroadcasterAt` enables the trailing-emit window: when this tab loses
@@ -76,6 +81,12 @@ export function setupBroadcast<TStore extends object>(
     if (active === isBroadcaster) return;
     isBroadcaster = active;
     onBroadcasterChange?.(active);
+    getDevToolsAdapter()?.emit({
+      kind: 'broadcast:status',
+      channel,
+      active,
+      t: Date.now(),
+    });
 
     if (stableTimer !== null) {
       clearTimeout(stableTimer);
@@ -86,17 +97,62 @@ export function setupBroadcast<TStore extends object>(
       lostBroadcasterAt = null;
       const isAlone = tabsLastSeen.size <= 1;
       if (gracePeriod !== undefined && gracePeriod > 0 && !isAlone) {
+        isStable = false;
         stableTimer = setTimeout(() => {
           stableTimer = null;
+          isStable = true;
           onStableBroadcasterChange?.(true);
+          getDevToolsAdapter()?.emit({
+            kind: 'broadcast:stable',
+            channel,
+            stable: true,
+            t: Date.now(),
+          });
         }, gracePeriod);
       } else {
+        isStable = true;
         onStableBroadcasterChange?.(true);
+        getDevToolsAdapter()?.emit({
+          kind: 'broadcast:stable',
+          channel,
+          stable: true,
+          t: Date.now(),
+        });
       }
     } else {
       lostBroadcasterAt = Date.now();
+      isStable = false;
       onStableBroadcasterChange?.(false);
+      getDevToolsAdapter()?.emit({
+        kind: 'broadcast:stable',
+        channel,
+        stable: false,
+        t: Date.now(),
+      });
     }
+  };
+
+  // Bundle config + current status into every peers event — the adapter
+  // routes these to a dedicated store, so the panel always has the latest
+  // snapshot regardless of whether transition events (`broadcast:status` /
+  // `broadcast:stable`) have rotated out of the unified ring.
+  const emitPeers = () => {
+    getDevToolsAdapter()?.emit({
+      kind: 'broadcast:peers',
+      channel,
+      mode,
+      heartbeatInterval,
+      heartbeatTimeout,
+      gracePeriod,
+      isBroadcaster,
+      isStable,
+      count: tabsLastSeen.size,
+      peers: Array.from(tabsLastSeen.entries()).map(([id, lastSeen]) => ({
+        id,
+        lastSeen,
+      })),
+      t: Date.now(),
+    });
   };
 
   // ── Outgoing ────────────────────────────────────────────────────────────────
@@ -124,6 +180,13 @@ export function setupBroadcast<TStore extends object>(
 
   const tabsLastSeen = new Map<string, number>();
 
+  // Surface the channel to devtools immediately. Many-to-many has no
+  // heartbeat → no periodic emitPeers, so this one event is the only way the
+  // panel learns the channel exists. For one-to-many, the heartbeat takes
+  // over from here. Placed after `tabsLastSeen` is declared (emitPeers reads
+  // it — earlier placement would hit TDZ).
+  emitPeers();
+
   // `allowClaim` controls whether this election can promote the current tab
   // to broadcaster. Yields are always allowed — if a lower-ID tab appears
   // mid-cycle we should step down immediately. Claims, however, only happen
@@ -136,6 +199,10 @@ export function setupBroadcast<TStore extends object>(
       if (now - ts >= heartbeatTimeout) tabsLastSeen.delete(id);
     }
     tabsLastSeen.set(TAB_ID, now);
+    // Emit on every election tick (heartbeat-aligned, ~heartbeatInterval rate)
+    // so the panel's per-peer "last seen N ms ago" stays current. Cheap: bounded
+    // to one event per local heartbeat regardless of peer count.
+    emitPeers();
 
     const shouldBe = [...tabsLastSeen.keys()].sort()[0] === TAB_ID;
 
@@ -171,7 +238,9 @@ export function setupBroadcast<TStore extends object>(
         break;
       case 'hello':
         if (mode === 'one-to-many') {
+          const had = tabsLastSeen.has(msg.tabId);
           tabsLastSeen.set(msg.tabId, msg.ts);
+          if (!had) emitPeers();
           // Yield-only election — if a lower-ID tab announced itself we
           // step down immediately. Claims wait for the heartbeat tick so
           // we don't transiently self-elect during a bye+hello crossover.
@@ -180,7 +249,7 @@ export function setupBroadcast<TStore extends object>(
         break;
       case 'bye':
         if (mode === 'one-to-many') {
-          tabsLastSeen.delete(msg.tabId);
+          if (tabsLastSeen.delete(msg.tabId)) emitPeers();
           // Yield-only — losing a peer never justifies claiming here; the
           // next tick decides with a settled view of remaining peers.
           electBroadcaster(false);

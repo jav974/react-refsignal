@@ -266,6 +266,14 @@ function SigGraph({ count }: { count: number }) {
     () => nodes.map((n) => createRefSignal({ ...n })),
     [nodes],
   );
+  // Dispose all per-node signals on unmount or count change — without this
+  // each `count` change leaks the previous generation's N signals to the
+  // devtools registry.
+  useEffect(() => {
+    return () => {
+      for (const s of sigs) s.dispose();
+    };
+  }, [sigs]);
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={svgStyle}>
       {edges.map(([a, b], i) => (
@@ -558,7 +566,7 @@ function RGraph({ count }: { count: number }) {
 function Stats({ mode }: { mode: string }) {
   const fpsRef = useRef<HTMLSpanElement>(null);
   const rpsRef = useRef<HTMLSpanElement>(null);
-  const frame = usePulseRefSignal('raf');
+  const frame = usePulseRefSignal('raf', 'graph.statsFrame');
   const framesRef = useRef(0);
   const lastSampleRef = useRef(0);
   const prevRendersRef = useRef(0);

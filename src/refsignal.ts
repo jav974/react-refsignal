@@ -3,6 +3,19 @@ import type { TimingOptions, WatchOptions } from './timing';
 
 export type Listener<T = unknown> = (value: T) => void;
 
+/**
+ * Generic event shape pushed onto the devtools bus by subsystems (broadcast,
+ * persist, pulse) and by the core itself. `kind` is a colon-namespaced
+ * discriminator (e.g. `'broadcast:peers'`, `'signal:update'`); `t` is a
+ * `Date.now()` timestamp. Subsystems attach their own payload fields beyond
+ * these two — narrowing happens at consumption time in the overlay panels.
+ */
+export interface DevToolsEvent {
+  kind: string;
+  t: number;
+  [extra: string]: unknown;
+}
+
 export interface DevToolsAdapter {
   trackUpdate<T>(signal: RefSignal<T>, oldValue: T, newValue: T): void;
   registerSignal<T>(
@@ -10,11 +23,38 @@ export interface DevToolsAdapter {
     debugName?: string,
   ): (() => void) | undefined;
   getSignalName<T>(signal: RefSignal<T>): string | undefined;
+  /**
+   * Called by core when an effect (watch/watchSignals listener, hook effect
+   * callback) begins running. The adapter pushes onto an internal stack so
+   * any `trackUpdate` calls during the effect can be attributed to it for
+   * cascade-graph edge construction.
+   */
+  trackEffectStart(effectId: string, depSignals: readonly RefSignal[]): void;
+  /** Balanced with `trackEffectStart` — pops the adapter's effect stack. */
+  trackEffectEnd(effectId: string): void;
+  /** Generic bus channel — subsystems push typed events for their panels. */
+  emit(event: DevToolsEvent): void;
+  /**
+   * Called when a signal is touched via `notify()` / `notifyUpdate()` (the
+   * direct-mutation hot path, distinct from `.update()` which carries
+   * old → new diff via `trackUpdate`). Adapter typically throttles these
+   * per-signal to avoid saturating the bus on rAF-driven write loops.
+   */
+  trackNotify<T>(signal: RefSignal<T>): void;
 }
 
 let devtoolsAdapter: DevToolsAdapter | null = null;
 export function setDevToolsAdapter(adapter: DevToolsAdapter | null): void {
   devtoolsAdapter = adapter;
+}
+export function getDevToolsAdapter(): DevToolsAdapter | null {
+  return devtoolsAdapter;
+}
+
+let effectIdCounter = 0;
+/** @internal — generates stable effect IDs for cascade attribution. */
+export function nextEffectId(prefix = 'eff'): string {
+  return `${prefix}_${String(effectIdCounter++)}`;
 }
 
 /** Minimal opaque shape — full `BroadcastSignalOptions` is defined in `react-refsignal/broadcast`. */
@@ -254,9 +294,11 @@ export function createRefSignal<T = unknown>(
     },
     notify: () => {
       notify(signal);
+      devtoolsAdapter?.trackNotify(signal);
     },
     notifyUpdate: () => {
       notifyUpdate(signal);
+      devtoolsAdapter?.trackNotify(signal);
     },
     update: (value: T) => {
       const result = interceptor ? interceptor(value, signal.current) : value;
@@ -401,10 +443,27 @@ export function watch<T>(
   // cleanly. Use `watchSignals([...], onFire, { trackSignals })` for that.
   options?: Omit<WatchOptions, 'trackSignals'>,
 ): () => void {
+  const effectId = nextEffectId('w');
+  const depRef = [signal as unknown as RefSignal] as const;
+
+  const runListener = (value: T): void => {
+    const dev = devtoolsAdapter;
+    if (!dev) {
+      listener(value);
+      return;
+    }
+    dev.trackEffectStart(effectId, depRef);
+    try {
+      listener(value);
+    } finally {
+      dev.trackEffectEnd(effectId);
+    }
+  };
+
   if (!options) {
-    signal.subscribe(listener);
+    signal.subscribe(runListener);
     return () => {
-      signal.unsubscribe(listener);
+      signal.unsubscribe(runListener);
     };
   }
 
@@ -413,7 +472,7 @@ export function watch<T>(
 
   // Cast to TimingOptions — applyTimingOptions only reads timing fields, not filter
   const wrapper = applyTimingOptions(() => {
-    if (!filter || filter()) listener(latest);
+    if (!filter || filter()) runListener(latest);
   }, options as TimingOptions);
 
   const adapter: Listener<T> = (value) => {
@@ -497,7 +556,12 @@ export function batch(
 
         tracked.forEach((dep) => {
           dep.lastUpdated = lastUpdated;
-          dep.notify();
+          // Call the internal `notify` (not `dep.notify()` arrow): each dep
+          // already fired `trackUpdate` during its `.update()` call inside the
+          // batch, so we don't want the arrow's `trackNotify` side-effect to
+          // double-track. Listeners still fire; devtools sees one event per
+          // batched signal.
+          notify(dep);
         });
       }
     }
