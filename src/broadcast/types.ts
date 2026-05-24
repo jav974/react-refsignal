@@ -11,6 +11,13 @@ type BroadcastCommonOptions = {
   /** Called when this tab gains or loses broadcaster status (`mode: 'one-to-many'` only). */
   onBroadcasterChange?: (active: boolean) => void;
   /**
+   * Called when this tab's *stable* broadcaster state changes (`mode: 'one-to-many'` only).
+   * Fires with `true` once this tab has been broadcaster for `gracePeriod` ms — or
+   * synchronously if `gracePeriod` is unset or this tab is alone at election time.
+   * Fires with `false` synchronously when this tab loses broadcaster status.
+   */
+  onStableBroadcasterChange?: (active: boolean) => void;
+  /**
    * How often each tab announces presence with a `hello` heartbeat, in ms.
    * `mode: 'one-to-many'` only. Default: 300.
    *
@@ -23,6 +30,26 @@ type BroadcastCommonOptions = {
   heartbeatInterval?: number;
   /** Consider a tab dead after this many ms of silence. `mode: 'one-to-many'` only. Default: 5000. */
   heartbeatTimeout?: number;
+  /**
+   * Opt-in grace period in ms for leadership transitions. `mode: 'one-to-many'` only.
+   *
+   * When set, two behaviors activate:
+   *
+   * - **Trailing-emit window.** A former broadcaster retains emit privileges for
+   *   `gracePeriod` ms after losing leadership. In-flight work from when this tab
+   *   was leader can still propagate to other tabs instead of being silently dropped.
+   *
+   * - **Delayed `isStableBroadcaster`.** A new broadcaster's `isStableBroadcaster`
+   *   signal flips `true` only after `gracePeriod` ms have elapsed since gaining
+   *   leadership — *unless* this tab is alone (no observed peers at election time),
+   *   in which case the flip is synchronous (no useless wait on single-tab loads).
+   *
+   * Use to gate work that shouldn't fire during election ambiguity — e.g., RTK
+   * Query's `skip: !isStableBroadcaster.current` prevents the new leader from
+   * firing a fresh request the instant after election when the former leader's
+   * trailing data might still be in flight.
+   */
+  gracePeriod?: number;
   /**
    * Delay in ms before running the first election after setup or visibility-resume.
    * `mode: 'one-to-many'` only. Default: 400.

@@ -38,9 +38,11 @@ export function setupBroadcast<TStore extends object>(
     mode = 'many-to-many',
     filter,
     onBroadcasterChange,
+    onStableBroadcasterChange,
     heartbeatInterval = 300,
     heartbeatTimeout = 5000,
     initialElectionDelay = 400,
+    gracePeriod,
   } = options;
 
   const transport: Transport = resolveTransport(channel);
@@ -48,10 +50,59 @@ export function setupBroadcast<TStore extends object>(
   // In many-to-many every tab is always a broadcaster; in one-to-many election decides.
   let isBroadcaster = mode === 'many-to-many';
 
+  // Grace-period state (one-to-many only).
+  // `lostBroadcasterAt` enables the trailing-emit window: when this tab loses
+  // broadcaster status, in-flight work that fires `sendSnapshot` within
+  // `gracePeriod` ms still propagates instead of being silently dropped.
+  // `stableTimer` is the deferred flip of `onStableBroadcasterChange(true)`
+  // after a new election — gives the system time to settle (former leader
+  // emitting trailing data, peers stabilizing) before consumers act.
+  let lostBroadcasterAt: number | null = null;
+  let stableTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const withinTrailingGrace = () =>
+    gracePeriod !== undefined &&
+    gracePeriod > 0 &&
+    lostBroadcasterAt !== null &&
+    Date.now() - lostBroadcasterAt < gracePeriod;
+
+  // Single helper that owns every isBroadcaster transition: flips the flag,
+  // fires onBroadcasterChange, manages the stable-timer and lostBroadcasterAt
+  // bookkeeping, then fires onStableBroadcasterChange at the right moment.
+  // Skips grace (fires stable synchronously) when this tab is alone at the
+  // transition — `tabsLastSeen.size <= 1` — so single-tab loads don't wait
+  // a useless `gracePeriod` before becoming stable.
+  const setBroadcasterStatus = (active: boolean) => {
+    if (active === isBroadcaster) return;
+    isBroadcaster = active;
+    onBroadcasterChange?.(active);
+
+    if (stableTimer !== null) {
+      clearTimeout(stableTimer);
+      stableTimer = null;
+    }
+
+    if (active) {
+      lostBroadcasterAt = null;
+      const isAlone = tabsLastSeen.size <= 1;
+      if (gracePeriod !== undefined && gracePeriod > 0 && !isAlone) {
+        stableTimer = setTimeout(() => {
+          stableTimer = null;
+          onStableBroadcasterChange?.(true);
+        }, gracePeriod);
+      } else {
+        onStableBroadcasterChange?.(true);
+      }
+    } else {
+      lostBroadcasterAt = Date.now();
+      onStableBroadcasterChange?.(false);
+    }
+  };
+
   // ── Outgoing ────────────────────────────────────────────────────────────────
 
   const sendSnapshot = () => {
-    if (!isBroadcaster) return;
+    if (!isBroadcaster && !withinTrailingGrace()) return;
     const snapshot = takeSnapshot(store);
     if (filter && !filter(snapshot as StoreSnapshot<TStore>)) return;
     const msg: Msg<Record<string, unknown>> = {
@@ -89,8 +140,7 @@ export function setupBroadcast<TStore extends object>(
     const shouldBe = [...tabsLastSeen.keys()].sort()[0] === TAB_ID;
 
     if (shouldBe && !isBroadcaster && allowClaim) {
-      isBroadcaster = true;
-      onBroadcasterChange?.(true);
+      setBroadcasterStatus(true);
       transport.post({
         type: 'broadcaster-claim',
         tabId: TAB_ID,
@@ -104,8 +154,7 @@ export function setupBroadcast<TStore extends object>(
         tabId: TAB_ID,
         payload: takeSnapshot(store),
       } satisfies Msg<never>);
-      isBroadcaster = false;
-      onBroadcasterChange?.(false);
+      setBroadcasterStatus(false);
     }
   }
 
@@ -154,8 +203,7 @@ export function setupBroadcast<TStore extends object>(
             tabId: TAB_ID,
             payload: takeSnapshot(store),
           } satisfies Msg<never>);
-          isBroadcaster = false;
-          onBroadcasterChange?.(false);
+          setBroadcasterStatus(false);
         }
         break;
     }
@@ -220,8 +268,7 @@ export function setupBroadcast<TStore extends object>(
   if (mode === 'one-to-many') {
     const yieldRole = () => {
       if (isBroadcaster) {
-        isBroadcaster = false;
-        onBroadcasterChange?.(false);
+        setBroadcasterStatus(false);
       }
       stopHeartbeat();
       tabsLastSeen.delete(TAB_ID);
@@ -249,6 +296,10 @@ export function setupBroadcast<TStore extends object>(
     signals.forEach((s) => {
       s.unsubscribe(wrapper.call);
     });
+    if (stableTimer !== null) {
+      clearTimeout(stableTimer);
+      stableTimer = null;
+    }
     if (onVisibilityChange) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     }

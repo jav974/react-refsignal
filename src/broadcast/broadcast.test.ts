@@ -1657,3 +1657,336 @@ describe('edge cases — persist + broadcast state-handoff race', () => {
     broadcastCleanup();
   });
 });
+
+// ─── gracePeriod — isStableBroadcaster + trailing emit ────────────────────────
+
+describe('gracePeriod — isStableBroadcaster', () => {
+  it('flips true after gracePeriod ms when leader with peers', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'grace-peer',
+        mode: 'one-to-many',
+        initialElectionDelay: 100,
+        gracePeriod: 1000,
+        heartbeatInterval: 2000,
+      }),
+    );
+
+    // Add a higher-ID peer so we're not alone at election time.
+    act(() => {
+      deliverFromOtherTab('grace-peer', {
+        type: 'hello',
+        tabId: 'zzz-peer',
+        ts: Date.now(),
+      });
+    });
+
+    // Election fires.
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    expect(result.current.isBroadcaster.current).toBe(true);
+    expect(result.current.isStableBroadcaster.current).toBe(false);
+
+    // Grace not yet elapsed.
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(result.current.isStableBroadcaster.current).toBe(false);
+
+    // Grace fully elapsed.
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(result.current.isStableBroadcaster.current).toBe(true);
+  });
+
+  it('flips false synchronously on losing leadership', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'grace-lose',
+        mode: 'one-to-many',
+        initialElectionDelay: 100,
+        gracePeriod: 1000,
+        heartbeatInterval: 2000,
+      }),
+    );
+
+    act(() => {
+      deliverFromOtherTab('grace-lose', {
+        type: 'hello',
+        tabId: 'zzz-peer',
+        ts: Date.now(),
+      });
+      jest.advanceTimersByTime(100);
+    });
+
+    // Wait out the grace, become stable.
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(result.current.isStableBroadcaster.current).toBe(true);
+
+    // Lower-ID claim arrives, tab yields.
+    act(() => {
+      deliverFromOtherTab('grace-lose', {
+        type: 'broadcaster-claim',
+        tabId: '0000',
+      });
+    });
+
+    expect(result.current.isBroadcaster.current).toBe(false);
+    expect(result.current.isStableBroadcaster.current).toBe(false);
+  });
+
+  it('flips true synchronously when alone (no peers at election)', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'grace-alone',
+        mode: 'one-to-many',
+        initialElectionDelay: 0,
+        gracePeriod: 5000,
+        heartbeatInterval: 2000,
+      }),
+    );
+
+    // Sole tab — election fires synchronously and grace is skipped.
+    expect(result.current.isBroadcaster.current).toBe(true);
+    expect(result.current.isStableBroadcaster.current).toBe(true);
+
+    // Confirm: no pending timer would fire later.
+    act(() => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(result.current.isStableBroadcaster.current).toBe(true);
+  });
+
+  it('without gracePeriod, behaves identically to isBroadcaster', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'no-grace',
+        mode: 'one-to-many',
+        initialElectionDelay: 100,
+        heartbeatInterval: 2000,
+      }),
+    );
+
+    act(() => {
+      deliverFromOtherTab('no-grace', {
+        type: 'hello',
+        tabId: 'zzz-peer',
+        ts: Date.now(),
+      });
+      jest.advanceTimersByTime(100);
+    });
+
+    // Both flip true together.
+    expect(result.current.isBroadcaster.current).toBe(true);
+    expect(result.current.isStableBroadcaster.current).toBe(true);
+
+    // Both flip false together on yield.
+    act(() => {
+      deliverFromOtherTab('no-grace', {
+        type: 'broadcaster-claim',
+        tabId: '0000',
+      });
+    });
+    expect(result.current.isBroadcaster.current).toBe(false);
+    expect(result.current.isStableBroadcaster.current).toBe(false);
+  });
+
+  it('always true in many-to-many mode', () => {
+    const store = { score: createRefSignal(0) };
+    const { result } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'grace-m2m',
+        gracePeriod: 5000, // even with grace set, no effect in many-to-many
+      }),
+    );
+
+    expect(result.current.isBroadcaster.current).toBe(true);
+    expect(result.current.isStableBroadcaster.current).toBe(true);
+  });
+
+  it('cancels pending stable timer on losing leadership', () => {
+    const store = { score: createRefSignal(0) };
+    const onStable = jest.fn();
+    renderHook(() =>
+      useBroadcast(store, {
+        channel: 'grace-cancel',
+        mode: 'one-to-many',
+        initialElectionDelay: 100,
+        gracePeriod: 1000,
+        heartbeatInterval: 2000,
+        onStableBroadcasterChange: onStable,
+      }),
+    );
+
+    act(() => {
+      deliverFromOtherTab('grace-cancel', {
+        type: 'hello',
+        tabId: 'zzz-peer',
+        ts: Date.now(),
+      });
+      jest.advanceTimersByTime(100);
+    });
+
+    // Stable timer is pending (scheduled for T=1100); advance partway then yield.
+    act(() => {
+      jest.advanceTimersByTime(500);
+      deliverFromOtherTab('grace-cancel', {
+        type: 'broadcaster-claim',
+        tabId: '0000',
+      });
+    });
+
+    // Advance past the original gracePeriod expiry (T=1100) but stay below the
+    // first heartbeat tick (T=2100) so the heartbeat doesn't re-elect us with
+    // a fresh stable timer — that would be a different timer, not the cancel
+    // we're verifying.
+    act(() => {
+      jest.advanceTimersByTime(1000); // T=1600
+    });
+
+    // We should have seen: stable(false) on yield, and never stable(true).
+    expect(onStable).toHaveBeenCalledWith(false);
+    expect(onStable).not.toHaveBeenCalledWith(true);
+  });
+
+  it('cancels pending stable timer on unmount', () => {
+    const store = { score: createRefSignal(0) };
+    const onStable = jest.fn();
+    const { unmount } = renderHook(() =>
+      useBroadcast(store, {
+        channel: 'grace-unmount',
+        mode: 'one-to-many',
+        initialElectionDelay: 100,
+        gracePeriod: 1000,
+        heartbeatInterval: 2000,
+        onStableBroadcasterChange: onStable,
+      }),
+    );
+
+    act(() => {
+      deliverFromOtherTab('grace-unmount', {
+        type: 'hello',
+        tabId: 'zzz-peer',
+        ts: Date.now(),
+      });
+      jest.advanceTimersByTime(100);
+    });
+
+    // Unmount before grace elapses.
+    act(() => {
+      unmount();
+      jest.advanceTimersByTime(5000);
+    });
+
+    expect(onStable).not.toHaveBeenCalledWith(true);
+  });
+});
+
+describe('gracePeriod — trailing emit', () => {
+  it('former leader can emit during gracePeriod window', () => {
+    // Sole-tab setup so this tab is broadcaster from the start.
+    const store = mountScoreBroadcaster({
+      channel: 'grace-trail',
+      mode: 'one-to-many',
+      initialElectionDelay: 0,
+      heartbeatInterval: 2000,
+      gracePeriod: 1000,
+    });
+
+    const received: unknown[] = [];
+    const spy = new MockBC('grace-trail');
+    spy.onmessage = (e) => {
+      if ((e.data as any)?.type === 'update') received.push(e.data);
+    };
+
+    // Lower-ID claim arrives — tab yields (sends state-handoff first).
+    act(() => {
+      deliverFromOtherTab('grace-trail', {
+        type: 'broadcaster-claim',
+        tabId: '0000',
+      });
+    });
+
+    // We're now non-broadcaster but still within gracePeriod.
+    // Update should still propagate as an 'update' message.
+    store.score.update(42);
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as any).payload.score).toBe(42);
+
+    spy.close();
+  });
+
+  it('former leader cannot emit after gracePeriod window', () => {
+    const store = mountScoreBroadcaster({
+      channel: 'grace-trail-expired',
+      mode: 'one-to-many',
+      initialElectionDelay: 0,
+      heartbeatInterval: 2000,
+      gracePeriod: 1000,
+    });
+
+    act(() => {
+      deliverFromOtherTab('grace-trail-expired', {
+        type: 'broadcaster-claim',
+        tabId: '0000',
+      });
+    });
+
+    // Advance past grace window.
+    act(() => {
+      jest.advanceTimersByTime(1100);
+    });
+
+    const received: unknown[] = [];
+    const spy = new MockBC('grace-trail-expired');
+    spy.onmessage = (e) => {
+      if ((e.data as any)?.type === 'update') received.push(e.data);
+    };
+
+    store.score.update(99);
+
+    expect(received).toHaveLength(0);
+
+    spy.close();
+  });
+
+  it('no trailing emit when gracePeriod is unset', () => {
+    const store = mountScoreBroadcaster({
+      channel: 'no-grace-trail',
+      mode: 'one-to-many',
+      initialElectionDelay: 0,
+      heartbeatInterval: 2000,
+      // gracePeriod intentionally omitted
+    });
+
+    act(() => {
+      deliverFromOtherTab('no-grace-trail', {
+        type: 'broadcaster-claim',
+        tabId: '0000',
+      });
+    });
+
+    const received: unknown[] = [];
+    const spy = new MockBC('no-grace-trail');
+    spy.onmessage = (e) => {
+      if ((e.data as any)?.type === 'update') received.push(e.data);
+    };
+
+    // Update immediately after yield — no grace window, should be dropped.
+    store.score.update(7);
+
+    expect(received).toHaveLength(0);
+
+    spy.close();
+  });
+});
