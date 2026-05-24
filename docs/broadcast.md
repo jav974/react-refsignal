@@ -307,6 +307,88 @@ What composes here:
 
 **Why not the non-lazy `useGetMetricQuery` + `skip` pattern?** RTK Query auto-subscribes and fetches when `skip` flips `false`. That bypasses the cadence gate — every new leader fires immediately on the tab switch, defeating the whole point of the shared `lastCompletedAt` invariant.
 
+#### Extracting it as a reusable hook
+
+Once you've seen the pattern, the cadence + broadcast plumbing can fold into a single hook. The caller passes a lazy `trigger` and gets back a broadcast-shared `data` signal:
+
+```tsx
+import { useMemo, useRef } from 'react';
+import {
+  createRefSignal,
+  usePulseRefSignal,
+  useRefSignalEffect,
+  type ReadonlyRefSignal,
+} from 'react-refsignal';
+import { useBroadcast } from 'react-refsignal/broadcast';
+
+interface UseCoordinatedPollOptions<T> {
+  channel: string;
+  interval: number;
+  trigger: () => Promise<T>;
+}
+
+export function useCoordinatedPoll<T>({
+  channel,
+  interval,
+  trigger,
+}: UseCoordinatedPollOptions<T>): {
+  data: ReadonlyRefSignal<T | null>;
+  isStableBroadcaster: ReadonlyRefSignal<boolean>;
+} {
+  const store = useMemo(() => ({
+    data:            createRefSignal<T | null>(null),
+    lastCompletedAt: createRefSignal(0),
+  }), []);
+
+  const triggerRef = useRef(trigger);
+  triggerRef.current = trigger;
+
+  const { isStableBroadcaster } = useBroadcast(store, {
+    channel,
+    mode: 'one-to-many',
+    gracePeriod: interval,
+  });
+
+  const tick = usePulseRefSignal('500ms');
+  useRefSignalEffect(() => {
+    if (!isStableBroadcaster.current) return;
+    if (Date.now() - store.lastCompletedAt.current < interval) return;
+
+    void triggerRef.current().then((payload) => {
+      store.data.update(payload);
+      store.lastCompletedAt.update(Date.now());
+    });
+  }, [tick, isStableBroadcaster, store.lastCompletedAt, interval]);
+
+  return { data: store.data, isStableBroadcaster };
+}
+```
+
+Call site collapses to the essentials — what to fetch, how often, on which channel:
+
+```tsx
+function MetricDashboard() {
+  const [trigger] = useLazyGetMetricQuery();
+
+  const { data } = useCoordinatedPoll({
+    channel: 'metric-poll',
+    interval: 5000,
+    trigger: () => trigger(undefined).unwrap(),
+  });
+
+  return <DataView data={data} />;
+}
+```
+
+Two things to keep in mind when adopting this shape:
+
+- **Broadcast the payload, not just the clock.** `store.data` lives inside the broadcast store, so every tab sees the result — not just the leader that fetched it. A common mistake is to keep `data` as a caller-owned signal updated via an `onData` callback; that saves the network call on follower tabs but leaves them with a stale (or null) view.
+- **`gracePeriod: interval` is a convenient default, not a law.** First-load delay equals `interval` before any poll fires on a contested election. Fine for dashboards on multi-second intervals; if first-paint latency matters, decouple the two (e.g., `gracePeriod: 1000` with `interval: 5000`) — the cadence gate still holds either way.
+
+The `triggerRef` indirection means inline closures (`trigger: () => fetch(...)`) work without `useCallback` — the latest closure is always read at poll time, and the effect's deps stay stable.
+
+Trailing-emit grace covers leadership flips mid-flight: if `trigger()` was in flight when this tab lost leadership, the resolving `store.data.update` and `store.lastCompletedAt.update` calls still propagate (within `gracePeriod` ms), so other tabs see the result without re-fetching.
+
 ---
 
 ## Filtering outgoing updates
