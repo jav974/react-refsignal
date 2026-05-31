@@ -75,6 +75,45 @@ export interface PulseRefSignal extends ReadonlyRefSignal<number> {
    * }, [stamina]);
    */
   readonly updatePulse: (rate: PulseRate) => void;
+  /**
+   * Suspend the pulse while keeping every subscriber attached. The timer stops
+   * firing and the session metrics (`dt`, `tick`, `elapsed`) freeze at their
+   * current values.
+   *
+   * Latching: while paused, even a fresh `0 → 1` subscriber transition will
+   * **not** restart the timer — only {@link resume} does. This is the master
+   * pause for a loop feeding many consumers (a game loop, an animation, a
+   * poll): halt the clock without tearing down and rewiring its listeners.
+   *
+   * No-op if not currently active.
+   */
+  readonly pause: () => void;
+  /**
+   * Resume an already-{@link pause}d or {@link stop}ped pulse. Re-arms the
+   * timer immediately if subscribers are attached (otherwise the next
+   * `0 → 1` subscriber transition starts it, as usual).
+   *
+   * - After `pause()`: metrics **continue** — `tick`/`elapsed` keep their
+   *   values and `elapsed` excludes the paused gap; the next `dt` is measured
+   *   from the resume moment.
+   * - After `stop()`: metrics were cleared, so resuming begins a fresh epoch
+   *   (`tick` from `0`).
+   *
+   * No-op if already active.
+   */
+  readonly resume: () => void;
+  /**
+   * End the current repetition cycle. Halts the timer and **resets** the
+   * session metrics (`dt`, `tick`, `elapsed`) to `0`. Like {@link pause} it is
+   * latching — new subscribers will not restart it; a {@link resume} (or a
+   * fresh `updatePulse`-then-resume) starts a brand-new cycle.
+   *
+   * Distinct from `dispose`: the signal stays usable and re-startable; only
+   * this cycle is cleared.
+   *
+   * No-op if already stopped.
+   */
+  readonly stop: () => void;
 }
 
 interface ParsedRate {
@@ -211,6 +250,9 @@ export function createPulseRefSignal(
   let firstTickTime = 0;
   let lastTickTime = 0;
   let stopTimer: (() => void) | null = null;
+  let runState: 'active' | 'paused' | 'stopped' = 'active';
+
+  const subscriberCount = (): number => listenersMap.get(signal)?.size ?? 0;
 
   const onTick = () => {
     const now = performance.now();
@@ -237,8 +279,23 @@ export function createPulseRefSignal(
     });
   };
 
+  const emitState = () => {
+    getDevToolsAdapter()?.emit({
+      kind: 'pulse:state',
+      signal,
+      state: runState,
+      dt,
+      tickCount,
+      elapsed,
+      t: Date.now(),
+    });
+  };
+
   const installTimer = () => {
     if (typeof window === 'undefined') return;
+    // Reached only while active: start() runs only on the active-state 0 → 1
+    // transition, resume() flips to active before calling, and updatePulse bails
+    // unless a timer is already running (which implies active).
     stopTimer =
       parsed.driver === 'raf'
         ? startRAFTimer(parsed.intervalMs, onTick)
@@ -256,7 +313,7 @@ export function createPulseRefSignal(
     installTimer();
   };
 
-  const stop = () => {
+  const haltTimer = () => {
     if (stopTimer) {
       stopTimer();
       stopTimer = null;
@@ -272,12 +329,45 @@ export function createPulseRefSignal(
     // Continuity: keep tick / elapsed accumulating, only baseline lastTickTime
     // so the next dt reflects the rate change rather than spanning the
     // restart.
-    stop();
+    haltTimer();
     lastTickTime = performance.now();
     installTimer();
   };
 
-  const subscriberCount = (): number => listenersMap.get(signal)?.size ?? 0;
+  const pause = () => {
+    if (runState !== 'active') return;
+    runState = 'paused';
+    haltTimer(); // metrics freeze at their current values
+    emitState();
+  };
+
+  const stop = () => {
+    if (runState === 'stopped') return;
+    runState = 'stopped';
+    haltTimer();
+    // End the cycle: clear the session so the next resume starts fresh.
+    dt = 0;
+    tickCount = 0;
+    elapsed = 0;
+    firstTickTime = 0;
+    lastTickTime = 0;
+    emitState();
+  };
+
+  const resume = () => {
+    if (runState === 'active') return;
+    // Resuming from pause: shift the epoch forward by the idle gap so `elapsed`
+    // excludes paused time and the next `dt` measures from resume rather than
+    // spanning the gap. After stop, counters are already 0 (lastTickTime === 0),
+    // so this is skipped and the next tick begins a fresh epoch.
+    if (lastTickTime > 0) {
+      firstTickTime += performance.now() - lastTickTime;
+    }
+    lastTickTime = performance.now();
+    runState = 'active';
+    if (subscriberCount() > 0) installTimer();
+    emitState();
+  };
 
   const baseSubscribe = signal.subscribe;
   const baseUnsubscribe = signal.unsubscribe;
@@ -287,17 +377,22 @@ export function createPulseRefSignal(
     subscribe: (listener: Listener<number>) => {
       const before = subscriberCount();
       baseSubscribe(listener);
-      if (before === 0 && subscriberCount() === 1) start();
+      // Latching pause/stop: only re-arm on the 0 → 1 transition while active.
+      if (before === 0 && subscriberCount() === 1 && runState === 'active')
+        start();
     },
     unsubscribe: (listener: Listener<number>) => {
       baseUnsubscribe(listener);
-      if (subscriberCount() === 0) stop();
+      if (subscriberCount() === 0) haltTimer();
     },
     dispose: () => {
-      stop();
+      haltTimer();
       baseDispose();
     },
     updatePulse,
+    pause,
+    resume,
+    stop,
   });
 
   Object.defineProperties(signal, {

@@ -88,6 +88,61 @@ describe('RefSignalDevTools — fallback / edge branches', () => {
     p.dispose();
   });
 
+  it('uses the "pulse?" placeholder for a pulse:state with no signal', () => {
+    devtools.emit({ kind: 'pulse:state', state: 'paused', t: 1 });
+    expect(devtools.getPulseStates()[0]?.pulseId).toBe('pulse?');
+  });
+
+  it('uses the "pulse?" placeholder for a pulse:state from an unregistered signal', () => {
+    const p = createRefSignal(0, 'pStateGone');
+    p.dispose();
+    devtools.emit({ kind: 'pulse:state', signal: p, state: 'stopped', t: 1 });
+    expect(devtools.getPulseStates()[0]?.pulseId).toBe('pulse?');
+  });
+
+  it('keeps the prior state/tickCount/elapsed when a pulse:state omits them', () => {
+    const p = createRefSignal(0, 'pState');
+    devtools.emit({
+      kind: 'pulse:state',
+      signal: p,
+      state: 'paused',
+      tickCount: 7,
+      elapsed: 120,
+      t: 1,
+    });
+    // A later event omits state + tickCount + elapsed → existing values stick.
+    devtools.emit({ kind: 'pulse:state', signal: p, t: 2 });
+    const state = devtools.getPulseStates().find((s) => s.pulseId === 'pState');
+    expect(state?.state).toBe('paused');
+    expect(state?.tickCount).toBe(7);
+    expect(state?.elapsedMs).toBe(120);
+    p.dispose();
+  });
+
+  it('drops the sparkline samples when a pulse:state reports stopped', () => {
+    const p = createRefSignal(0, 'pStopClear');
+    // Seed a sample via a tick, then stop — recent must be cleared.
+    devtools.emit({
+      kind: 'pulse:tick',
+      signal: p,
+      dt: 16,
+      fps: 60,
+      tickCount: 1,
+      elapsed: 16,
+      t: 1,
+    });
+    expect(
+      devtools.getPulseStates().find((s) => s.pulseId === 'pStopClear')?.recent
+        .length,
+    ).toBe(1);
+    devtools.emit({ kind: 'pulse:state', signal: p, state: 'stopped', t: 2 });
+    expect(
+      devtools.getPulseStates().find((s) => s.pulseId === 'pStopClear')?.recent
+        .length,
+    ).toBe(0);
+    p.dispose();
+  });
+
   it('applies defaults for omitted broadcast channel fields', () => {
     devtools.emit({ kind: 'broadcast:peers', channel: 'bare', t: 1 });
     const ch = devtools

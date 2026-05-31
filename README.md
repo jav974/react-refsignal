@@ -176,6 +176,7 @@ The [Decision Tree](docs/decision-tree.md) is intentionally written as a generat
 | `EffectOptions` | Gate and rate-limit re-renders and effects via `filter`, `throttle`, `debounce`, `maxWait`, or `frame` |
 | `createPulseRefSignal` / `usePulseRefSignal` | A signal that ticks on a schedule — `'1000ms'`, `'60fps'`, `'frame'`. Lazy: the timer runs only while subscribed. Carries `dt`, `tick`, `elapsed` metadata |
 | `updatePulse(rate)` | Change a pulse signal's cadence reactively — drive it from another signal for adaptive heartbeats, backoff, perf-budgeted frames |
+| `pause()` / `resume()` / `stop()` | Master control for a running pulse without touching its subscribers — `pause` freezes (resume continues the metrics), `stop` ends the cycle (resets `dt`/`tick`/`elapsed`); both latch so a new subscriber won't restart it |
 | `createRefSignalStore` / `useRefSignalStore` | Provider-free global store — create at module scope, use in any component with `renderOn` opt-in |
 | `createRefSignalContext` | Per-subtree store with auto-generated Provider and hook — for isolated state per route or section |
 | Signal lifetime | Listeners are in a `WeakMap` — GC'd when the signal has no references |
