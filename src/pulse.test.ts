@@ -491,6 +491,192 @@ describe('createPulseRefSignal', () => {
     });
   });
 
+  describe('pause / resume / stop', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('pause halts firing while keeping the subscriber attached', () => {
+      const s = createPulseRefSignal(100);
+      const a = jest.fn();
+      s.subscribe(a);
+      jest.advanceTimersByTime(100);
+      expect(a).toHaveBeenCalledTimes(1);
+
+      s.pause();
+      jest.advanceTimersByTime(1000);
+      expect(a).toHaveBeenCalledTimes(1); // no further ticks while paused
+      s.dispose();
+    });
+
+    it('pause clears the underlying interval', () => {
+      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+      const s = createPulseRefSignal(100);
+      s.subscribe(jest.fn());
+      s.pause();
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+      s.dispose();
+      clearIntervalSpy.mockRestore();
+    });
+
+    it('resume after pause continues tick/elapsed, excluding the paused gap', () => {
+      let nowVal = 1000;
+      const perfSpy = jest
+        .spyOn(performance, 'now')
+        .mockImplementation(() => nowVal);
+      const s = createPulseRefSignal(100);
+      s.subscribe(jest.fn());
+
+      nowVal = 1100;
+      jest.advanceTimersByTime(100);
+      nowVal = 1200;
+      jest.advanceTimersByTime(100);
+      expect(s.tick).toBe(2);
+      expect(s.elapsed).toBe(100);
+
+      // Pause right on the last tick boundary; counters freeze.
+      s.pause();
+      expect(s.tick).toBe(2);
+      expect(s.elapsed).toBe(100);
+
+      // 300ms paused gap — no ticks.
+      nowVal = 1500;
+      jest.advanceTimersByTime(1000);
+      expect(s.tick).toBe(2);
+
+      s.resume();
+      // Next tick: tick continues (3), dt measured from resume, elapsed excludes
+      // the 300ms gap (200 = 100 before + 100 active after).
+      nowVal = 1600;
+      jest.advanceTimersByTime(100);
+      expect(s.tick).toBe(3);
+      expect(s.dt).toBe(100);
+      expect(s.elapsed).toBe(200);
+
+      s.dispose();
+      perfSpy.mockRestore();
+    });
+
+    it('pause is latching — a fresh subscriber does NOT restart it', () => {
+      const s = createPulseRefSignal(100);
+      const a = jest.fn();
+      s.subscribe(a);
+      jest.advanceTimersByTime(100);
+      expect(a).toHaveBeenCalledTimes(1);
+
+      s.pause();
+      s.unsubscribe(a);
+      s.subscribe(a); // 0 → 1 transition, but paused — must not start
+      jest.advanceTimersByTime(1000);
+      expect(a).toHaveBeenCalledTimes(1);
+
+      // Only an explicit resume re-arms.
+      s.resume();
+      jest.advanceTimersByTime(100);
+      expect(a).toHaveBeenCalledTimes(2);
+      s.dispose();
+    });
+
+    it('stop halts and resets dt/tick/elapsed to zero', () => {
+      let nowVal = 1000;
+      const perfSpy = jest
+        .spyOn(performance, 'now')
+        .mockImplementation(() => nowVal);
+      const s = createPulseRefSignal(100);
+      const a = jest.fn();
+      s.subscribe(a);
+      nowVal = 1100;
+      jest.advanceTimersByTime(100);
+      nowVal = 1200;
+      jest.advanceTimersByTime(100);
+      expect(s.tick).toBe(2);
+      expect(s.elapsed).toBe(100);
+
+      s.stop();
+      expect(s.tick).toBe(0);
+      expect(s.elapsed).toBe(0);
+      expect(s.dt).toBe(0);
+
+      // Latching: no further ticks even though the subscriber is still attached.
+      jest.advanceTimersByTime(1000);
+      expect(s.tick).toBe(0);
+      expect(a).toHaveBeenCalledTimes(2);
+
+      s.dispose();
+      perfSpy.mockRestore();
+    });
+
+    it('resume after stop begins a fresh epoch', () => {
+      let nowVal = 1000;
+      const perfSpy = jest
+        .spyOn(performance, 'now')
+        .mockImplementation(() => nowVal);
+      const s = createPulseRefSignal(100);
+      s.subscribe(jest.fn());
+      nowVal = 1100;
+      jest.advanceTimersByTime(100);
+      expect(s.tick).toBe(1);
+
+      s.stop();
+      nowVal = 9000; // long gap before resume
+      s.resume();
+
+      // First tick of the fresh epoch: tick 1, elapsed 0, dt from resume.
+      nowVal = 9100;
+      jest.advanceTimersByTime(100);
+      expect(s.tick).toBe(1);
+      expect(s.elapsed).toBe(0);
+      expect(s.dt).toBe(100);
+
+      s.dispose();
+      perfSpy.mockRestore();
+    });
+
+    it('stop is latching against subscriber churn', () => {
+      const s = createPulseRefSignal(100);
+      const a = jest.fn();
+      s.subscribe(a);
+      jest.advanceTimersByTime(100);
+      s.stop();
+      s.unsubscribe(a);
+      s.subscribe(a); // 0 → 1, but stopped — must not start
+      jest.advanceTimersByTime(1000);
+      expect(a).toHaveBeenCalledTimes(1);
+      s.dispose();
+    });
+
+    it('resume with no subscribers waits for the next subscriber', () => {
+      const setIntervalSpy = jest.spyOn(global, 'setInterval');
+      const s = createPulseRefSignal(100);
+      s.stop(); // no subscribers
+      s.resume();
+      expect(setIntervalSpy).not.toHaveBeenCalled(); // nothing to arm yet
+
+      const a = jest.fn();
+      s.subscribe(a); // active again — 0 → 1 starts
+      jest.advanceTimersByTime(100);
+      expect(a).toHaveBeenCalledTimes(1);
+      s.dispose();
+      setIntervalSpy.mockRestore();
+    });
+
+    it('pause / resume / stop are idempotent no-ops in their own state', () => {
+      const s = createPulseRefSignal(100);
+      s.subscribe(jest.fn());
+      expect(() => {
+        s.resume(); // already active
+        s.pause();
+        s.pause(); // already paused
+        s.stop();
+        s.stop(); // already stopped
+      }).not.toThrow();
+      s.dispose();
+    });
+  });
+
   describe('RAF driver (fps notation)', () => {
     let raf: ReturnType<typeof setupRafMock>;
     beforeEach(() => {

@@ -4,6 +4,7 @@
 import { act } from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRefSignal } from '../../../refsignal';
+import { createPulseRefSignal } from '../../../pulse';
 import { devtools } from '../../adapter';
 import { BroadcastPanel } from './BroadcastPanel';
 import { CascadePanel } from './CascadePanel';
@@ -274,6 +275,104 @@ describe('PulsePanel', () => {
     render(<PulsePanel />);
     expect(screen.getByText('noFps')).toBeTruthy();
     expect(screen.getByText('—')).toBeTruthy();
+  });
+
+  const seedPulse = (state: 'active' | 'paused' | 'stopped', name: string) => {
+    const p = createPulseRefSignal(100, name);
+    emit({
+      kind: 'pulse:state',
+      signal: p,
+      state,
+      tickCount: 0,
+      elapsed: 0,
+      dt: 0,
+      t: Date.now(),
+    });
+    return p;
+  };
+
+  it('offers Pause + Stop for an active pulse', () => {
+    const p = seedPulse('active', 'pActive');
+    render(<PulsePanel />);
+    expect(screen.getByText('active')).toBeTruthy();
+    expect(screen.getByText('Pause')).toBeTruthy();
+    expect(screen.getByText('Stop')).toBeTruthy();
+    expect(screen.queryByText('Resume')).toBeNull();
+    p.dispose();
+  });
+
+  it('offers Resume + Stop for a paused pulse', () => {
+    const p = seedPulse('paused', 'pPaused');
+    render(<PulsePanel />);
+    expect(screen.getByText('paused')).toBeTruthy();
+    expect(screen.getByText('Resume')).toBeTruthy();
+    expect(screen.getByText('Stop')).toBeTruthy();
+    expect(screen.queryByText('Pause')).toBeNull();
+    p.dispose();
+  });
+
+  it('offers only Resume for a stopped pulse', () => {
+    const p = seedPulse('stopped', 'pStopped');
+    render(<PulsePanel />);
+    expect(screen.getByText('stopped')).toBeTruthy();
+    expect(screen.getByText('Resume')).toBeTruthy();
+    expect(screen.queryByText('Stop')).toBeNull();
+    expect(screen.queryByText('Pause')).toBeNull();
+    p.dispose();
+  });
+
+  it('wires a control button to the live pulse signal', () => {
+    const p = seedPulse('active', 'pWired');
+    render(<PulsePanel />);
+    act(() => {
+      fireEvent.click(screen.getByText('Pause'));
+    });
+    // The click reached the live signal: its emitted state landed in the adapter
+    // and the chip reflects the single transition.
+    expect(devtools.getPulseStates()[0]?.state).toBe('paused');
+    expect(screen.getByText('paused')).toBeTruthy();
+    p.dispose();
+  });
+
+  it('Stop button ends the cycle on the live pulse', () => {
+    const p = seedPulse('active', 'pStopBtn');
+    render(<PulsePanel />);
+    act(() => {
+      fireEvent.click(screen.getByText('Stop'));
+    });
+    expect(devtools.getPulseStates()[0]?.state).toBe('stopped');
+    p.dispose();
+  });
+
+  it('Resume button reactivates a paused live pulse', () => {
+    const p = createPulseRefSignal(100, 'pResumeBtn');
+    p.pause(); // really pause the signal so the panel shows Resume
+    render(<PulsePanel />);
+    act(() => {
+      fireEvent.click(screen.getByText('Resume'));
+    });
+    expect(devtools.getPulseStates()[0]?.state).toBe('active');
+    p.dispose();
+  });
+
+  it('hides the controls once the pulse is disposed', () => {
+    const p = createPulseRefSignal(100, 'disposed');
+    emit({
+      kind: 'pulse:state',
+      signal: p,
+      state: 'paused',
+      tickCount: 3,
+      elapsed: 300,
+      dt: 0,
+      t: Date.now(),
+    });
+    p.dispose(); // registry entry removed → getPulseControl returns undefined
+
+    render(<PulsePanel />);
+    // The pulse's last state still shows, but the control buttons are gone.
+    expect(screen.getByText('disposed')).toBeTruthy();
+    expect(screen.queryByText('Resume')).toBeNull();
+    expect(screen.queryByText('Pause')).toBeNull();
   });
 });
 

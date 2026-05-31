@@ -92,6 +92,17 @@ export const iconBtn: CSSProperties = {
   fontFamily: 'inherit',
 };
 
+export const controlBtn: CSSProperties = {
+  background: colors.bg,
+  color: colors.text,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 3,
+  cursor: 'pointer',
+  padding: '2px 8px',
+  fontSize: 10,
+  fontFamily: 'inherit',
+};
+
 export const rateSelect: CSSProperties = {
   background: colors.bg,
   color: colors.textMuted,

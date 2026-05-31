@@ -5,6 +5,7 @@ import {
   type DevToolsEvent,
   type RefSignal,
 } from '../refsignal';
+import type { PulseRefSignal } from '../pulse';
 import { currentEffect, popEffect, pushEffect } from './effect-stack';
 
 export interface DevToolsConfig {
@@ -51,6 +52,7 @@ export interface PulseState {
   tickCount: number;
   elapsedMs: number;
   recent: PulseSample[];
+  state: 'active' | 'paused' | 'stopped';
 }
 
 export interface BroadcastPeer {
@@ -302,6 +304,8 @@ class RefSignalDevTools implements DevToolsAdapter {
     //   ever) so it can't ride the ring's eviction policy.
     if (event.kind === 'pulse:tick') {
       this.recordPulseTick(event);
+    } else if (event.kind === 'pulse:state') {
+      this.recordPulseState(event);
     } else if (event.kind === 'broadcast:peers') {
       this.recordBroadcastChannel(event);
     } else {
@@ -321,9 +325,17 @@ class RefSignalDevTools implements DevToolsAdapter {
     const id = sig ? (this.signals.get(sig as object) ?? 'pulse?') : 'pulse?';
     let state = this.pulses.get(id);
     if (!state) {
-      state = { pulseId: id, tickCount: 0, elapsedMs: 0, recent: [] };
+      state = {
+        pulseId: id,
+        tickCount: 0,
+        elapsedMs: 0,
+        recent: [],
+        state: 'active',
+      };
       this.pulses.set(id, state);
     }
+    // A tick means the pulse is live again — clears a prior paused/stopped flag.
+    state.state = 'active';
     state.tickCount =
       (event.tickCount as number | undefined) ?? state.tickCount;
     state.elapsedMs = (event.elapsed as number | undefined) ?? state.elapsedMs;
@@ -337,11 +349,55 @@ class RefSignalDevTools implements DevToolsAdapter {
     }
   }
 
+  private recordPulseState(event: DevToolsEvent): void {
+    const sig = event.signal as RefSignal | undefined;
+    const id = sig ? (this.signals.get(sig as object) ?? 'pulse?') : 'pulse?';
+    let state = this.pulses.get(id);
+    if (!state) {
+      state = {
+        pulseId: id,
+        tickCount: 0,
+        elapsedMs: 0,
+        recent: [],
+        state: 'active',
+      };
+      this.pulses.set(id, state);
+    }
+    state.state =
+      (event.state as PulseState['state'] | undefined) ?? state.state;
+    state.tickCount =
+      (event.tickCount as number | undefined) ?? state.tickCount;
+    state.elapsedMs = (event.elapsed as number | undefined) ?? state.elapsedMs;
+    // A stopped pulse cleared its session — drop the frozen sparkline so the
+    // panel doesn't pair a stale trace with a 0/0 readout.
+    if (state.state === 'stopped') {
+      state.recent = [];
+    }
+  }
+
   getPulseStates(): PulseState[] {
     return Array.from(this.pulses.values()).map((p) => ({
       ...p,
       recent: p.recent.slice(),
     }));
+  }
+
+  /**
+   * Resolve a pulse's imperative controls by id, for the overlay's
+   * pause/resume/stop button. Reads the live signal from the dispose-cleaned
+   * registry, so it returns undefined once the pulse is disposed and the
+   * control hides itself — no strong ref is retained here.
+   */
+  getPulseControl(
+    pulseId: string,
+  ): Pick<PulseRefSignal, 'pause' | 'resume' | 'stop'> | undefined {
+    const sig = this.signalEntries.get(pulseId)?.signal as
+      | Partial<PulseRefSignal>
+      | undefined;
+    if (sig && typeof sig.pause === 'function') {
+      return sig as Pick<PulseRefSignal, 'pause' | 'resume' | 'stop'>;
+    }
+    return undefined;
   }
 
   private recordBroadcastChannel(event: DevToolsEvent): void {

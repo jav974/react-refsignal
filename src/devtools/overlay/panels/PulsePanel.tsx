@@ -65,6 +65,13 @@ export function PulsePanel() {
     <div>
       {pulses.map((p) => {
         const lastFps = p.recent[p.recent.length - 1]?.fps;
+        const control = devtools.getPulseControl(p.pulseId);
+        const stateColor =
+          p.state === 'active'
+            ? s.colors.success
+            : p.state === 'paused'
+              ? s.colors.warn
+              : s.colors.error;
         return (
           <div key={p.pulseId} style={s.card}>
             <div
@@ -72,13 +79,50 @@ export function PulsePanel() {
                 ...s.cardTitle,
                 display: 'flex',
                 justifyContent: 'space-between',
+                alignItems: 'center',
               }}
             >
               <span>{p.pulseId}</span>
-              <span style={s.chip(s.colors.accentDim)}>
-                {lastFps !== undefined ? `${lastFps.toFixed(1)} fps` : '—'}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={s.chip(stateColor)}>{p.state}</span>
+                <span style={s.chip(s.colors.accentDim)}>
+                  {lastFps !== undefined ? `${lastFps.toFixed(1)} fps` : '—'}
+                </span>
               </span>
             </div>
+            {control && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                {p.state === 'active' ? (
+                  <button
+                    style={s.controlBtn}
+                    onClick={() => {
+                      control.pause();
+                    }}
+                  >
+                    Pause
+                  </button>
+                ) : (
+                  <button
+                    style={s.controlBtn}
+                    onClick={() => {
+                      control.resume();
+                    }}
+                  >
+                    Resume
+                  </button>
+                )}
+                {p.state !== 'stopped' && (
+                  <button
+                    style={s.controlBtn}
+                    onClick={() => {
+                      control.stop();
+                    }}
+                  >
+                    Stop
+                  </button>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
               <Sparkline samples={p.recent} />
               <div style={{ flex: 1 }}>

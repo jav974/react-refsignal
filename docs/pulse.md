@@ -15,6 +15,7 @@ It replaces three patterns in one primitive:
 - [Quick start](#quick-start)
 - [The shape of a pulse signal](#the-shape-of-a-pulse-signal)
 - [Lifecycle](#lifecycle)
+  - [Master control — `pause` / `resume` / `stop`](#master-control--pause--resume--stop)
 - [Drivers — `setInterval` vs `requestAnimationFrame`](#drivers--setinterval-vs-requestanimationframe)
 - [Reactive cadences with `updatePulse`](#reactive-cadences-with-updatepulse)
 - [Recipes](#recipes)
@@ -100,6 +101,30 @@ Pulse signals are **lazy**. The timer only runs while the signal has at least on
 **Session reset**, not accumulating state. If subscribers go to zero and back — e.g., a component using the signal unmounts and a sibling remounts — the next session starts fresh: `tick = 0`, `elapsed = 0`. The first new tick's `dt` is measured from the new session start, not from whenever the previous session stopped. Otherwise an idle gap would manifest as a single huge `dt` spike — the wrong thing for game/sim code, and meaningless for clocks.
 
 A pulse signal that is never subscribed to never installs a timer. It costs nothing.
+
+### Master control — `pause` / `resume` / `stop`
+
+The lazy lifecycle is subscriber-driven, which is enough when "end the cycle" means "the last consumer goes away." But when a pulse feeds *many* consumers — a game loop driving 50 systems, an animation, a poll — and you want to halt the clock without tearing down and rewiring every listener, reach for the manual controls. They gate the timer independently of the subscriber count: it runs only while there are subscribers **and** the pulse hasn't been paused or stopped.
+
+```ts
+const loop = createPulseRefSignal('frame');
+loop.subscribe(stepPhysics);
+loop.subscribe(stepAnimation); // …and dozens more
+
+loop.pause();   // freeze: timer stops, dt/tick/elapsed hold their values
+loop.resume();  // continue: tick/elapsed pick up where they left off; the
+                // paused gap is excluded from elapsed, and the next dt is
+                // measured from the resume moment
+loop.stop();    // end the cycle: timer stops AND dt/tick/elapsed reset to 0
+loop.resume();  // after stop, resuming begins a fresh epoch (tick from 0)
+```
+
+- **Both `pause` and `stop` latch.** While paused or stopped, even a fresh `0 → 1` subscriber transition will *not* restart the timer — only `resume()` does. This is what makes it a *master* pause: subscriber churn can't silently un-pause your loop.
+- **`pause` preserves, `stop` clears.** `pause` is a suspend/continue (the metrics survive); `stop` ends the current repetition cycle (the metrics reset, so the next start is a clean epoch).
+- **Distinct from `dispose`.** `dispose` is terminal — it tears down the signal. `stop` leaves the signal fully usable; you can `resume()` (or `updatePulse(...)` then `resume()`) for a brand-new cycle later.
+- Each is a no-op in its own state — `pause()` while paused, `resume()` while active, `stop()` while stopped.
+
+The overlay devtools surface these too: the Pulse panel shows each pulse's state and a button to pause/resume/stop it live.
 
 ---
 
