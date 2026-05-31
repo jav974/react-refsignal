@@ -1,17 +1,13 @@
-// Manual draggable-graph demo — all 9 modes (refsignal & each competitor
-// in both blessed and escape-hatch flavors). Crank the slider, drag a
-// node, watch FPS + renders/sec.
+// Manual canvas demo — same 9 modes as graph-benchmark.tsx but rendered
+// through a single <canvas> (per mode) instead of an SVG element tree.
 //
-// All implementations live in ./bench/{refsignal,jotai,zustand,mobx,
-// react-memo}.tsx — this file is just the toolbar, slider, and the
-// shared mode dispatcher. The same components power
-// graph-benchmark-automated.tsx (autobench), so a change in any mode is
-// visible in both demos.
+// Each Graph component in ./bench/<lib>.tsx has both an SVG branch and a
+// canvas branch; this file just forces renderer="canvas" via ModeGraph
+// regardless of URL params.
 //
-// On this `#graph` route BENCH.durationSec stays 0 (no `?autodrag` query
-// param), so each Graph's `{AUTOMATED && <…AutoDriver/>}` clause stays
-// disabled — you get the pointer-drag interaction without the programmatic
-// sweep.
+// On this `#canvas` route BENCH.durationSec stays 0, so the AutoDriver
+// inside each Graph stays disabled and you interact with the canvas via
+// pointer drag.
 
 import React, { useMemo, useState } from 'react';
 import { countEdges, resetRenders } from './bench/shared';
@@ -34,7 +30,7 @@ function btnStyle(active: boolean, color: string): React.CSSProperties {
   };
 }
 
-export default function GraphBenchmark() {
+export default function GraphBenchmarkCanvas() {
   const [mode, setMode] = useState<Mode>('signal');
   const [count, setCount] = useState(100);
   const edges = useMemo(() => countEdges(count), [count]);
@@ -68,6 +64,7 @@ export default function GraphBenchmark() {
           flexWrap: 'wrap',
         }}
       >
+        <b style={{ fontSize: 13, marginRight: 4 }}>CANVAS</b>
         {MODE_ORDER.map((m) => (
           <button
             key={m}
@@ -124,9 +121,21 @@ export default function GraphBenchmark() {
         {meta.hint}
       </div>
 
-      {/* graph */}
-      <div style={{ flex: 1, overflow: 'hidden', padding: 8 }}>
-        <ModeGraph key={`${mode}-${count}`} mode={mode} count={count} />
+      {/* canvas */}
+      <div
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: 8,
+          background: '#1a1a2e',
+        }}
+      >
+        <ModeGraph
+          key={`${mode}-${count}`}
+          mode={mode}
+          count={count}
+          renderer="canvas"
+        />
       </div>
     </div>
   );

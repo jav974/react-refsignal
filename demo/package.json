@@ -18,6 +18,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "jotai": "^2.19.1",
+    "mobx": "^6.15.4",
+    "mobx-react-lite": "^4.1.1",
     "typescript": "^5.8.3",
     "vite": "^8.0.8",
     "zustand": "^5.0.12"
