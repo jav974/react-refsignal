@@ -11,6 +11,7 @@ export type {
   SignalOptions,
   Interceptor,
   DevToolsAdapter,
+  DevToolsEvent,
   SignalBroadcastInput,
   SignalPersistInput,
 } from './refsignal';

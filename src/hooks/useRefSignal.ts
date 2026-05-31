@@ -98,5 +98,14 @@ export function useRefSignal<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- persist is a mount-time option; signal is stable for the component lifetime
   }, []);
 
+  // Dispose on unmount
+  useEffect(
+    () => () => {
+      signal.dispose();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   return signal;
 }

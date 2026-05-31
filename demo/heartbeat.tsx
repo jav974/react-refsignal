@@ -25,13 +25,13 @@ function rateFromDistance(d: number): number {
 }
 
 export default function Heartbeat() {
-  const mouse = useRefSignal({ x: 0, y: 0 });
+  const mouse = useRefSignal({ x: 0, y: 0 }, 'heartbeat.mouse');
   const circleRef = useRef<HTMLDivElement>(null);
   const center = useRef({ x: 0, y: 0 });
 
   // Initial cadence is the resting rate; updatePulse below wires it to the
   // computed `heartRate` so cadence becomes reactive data.
-  const heart = usePulseRefSignal(MAX_MS);
+  const heart = usePulseRefSignal(MAX_MS, 'heartbeat.pulse');
 
   // Derived rate: mouse-to-circle distance → ms interval.
   const heartRate = useRefSignalMemo(() => {

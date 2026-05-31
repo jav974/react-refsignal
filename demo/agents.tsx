@@ -13,6 +13,7 @@ import {
   useRefSignalRender,
   type RefSignal,
 } from 'react-refsignal';
+import { createDemoScope } from './demoScope';
 import { FpsBadge } from './fps';
 
 // ---------------------------------------------------------------
@@ -26,9 +27,9 @@ type Agent = {
   team: number;
   hue: number;
   name: string;
-  position: RefSignal<Vec>;
-  size: RefSignal<number>;
-  alive: RefSignal<boolean>;
+  position: RefSignal<Vec> & { dispose: () => void };
+  size: RefSignal<number> & { dispose: () => void };
+  alive: RefSignal<boolean> & { dispose: () => void };
   vx: number;
   vy: number;
   kills: number;
@@ -36,14 +37,14 @@ type Agent = {
   targetId: number | null;
   threatId: number | null;
   // Broadcast for same-team call adoption (HEARING radius).
-  callTarget: RefSignal<number | null>;
+  callTarget: RefSignal<number | null> & { dispose: () => void };
 };
 
 type Pellet = {
   id: number;
   x: number;
   y: number;
-  alive: RefSignal<boolean>;
+  alive: RefSignal<boolean> & { dispose: () => void };
   deadTicks: number;
 };
 
@@ -113,14 +114,17 @@ const NOUN = [
   'Drake',
 ];
 
-// Last N kills — feeds the Killcam component.
-const killFeed = createRefSignal<KillEvent[]>([]);
-
-// Module-scope ticks/sec target. RAF loop reads `.current` directly so speed
-// changes don't restart the subscription.
-const tickSpeed = createRefSignal(60);
+// Killcam feed + tick-rate target — module-scope (referenced by simulation
+// helpers like `pushKill` that aren't React components). Wrapped in a demo
+// scope so they're disposed when this route unmounts and recreated on
+// remount, instead of stacking in devtools across navigations.
+const demo = createDemoScope(() => ({
+  killFeed: createRefSignal<KillEvent[]>([], 'agents.killFeed'),
+  tickSpeed: createRefSignal(60, 'agents.tickSpeed'),
+}));
 
 function pushKill(ev: KillEvent) {
+  const { killFeed } = demo.state();
   killFeed.update([ev, ...killFeed.current].slice(0, KILLCAM_MAX));
 }
 
@@ -923,6 +927,7 @@ function TeamRow({ team, agents }: { team: number; agents: Agent[] }) {
 }
 
 function Killcam() {
+  const { killFeed } = demo.state();
   useRefSignalRender([killFeed]);
   const events = killFeed.current;
 
@@ -1004,6 +1009,8 @@ function WinnerBanner({
 // ---------------------------------------------------------------
 
 export default function Agents() {
+  demo.useLifetime();
+  const { killFeed, tickSpeed } = demo.state();
   const [seed, setSeed] = useState(0);
   const [count, setCount] = useState<Count>(DEFAULT_COUNT);
   const [running, setRunning] = useState(true);
@@ -1050,6 +1057,26 @@ export default function Agents() {
     [pelletCount, world, seed],
   );
 
+  // Dispose the previous generation's per-agent / per-pellet signals when
+  // the memos re-roll (count/world/seed change), and on unmount. Each agent
+  // owns 4 signals × N agents, plus 1 per pellet — without cleanup, every
+  // reset would stack hundreds of dead signals in the devtools registry.
+  useEffect(() => {
+    return () => {
+      for (const a of agents) {
+        a.position.dispose();
+        a.size.dispose();
+        a.alive.dispose();
+        a.callTarget.dispose();
+      }
+    };
+  }, [agents]);
+  useEffect(() => {
+    return () => {
+      for (const p of pellets) p.alive.dispose();
+    };
+  }, [pellets]);
+
   // Reset round-state on agent-identity change.
   useEffect(() => {
     killFeed.update([]);
@@ -1057,7 +1084,7 @@ export default function Agents() {
     setTickN(0);
     setRunning(true);
     setControlledId(null);
-  }, [agents]);
+  }, [agents, killFeed]);
 
   // Auto-release control when the controlled agent dies.
   useEffect(() => {
@@ -1075,7 +1102,7 @@ export default function Agents() {
 
   // Tick loop, rate-gated by `tickSpeed.current` (read directly so speed
   // changes don't restart the subscription).
-  const frame = usePulseRefSignal('frame');
+  const frame = usePulseRefSignal('frame', 'agents.frame');
   const lastTickRef = useRef(0);
   useEffect(() => {
     if (!running || winner) return;
@@ -1212,6 +1239,7 @@ export default function Agents() {
 // ---------------------------------------------------------------
 
 function SpeedControl() {
+  const { tickSpeed } = demo.state();
   useRefSignalRender([tickSpeed]);
   return (
     <label style={sliderLabel}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { mountDevTools } from '../src/devtools';
 import GraphBenchmark from './graph-benchmark';
 import ThemeDemo from './theme-demo';
 import GameOfLife from './game-of-life';
@@ -36,7 +37,9 @@ function Demos() {
       <nav
         style={{
           position: 'fixed',
-          bottom: 12,
+          // Sit above the devtools dock when present; degrade to plain 12px
+          // bottom when the var isn't set (overlay unmounted or prod build).
+          bottom: 'calc(var(--refsignal-devtools-height, 0px) + 12px)',
           right: 12,
           zIndex: 100,
           display: 'flex',
@@ -86,4 +89,5 @@ function navBtn(active: boolean): React.CSSProperties {
   };
 }
 
+mountDevTools();
 createRoot(document.getElementById('root')!).render(<Demos />);
