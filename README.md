@@ -18,7 +18,7 @@ Built for UIs where React's render cycle is the bottleneck: **node editors (n8n-
 
 ## Why
 
-Most React state libraries are *producer-driven*: the store decides when consumers are notified, and selectors, equality functions, or observer wrappers narrow it from there. The producer dictates the contract.
+Most React state libraries give the consumer one real lever: *what* to watch — a Zustand or Redux selector, a Jotai atom, or the reads a MobX / Valtio / signals graph auto-tracks. The library owns the rest: a tracked change becomes a synchronous re-render, every time. *When* you react and *whether* you render at all aren't yours to set.
 
 refsignal inverts that. The signal is just a value with a channel. **Each consumer, at its call site, decides three things independently:**
 
@@ -30,7 +30,7 @@ Take a draggable node in a canvas editor. Its position updates sixty times a sec
 
 Producers can be time-driven too: a pulse signal ticks on a schedule (`'1000ms'`, `'60fps'`, `'frame'`) and slots into the same model — one shared timer per cadence, lazily started, with each consumer rate-limiting on top.
 
-That model is why refsignal holds 60 FPS where a conventional store crawls below 1 FPS in a dense node-editor benchmark: high-frequency consumers don't pay for the render policy of low-frequency ones. Reconciliation isn't on the path unless a consumer explicitly opts in. Outside high-frequency scenarios the same model scales down — components opt into re-renders explicitly via `useRefSignalRender([signal])`, and nothing renders elsewhere.
+That model is what keeps a dense node editor responsive: high-frequency consumers don't pay for the render policy of low-frequency ones, and reconciliation isn't on the path unless a consumer explicitly opts in. And that behavior is the default — the first thing you write, not an opt-out you wire up per component. Outside high-frequency scenarios the same model scales down: components opt into re-renders explicitly via `useRefSignalRender([signal])`, and nothing renders elsewhere.
 
 `useRef` gets you out of the render cycle, but a ref is silent — nothing can subscribe. Build the subscription channel yourself and you're writing this library from scratch. refsignal is that primitive: **a ref with a per-consumer subscription channel**, built on stable, public React APIs (`useSyncExternalStore` for renders, direct listeners for effects). No compiler, no proxy, no patched internals.
 
@@ -229,18 +229,21 @@ Use `createRefSignalContext` instead when you need per-subtree isolation — a s
 
 ## How it compares
 
-| Library | Subscribe without re-render | Subscription model | Default reactivity |
-|---|---|---|---|
-| react-refsignal | Yes — via `useRefSignalEffect` | Direct listeners | Off — opt in via `useRefSignalRender` |
-| @preact/signals-react | Yes — patches React internals | Auto-tracked | On — any signal read in render |
-| Jotai | No | Atom-based | On — `useAtom` triggers re-renders |
-| Zustand | No | Selector-based | Narrowable via selector, but always renders |
-| MobX | No | Observable graph | On within `observer()` wrapper |
-| Valtio | No | Proxy snapshots | On — proxy auto-tracks |
-| Redux | No | Selector-based | Narrowable via selector, but always renders |
-| `useRef` (plain React) | N/A | None | No subscription possible |
+Almost every production state library has a low-level `subscribe()` primitive — it's what their React bindings are built on top of. So "can you update without re-rendering?" is the wrong question: for most of them the answer is *yes, if you drop beneath the blessed API*. The honest questions are **what the default path costs you**, and whether per-consumer timing control exists at all.
 
-react-refsignal is the only entry that can subscribe to a value via a stable React API and not re-render at all. It's also the only entry where each consumer picks its own subscription rate — synchronous, `throttle`, `debounce`, `frame`, or a custom `filter` — at the call site, independently of the producer.
+| Library | Out-of-render updates | Per-consumer timing | Default React binding |
+|---|---|---|---|
+| **react-refsignal** | **The default** — `useRefSignalEffect` | **Built in** — `throttle` / `debounce` / `frame` / `filter`, per call site | Effect, no render |
+| @preact/signals-react | Default — patches React internals | No | Re-render on signal read |
+| Jotai | Escape hatch — `store.sub(atom, …)` | Build it yourself | `useAtom` re-renders |
+| Zustand | Escape hatch — `subscribe` + `subscribeWithSelector` | Build it yourself | `useStore(selector)` re-renders |
+| MobX | Escape hatch — `autorun` / `reaction` | Build it yourself | `observer()` re-renders |
+| Valtio | Escape hatch — `subscribe()` | Build it yourself | `useSnapshot()` re-renders |
+| Redux | Escape hatch — `store.subscribe()` | Build it yourself | `useSelector` re-renders |
+
+The differentiator isn't capability — it's the **default**. In Jotai, Zustand, MobX, Valtio, and Redux, subscribing without a re-render means leaving the API every tutorial teaches, opting out per component, writing several times more wiring per node, and (for Zustand) remembering `subscribeWithSelector` or getting bitten by a footgun where every listener fires on every mutation. In refsignal, `useRefSignalEffect` *is* the first thing you reach for, and per-consumer rate control (`throttle`, `debounce`, `frame`, `filter`) ships in the same options bag. The [draggable-graph benchmark](docs/benchmark.md) confirms the others land in refsignal's FPS band *once you take the escape hatch* — **same engine, different default.**
+
+Past that performance floor, refsignal ships primitives the others' imperative APIs have no clean parallel for: computed signals with auto-tracked dependencies, rAF/timer pulse signals for animation work, broadcast + persist adapters with election semantics, zero-setup devtools, and cascade interceptors (`CANCEL`) for iterative solvers.
 
 **The closest alternative is @preact/signals-react.** Both libraries let you update values outside React's render cycle and subscribe to those updates. The difference is how:
 

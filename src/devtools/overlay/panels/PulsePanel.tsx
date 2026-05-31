@@ -20,7 +20,11 @@ const Sparkline = ({ samples }: { samples: PulseSample[] }) => {
       </svg>
     );
   }
-  const max = Math.max(...samples.map((sa) => sa.fps), 60);
+  // Scale the y-axis to the highest fps observed in the window, so a frame
+  // pulse self-fits its display's refresh rate (60 / 120 / 144Hz) instead of a
+  // hardcoded baseline. Falls back to 1 for an all-zero / empty window (÷0).
+  const peak = Math.max(...samples.map((sa) => sa.fps));
+  const max = peak > 0 ? peak : 1;
   const min = 0;
   const points = samples
     .map((sa, i) => {

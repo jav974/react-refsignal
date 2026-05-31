@@ -250,6 +250,31 @@ describe('PulsePanel', () => {
     expect(screen.getByText('5')).toBeTruthy(); // tick count
     expect(container.querySelector('polyline')).toBeTruthy();
   });
+
+  it('shows an em dash for the fps chip when the latest sample has no fps', () => {
+    const fake = createRefSignal(0, 'noFps');
+    // Two ticks (past "warming up") but with fps omitted on the events, so
+    // the last sample's fps is undefined → header chip falls back to '—'.
+    emit({
+      kind: 'pulse:tick',
+      signal: fake,
+      dt: 16,
+      tickCount: 1,
+      elapsed: 16,
+      t: Date.now(),
+    });
+    emit({
+      kind: 'pulse:tick',
+      signal: fake,
+      dt: 16,
+      tickCount: 2,
+      elapsed: 32,
+      t: Date.now() + 1,
+    });
+    render(<PulsePanel />);
+    expect(screen.getByText('noFps')).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+  });
 });
 
 describe('SignalsPanel', () => {
@@ -622,6 +647,37 @@ describe('CascadePanel', () => {
     expect(screen.getByText('cycB')).toBeTruthy();
     a.dispose();
     b.dispose();
+  });
+
+  it('marks upstream nodes and dims unrelated edges when a downstream node is hovered', () => {
+    const a = createRefSignal(0, 'uA');
+    const b = createRefSignal(0, 'uB');
+    const c = createRefSignal(0, 'uC');
+    const d = createRefSignal(0, 'uD');
+    // Two independent cascade edges: a → b and c → d.
+    devtools.trackEffectStart('eu1', [a]);
+    devtools.trackUpdate(b, 0, 1);
+    devtools.trackEffectEnd('eu1');
+    devtools.trackEffectStart('eu2', [c]);
+    devtools.trackUpdate(d, 0, 1);
+    devtools.trackEffectEnd('eu2');
+    const { container } = render(<CascadePanel />);
+    expect(container.querySelectorAll('line').length).toBe(2);
+    // Hover uB (the target of a → b): uA becomes upstream and the unrelated
+    // c → d edge is dimmed.
+    const groupB = screen.getByText('uB').closest('g');
+    expect(groupB).not.toBeNull();
+    act(() => {
+      if (groupB) fireEvent.mouseEnter(groupB);
+    });
+    const dimmed = Array.from(container.querySelectorAll('line')).some(
+      (l) => l.getAttribute('stroke-opacity') === '0.18',
+    );
+    expect(dimmed).toBe(true);
+    a.dispose();
+    b.dispose();
+    c.dispose();
+    d.dispose();
   });
 
   it('truncates long node labels in the cascade graph', () => {
