@@ -18,9 +18,9 @@ Built for UIs where React's render cycle is the bottleneck: **node editors (n8n-
 
 ## Why
 
-Most React state libraries give the consumer one real lever: *what* to watch — a Zustand or Redux selector, a Jotai atom, or the reads a MobX / Valtio / signals graph auto-tracks. The library owns the rest: a tracked change becomes a synchronous re-render, every time. *When* you react and *whether* you render at all aren't yours to set.
+Most React state libraries hand the consumer one main lever — *what* to watch (a Zustand or Redux selector, a Jotai atom), or auto-track it for you (MobX, Valtio, signals). Past that, the default React binding decides the rest: a tracked change becomes a synchronous re-render. You *can* step outside it — a selector equality fn, a vanilla `store.subscribe`, a MobX `reaction` — but each is a separate escape hatch, wired case by case, not the contract you get by default.
 
-refsignal inverts that. The signal is just a value with a channel. **Each consumer, at its call site, decides three things independently:**
+refsignal makes that contract the default. The signal is just a value with a channel. **Each consumer, at its call site, decides three things independently:**
 
 - **What** to observe — the whole signal, a projection, a derived value
 - **When** to react — synchronous, throttled, debounced, frame-synced, or a custom `filter`
@@ -32,7 +32,9 @@ Producers can be time-driven too: a pulse signal ticks on a schedule (`'1000ms'`
 
 That model is what keeps a dense node editor responsive: high-frequency consumers don't pay for the render policy of low-frequency ones, and reconciliation isn't on the path unless a consumer explicitly opts in. And that behavior is the default — the first thing you write, not an opt-out you wire up per component. Outside high-frequency scenarios the same model scales down: components opt into re-renders explicitly via `useRefSignalRender([signal])`, and nothing renders elsewhere.
 
-`useRef` gets you out of the render cycle, but a ref is silent — nothing can subscribe. Build the subscription channel yourself and you're writing this library from scratch. refsignal is that primitive: **a ref with a per-consumer subscription channel**, built on stable, public React APIs (`useSyncExternalStore` for renders, direct listeners for effects). No compiler, no proxy, no patched internals.
+It also brings back a pattern React steers you away from: **state that lives in a Provider.** Because Context re-renders every consumer on every change, the ecosystem long ago moved dynamic state out into external stores. refsignal puts it back — `createRefSignalContext` keeps a *stable store handle* in Context (the value never changes, so there's no Context re-render), and each consumer subscribes to only the signals it names. Per-route, per-subtree, multi-instance state — isolated the way Context was meant to be, minus the render tax that got the pattern shelved.
+
+`useRef` gets you out of the render cycle, but a ref is silent — nothing can subscribe. Build the subscription channel yourself and you're writing this library from scratch. refsignal is that primitive: **a `useRef` that reacts** — a mutable `.current` outside the render cycle, plus a subscription you consume like `useEffect`. Two idioms you already use, fused into one, on stable public React APIs (`useSyncExternalStore` for renders, direct listeners for effects). No compiler, no proxy, no patched internals.
 
 ## Installation
 
