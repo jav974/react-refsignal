@@ -1,0 +1,19 @@
+{
+  "name": "react-refsignal-benchmark-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Automated runner for demo/graph-benchmark-automated.tsx — iterates mode × nodeCount, reads window.__bench__, writes JSON + Markdown.",
+  "scripts": {
+    "bench": "node run.mjs",
+    "bench:headed": "node run.mjs --headed",
+    "bench:matrix": "node run.mjs --headed --nodes 1000,2000 --rate 1,8,16,32 --escape 0,1 --drive-mode raf,interval --interval-ms 1 --out results-full-matrix",
+    "bench:matrix-detailed": "npm run bench:matrix && node compose-full-matrix-md.mjs",
+    "bench:canvas-vs-svg": "node run.mjs --headed --nodes 1000,2000 --rate 1,16 --escape 1 --drive-mode raf,interval --interval-ms 1 --renderer svg,canvas --out results-canvas-vs-svg",
+    "bench:fair-comparison": "node run.mjs --headed --modes signal,signal-render,jotai,jotai-imperative,zustand,zustand-imperative,mobx,mobx-autorun,react --nodes 1000,2000 --rate 1,16 --escape 1 --drive-mode raf,interval --interval-ms 1 --renderer svg --repeats 2 --out results-fair-comparison",
+    "bench:compose": "node compose-full-matrix-md.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}
