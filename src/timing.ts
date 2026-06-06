@@ -17,7 +17,14 @@ import type { ReadonlyRefSignal } from './refsignal';
  * - `{ throttle: N }` — at most one run per N ms (leading + trailing)
  * - `{ debounce: N }` — run after N ms of quiet
  * - `{ debounce: N, maxWait: M }` — debounce with guaranteed flush every M ms
+ * - `{ delayed: N }` — run exactly N ms after the first update of a burst
  * - `{ frame: true }` — one run per animation frame (uses `requestAnimationFrame`)
+ *
+ * `{ delayed: N }` reads **live state at run time** — it shifts *when* the
+ * callback looks, never *what* it sees. It is sugar for
+ * `{ debounce: N, maxWait: N }`. If you need the value *as it was* N ms ago
+ * (trails, ghosts, delayed playback), that is a different feature: see
+ * `createReplayRefSignal` / `useReplayRefSignal`.
  *
  * `rAF: true` is a deprecated alias for `frame: true` and still works.
  */
@@ -26,6 +33,7 @@ export type TimingOptions =
       throttle?: never;
       debounce?: never;
       maxWait?: never;
+      delayed?: never;
       frame?: never;
       rAF?: never;
     }
@@ -33,6 +41,7 @@ export type TimingOptions =
       throttle: number;
       debounce?: never;
       maxWait?: never;
+      delayed?: never;
       frame?: never;
       rAF?: never;
     }
@@ -40,6 +49,7 @@ export type TimingOptions =
       throttle?: never;
       debounce: number;
       maxWait?: number;
+      delayed?: never;
       frame?: never;
       rAF?: never;
     }
@@ -47,6 +57,15 @@ export type TimingOptions =
       throttle?: never;
       debounce?: never;
       maxWait?: never;
+      delayed: number;
+      frame?: never;
+      rAF?: never;
+    }
+  | {
+      throttle?: never;
+      debounce?: never;
+      maxWait?: never;
+      delayed?: never;
       frame: true;
       rAF?: never;
     }
@@ -54,6 +73,7 @@ export type TimingOptions =
       throttle?: never;
       debounce?: never;
       maxWait?: never;
+      delayed?: never;
       frame?: never;
       /** @deprecated Use `frame: true` instead. `rAF` will be removed in a future major version. */
       rAF: true;
@@ -195,16 +215,21 @@ export function applyTimingOptions(
   fn: () => void,
   options: TimingOptions,
 ): TimingWrapper {
-  const { frame, rAF, throttle, debounce, maxWait } = options as {
+  const { frame, rAF, throttle, debounce, maxWait, delayed } = options as {
     frame?: true;
     rAF?: true;
     throttle?: number;
     debounce?: number;
     maxWait?: number;
+    delayed?: number;
   };
   if (frame || rAF) return createRAF(fn);
   if (throttle !== undefined) return createThrottle(fn, throttle);
   if (debounce !== undefined) return createDebounce(fn, debounce, maxWait);
+  // `delayed: N` — run exactly N ms after the first call of a burst.
+  // Sugar for debounce with an equal maxWait: the debounce timer keeps
+  // resetting during the burst, but maxWait guarantees the flush at +N.
+  if (delayed !== undefined) return createDebounce(fn, delayed, delayed);
   return { call: fn, cancel: () => {} };
 }
 

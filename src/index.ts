@@ -4,6 +4,7 @@ export * from './hooks/useRefSignalMemo';
 export * from './hooks/useRefSignalRender';
 export * from './hooks/useRefSignalFollow';
 export * from './hooks/usePulseRefSignal';
+export * from './hooks/useReplayRefSignal';
 export type {
   Listener,
   RefSignal,
@@ -32,6 +33,7 @@ export {
 } from './refsignal';
 export { createPulseRefSignal } from './pulse';
 export type { PulseRate, PulseRefSignal } from './pulse';
+export { createReplayRefSignal } from './replay';
 // Deprecated factory re-exported for backward compatibility.
 export {
   // eslint-disable-next-line @typescript-eslint/no-deprecated

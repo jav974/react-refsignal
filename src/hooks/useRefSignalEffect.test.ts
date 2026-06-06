@@ -200,6 +200,35 @@ describe('useRefSignalEffect — timing options', () => {
     expect(effect).toHaveBeenCalledTimes(2); // one run after quiet
   });
 
+  it('delayed: fires once N ms after the first signal fire of a burst, reading live state', () => {
+    const observed: number[] = [];
+    const { result } = renderHook(() => {
+      const signal = useRefSignal(0);
+      useRefSignalEffect(
+        () => {
+          observed.push(signal.current);
+        },
+        [signal],
+        { delayed: 100, skipMount: true },
+      );
+      return signal;
+    });
+
+    act(() => {
+      result.current.update(1);
+    });
+    act(() => {
+      jest.advanceTimersByTime(50);
+      result.current.update(2); // burst continues — flush still due at +100 from the first fire
+    });
+    expect(observed).toEqual([]);
+
+    act(() => {
+      jest.advanceTimersByTime(50); // 100ms after the FIRST fire
+    });
+    expect(observed).toEqual([2]); // one run, reading the live (latest) value
+  });
+
   it('frame: signal fires collapse into one effect run per frame', () => {
     const raf = setupRafMock();
     const effect = jest.fn();

@@ -26,7 +26,7 @@ export function useWatchArgs(options?: WatchOptions) {
   trackSignalsRef.current = options?.trackSignals;
 
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: forwards the legacy `rAF` alias to downstream timing logic.
-  const { throttle, debounce, maxWait, frame, rAF } = options ?? {};
+  const { throttle, debounce, maxWait, delayed, frame, rAF } = options ?? {};
 
   const watchOptions = useMemo(
     (): WatchOptions =>
@@ -34,13 +34,14 @@ export function useWatchArgs(options?: WatchOptions) {
         throttle,
         debounce,
         maxWait,
+        delayed,
         frame,
         rAF,
         trackSignals: trackSignalsRef.current
           ? () => trackSignalsRef.current?.() ?? []
           : undefined,
       }) as WatchOptions,
-    [throttle, debounce, maxWait, frame, rAF],
+    [throttle, debounce, maxWait, delayed, frame, rAF],
   );
 
   return { filterRef, watchOptions };

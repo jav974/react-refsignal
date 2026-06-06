@@ -21,8 +21,10 @@
 - [`useRefSignalMemo<T>(factory, deps, options?)`](#userefsignalmemot-factory-deps-options)
 - [`useRefSignalFollow<T>(getter, deps, options?)`](#userefsignalfollowt-getter-deps-options)
 - [`usePulseRefSignal(rate)`](#usepulserefsignalrate)
+- [`useReplayRefSignal<T>(source, ms, snapshot?)`](#usereplayrefsignalt-source-ms-snapshot)
 - [`createComputedRefSignal<T>(compute, deps)`](#createcomputedrefsignalt-compute-deps)
 - [`createPulseRefSignal(rate)`](#createpulserefsignalrate)
+- [`createReplayRefSignal<T>(source, ms, snapshot?)`](#createreplayrefsignalt-source-ms-snapshot)
 - [`watch<T>(signal, listener, options?)`](#watcht-signal-listener-options)
 - [`watchSignals(deps, onFire, options?)`](#watchsignalsdeps-onfire-options)
 - [`WatchHandle`](#watchhandle)
@@ -314,7 +316,7 @@ TimingOptions
 |---|---|---|
 | `filter` | `() => boolean` | Skip the callback when this returns `false`. Does not gate the dynamic-tracking reconcile pass — the subscription set stays consistent regardless of filter state. |
 | `trackSignals` | `() => ReadonlyArray<RefSignal<unknown>>` | Resolves additional signals to subscribe to dynamically. Re-evaluated only on fires of static `deps` signals (not on fires of the returned set itself). The diff runs with ref-equal and content-equal shortcuts, so returning a memoized array or the same content each call costs nothing. Use for nested-signal traversal where an inner signal's identity comes from another signal's current value. Prefer [`useRefSignalFollow`](#userefsignalfollowt-getter-deps-options) for the common single-signal case. |
-| `throttle` / `debounce` / `maxWait` / `frame` | — | See [`TimingOptions`](#timingoptions). |
+| `throttle` / `debounce` / `maxWait` / `delayed` / `frame` | — | See [`TimingOptions`](#timingoptions). |
 
 ---
 
@@ -331,6 +333,7 @@ Options accepted by `useRefSignalEffect`. Extends [`WatchOptions`](#watchoptions
 | `throttle` | `number` | At most one trigger per N ms (leading + trailing). |
 | `debounce` | `number` | Trigger after N ms of quiet. |
 | `maxWait` | `number` | With `debounce` only: guaranteed flush every N ms even if the signal keeps firing. |
+| `delayed` | `number` | Trigger exactly N ms after the *first* fire of a burst, reading live state at run time. Sugar for `{ debounce: N, maxWait: N }`. Need the value *as it was* N ms ago instead? See [`useReplayRefSignal`](#usereplayrefsignalt-source-ms-snapshot). |
 | `frame` | `boolean` | Schedule on the next animation frame (`requestAnimationFrame`); multiple fires per frame collapse into one. |
 | `rAF` | `boolean` | **Deprecated** alias for `frame`. Still works; will be removed in a future major version. |
 
@@ -340,7 +343,9 @@ The timing options are mutually exclusive — combining them is a type error:
 { throttle: 100, debounce: 200 } // ✗ type error
 { maxWait: 500 }                 // ✗ type error — maxWait requires debounce
 { frame: true, throttle: 50 }   // ✗ type error
+{ delayed: 100, frame: true }   // ✗ type error
 { debounce: 200, maxWait: 1000 } // ✓
+{ delayed: 100 }                 // ✓
 ```
 
 Context hooks (`createRefSignalContext`, `createRefSignalContextHook`) accept [`SignalStoreOptions`](#signalstoreoptionststore) instead, which extends these same fields but upgrades `filter` to receive the store snapshot directly.
@@ -454,6 +459,33 @@ function GameLoop() {
 
 ---
 
+### `useReplayRefSignal<T>(source, ms, snapshot?)`
+
+Creates a read-only signal that follows `source` exactly `ms` milliseconds behind — every source update is captured and re-emitted once its due time arrives, preserving order and relative spacing. The *time-shifted value* primitive: trails, ghosts, delayed playback. The signal is stable for the component's lifetime and torn down on unmount; React owns the lifecycle, so `.dispose()` is not exposed.
+
+```tsx
+import { useRefSignal, useReplayRefSignal, useRefSignalEffect } from 'react-refsignal';
+
+function NodeWithGhost() {
+  const pos = useRefSignal({ x: 0, y: 0 });
+  const ghost = useReplayRefSignal(pos, 300, (p) => ({ ...p }));
+
+  useRefSignalEffect(() => {
+    drawGhost(ctx, ghost.current.x, ghost.current.y);
+  }, [ghost], { frame: true });
+  // …
+}
+```
+
+- Consumer code is identical to consuming the live source — point it at a different signal, and pick any consumption timing (`frame`, `throttle`, `debounce`, none) downstream. Each due entry is an individual update, so an untimed subscriber observes every replayed value.
+- **`snapshot` is required for object signals mutated in place** (the `.current.x = …; .notify()` hot-path idiom) — without it the internal queue holds references to one live object and every replayed emission shows the present, not the past. Immutably-updated signals and primitives don't need it; the default identity capture is allocation-free.
+- `source`, `ms`, and `snapshot` are captured at mount time, mirroring the mount-time-options convention of [`useRefSignal`](#userefsignalt-initialvalue-options).
+- Want an effect to simply run N ms *after* a change, reading live state? That's not a replay — use the [`{ delayed: N }`](#timingoptions) timing option.
+
+Outside React, use [`createReplayRefSignal`](#createreplayrefsignalt-source-ms-snapshot). See [Patterns — Time-shifted signals](patterns.md#time-shifted-signals--usereplayrefsignal) for the recipe.
+
+---
+
 ### `createComputedRefSignal<T>(compute, deps)`
 
 Creates a derived signal whose value is recomputed whenever any dep signal updates. The returned signal is read-only — `.update()` and `.reset()` are not exposed.
@@ -507,6 +539,29 @@ const everyHalf = createPulseRefSignal(500);      // bare number — same as '50
 - SSR-safe: construction works in non-browser environments (so server output is stable), but no timer is installed when `typeof window === 'undefined'`. The timer starts naturally on the client after hydration.
 
 For full narrative, recipes, and the store-level composition trap, see [Pulse](pulse.md).
+
+---
+
+### `createReplayRefSignal<T>(source, ms, snapshot?)`
+
+Creates a replayed signal outside React — at module scope, in context factories, or anywhere else. Same semantics as [`useReplayRefSignal`](#usereplayrefsignalt-source-ms-snapshot); returns the signal augmented with `.dispose()`.
+
+```ts
+import { createRefSignal, createReplayRefSignal, watch } from 'react-refsignal';
+
+const price = createRefSignal(0, 'price');
+const delayedPrice = createReplayRefSignal(price, 5000); // price, 5 s ago
+
+watch(delayedPrice, (v) => updateComparisonChart(v));
+
+// Later — stop following the source, cancel pending emissions, release subscribers
+delayedPrice.dispose();
+```
+
+- Emissions fire at their due moment via a single armed `setTimeout` — at most one timer exists at a time, and none while the source is quiet. A quiet replay signal costs one listener entry on the source.
+- The drain is intentionally not configurable — any timing policy on the emission side would corrupt the "value as it was `ms` ago" contract. Consumption timing belongs downstream, per consumer.
+- Works in non-browser environments (no `requestAnimationFrame` dependency) and keeps progressing in background tabs, subject to browser timer throttling.
+- Throws on a negative or non-finite `ms`.
 
 ---
 
