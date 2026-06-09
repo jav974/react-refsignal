@@ -270,6 +270,56 @@ describe('applyTimingOptions', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  it('delayed: is mutually exclusive with the other timing strategies (type-level)', () => {
+    const fn = jest.fn();
+    // @ts-expect-error — delayed cannot combine with frame
+    applyTimingOptions(fn, { delayed: 100, frame: true });
+    // @ts-expect-error — delayed cannot combine with throttle
+    applyTimingOptions(fn, { delayed: 100, throttle: 50 });
+    // @ts-expect-error — delayed cannot combine with debounce
+    applyTimingOptions(fn, { delayed: 100, debounce: 50 });
+    // @ts-expect-error — maxWait requires debounce, not delayed
+    applyTimingOptions(fn, { delayed: 100, maxWait: 500 });
+  });
+
+  it('delayed: fires once exactly N ms after the first call of a burst', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { delayed: 100 });
+
+    wrapper.call();
+    jest.advanceTimersByTime(50);
+    wrapper.call(); // burst continues — debounce timer resets, maxWait holds
+    jest.advanceTimersByTime(40);
+    wrapper.call();
+    expect(fn).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(10); // 100ms after the FIRST call
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('delayed: a call after the flush opens a new window', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { delayed: 100 });
+
+    wrapper.call();
+    jest.advanceTimersByTime(100);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    wrapper.call();
+    jest.advanceTimersByTime(100);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('delayed: cancel() clears the pending run', () => {
+    const fn = jest.fn();
+    const wrapper = applyTimingOptions(fn, { delayed: 100 });
+
+    wrapper.call();
+    wrapper.cancel();
+    jest.advanceTimersByTime(500);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
   it('frame: returns a rAF wrapper', () => {
     jest.useRealTimers();
     const raf = setupRafMock();

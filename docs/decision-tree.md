@@ -109,8 +109,11 @@ flowchart TD
     C --> Q2{"Guarantee a flush even if signal keeps firing?"}
     Q2 -->|Yes| D["Add maxWait: N"]
     Q2 -->|No| E[Done]
+    Q1 -->|"Exactly N ms after the first fire of a burst"| G["delayed: N"]
     Q1 -->|"Sync to animation frame — collapse multiple fires per frame"| F["frame: true"]
 ```
+
+> `delayed: N` reads **live state at run time** — it shifts *when* the callback looks, not *what* it sees. If you need the value *as it was* N ms ago (trails, ghosts, delayed playback), use [`useReplayRefSignal`](api.md#usereplayrefsignalt-source-ms-snapshot) instead — see [Patterns — Time-shifted signals](patterns.md#time-shifted-signals--usereplayrefsignal).
 
 ---
 

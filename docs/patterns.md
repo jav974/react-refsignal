@@ -16,6 +16,7 @@
 - [Filtered renders at a threshold](#filtered-renders-at-a-threshold)
 - [Module-scope signals and debounced consumers](#module-scope-signals-and-debounced-consumers)
 - [Shared pulse via provider — one timer, many components](#shared-pulse-via-provider--one-timer-many-components)
+- [Time-shifted signals — `useReplayRefSignal`](#time-shifted-signals--usereplayrefsignal)
 
 ---
 
@@ -853,3 +854,46 @@ Mount fifty `<RelativeTime />` cells inside a `<NowProvider>`; you get fifty sub
 The same shape composes at any cadence: a `<TickProvider rate="60fps">` for animation work, a `<HeartbeatProvider rate="30000ms">` for connection pings, a `<NowProvider rate="60000ms">` for relative timestamps. One timer per cadence, regardless of how many consumers attach.
 
 > **Don't put the pulse signal inside a persisted or broadcasted store.** The pulse value is `performance.now()` — bound to this document's `performance.timeOrigin` and meaningless to serialize or transport. Provide it adjacent to such stores instead. See [pulse.md → What pulse can't compose with](pulse.md#what-pulse-cant-compose-with).
+
+---
+
+## Time-shifted signals — `useReplayRefSignal`
+
+A node ghost that trails its node by 300 ms, an afterimage following a drag, delayed playback of a live feed — these all need the value *as it was* N ms ago, retracing every intermediate step. [`useReplayRefSignal`](api.md#usereplayrefsignalt-source-ms-snapshot) gives you that as a derived signal: the source's timeline, shifted.
+
+```tsx
+import {
+  useRefSignal,
+  useReplayRefSignal,
+  useRefSignalEffect,
+} from 'react-refsignal';
+
+function DraggableNodeWithGhost({ ctx }: { ctx: CanvasRenderingContext2D }) {
+  const pos = useRefSignal({ x: 0, y: 0 });
+  // The ghost runs 300 ms behind. The snapshot ({ ...p }) is required here
+  // because `pos` is mutated in place below — without it the queue would hold
+  // references to one live object and the ghost would ride on the node.
+  const ghost = useReplayRefSignal(pos, 300, (p) => ({ ...p }));
+
+  useRefSignalEffect(() => {
+    drawNode(ctx, pos.current.x, pos.current.y);
+  }, [pos], { frame: true });
+
+  useRefSignalEffect(() => {
+    drawGhost(ctx, ghost.current.x, ghost.current.y);
+  }, [ghost], { frame: true });
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    pos.current.x = e.clientX; // hot path: mutate + notify, no allocation
+    pos.current.y = e.clientY;
+    pos.notify();
+  };
+  // …
+}
+```
+
+Note what the ghost effect is: **exactly the node effect, pointed at a different signal**. That's the design — the replayed signal is a regular signal, so every consumer picks its own consumption timing downstream (`frame` for canvas, `throttle` for a UI mirror, none to observe every replayed value), and one replay line can feed any number of consumers.
+
+Outside React, [`createReplayRefSignal`](api.md#createreplayrefsignalt-source-ms-snapshot) is the same primitive with `.dispose()`.
+
+**Don't confuse this with the `{ delayed: N }` timing option.** `delayed` shifts *when* a callback runs — it still reads live state at run time ("the present, late"). A replay shifts *what you see* ("the past, on time"). Reaching for delay to build a trail is the classic trap: the effect fires late but reads `pos.current`, and the ghost teleports onto the node.
