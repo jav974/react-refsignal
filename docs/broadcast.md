@@ -183,7 +183,7 @@ broadcast(factory, {
 4. The winner sends a `broadcaster-claim` message so other tabs yield immediately.
 5. When a tab closes or unmounts, it sends a `bye` message.
 
-**Initial election is deferred by `initialElectionDelay` ms (default 400)** — a grace period after setup or visibility-resume that lets existing peers respond to our `hello` with their own heartbeats before we decide. Without it, a tab joining an existing session would briefly self-elect (before any peer heartbeat arrives) and then yield — a visible flicker of `isBroadcaster` from `false → true → false`.
+**Initial election is deferred by `initialElectionDelay` ms (default: `heartbeatInterval + 100`)** — a grace period after setup or visibility-resume that lets existing peers respond to our `hello` with their own heartbeats before we decide. Without it, a tab joining an existing session would briefly self-elect (before any peer heartbeat arrives) and then yield — a visible flicker of `isBroadcaster` from `false → true → false`. While the window is pending, heartbeat ticks don't claim leadership either, so the delay is honored exactly.
 
 ```ts
 broadcast(factory, {
@@ -191,21 +191,17 @@ broadcast(factory, {
   mode: 'one-to-many',
   heartbeatInterval: 300,       // how often each tab sends a hello (default: 300ms)
   heartbeatTimeout: 5000,       // consider a tab dead after this silence (default: 5000ms)
-  initialElectionDelay: 400,    // grace period before first election (default: 400ms)
+  initialElectionDelay: 400,    // grace period before first election (default: heartbeatInterval + 100)
   onBroadcasterChange: (active) => isBroadcaster.update(active),
 });
 ```
 
 #### Picking values
 
-The two timings are coupled — pick `heartbeatInterval` first, then size `initialElectionDelay` against it.
+In most cases you only pick `heartbeatInterval` — the election delay follows automatically.
 
 - **`heartbeatInterval`** — how often each tab broadcasts a `hello`. Every tab heartbeats (this is how peers discover each other for the election); only the elected leader sends `update` messages. Lower values speed up failover when a tab disappears and let joiners decide sooner; higher values are quieter on the channel. The default of 300ms is cheap on a local `BroadcastChannel` (which is in-process, not a network hop).
-- **`initialElectionDelay`** — how long a joining tab waits for peer heartbeats before electing. **Should be ≥ `heartbeatInterval`** to reliably catch at least one heartbeat from every existing peer; shorter and you reintroduce the flicker. The default 400ms gives the 300ms cycle a 100ms jitter buffer.
-
-If you raise `heartbeatInterval`, raise `initialElectionDelay` in step (e.g. heartbeat 1000 → election 1100+). If you lower it, you can lower the election delay too — at the limit, `initialElectionDelay: 0` skips the wait entirely.
-
-Set `initialElectionDelay: 0` to elect synchronously if you know the tab is always first (e.g., initial page load with no existing session) and the small flicker is unacceptable.
+- **`initialElectionDelay`** — how long a joining tab waits for peer heartbeats before electing. Defaults to `heartbeatInterval + 100` — one full heartbeat cycle to reliably catch every existing peer, plus a 100ms jitter buffer — and scales automatically when you change the heartbeat. Override it only for the extremes: `0` elects synchronously (right when the tab is known to be first, e.g. an initial page load with no existing session); explicit values below `heartbeatInterval` reintroduce the join-flicker.
 
 Non-broadcaster tabs still receive incoming updates — they just don't send any.
 
@@ -466,7 +462,7 @@ Options for the `broadcast` field on `createRefSignal` / `useRefSignal`.
 | `onStableBroadcasterChange` | `(active: boolean) => void` | — | `one-to-many` only: called when this tab's *stable* broadcaster state changes. Fires `true` once this tab has been broadcaster for `gracePeriod` ms (or synchronously if alone or `gracePeriod` is unset); fires `false` synchronously on losing broadcaster status. |
 | `heartbeatInterval` | `number` | `300` | `one-to-many` only: how often each tab broadcasts a `hello` for peer discovery, in ms. |
 | `heartbeatTimeout` | `number` | `5000` | `one-to-many` only: consider a tab dead after this silence, in ms. |
-| `initialElectionDelay` | `number` | `400` | `one-to-many` only: grace period in ms before the first election after setup or resume. Should be `≥ heartbeatInterval` so the joiner reliably hears the current leader. Set to `0` for synchronous election (accepts the join-flicker). |
+| `initialElectionDelay` | `number` | `heartbeatInterval + 100` | `one-to-many` only: grace period in ms before the first election after setup or resume. The default scales with the heartbeat (one full cycle + jitter buffer); heartbeat ticks don't claim leadership while the window is pending. Set to `0` for synchronous election (accepts the join-flicker). |
 | `gracePeriod` | `number` | — | `one-to-many` only, opt-in. When set, (a) former broadcaster retains emit privileges for this many ms after losing leadership (trailing-emit window), and (b) `useBroadcast`'s `isStableBroadcaster` signal flips `true` only after this many ms have elapsed since gaining leadership — unless alone at election time, in which case the flip is synchronous. See [Smoothing leadership transitions](#smoothing-leadership-transitions--graceperiod). |
 
 ### `BroadcastOptions<TStore>`

@@ -42,7 +42,9 @@ export function setupBroadcast<TStore extends object>(
     onStableBroadcasterChange,
     heartbeatInterval = 300,
     heartbeatTimeout = 5000,
-    initialElectionDelay = 400,
+    // Derived: one full heartbeat cycle + jitter buffer, so raising
+    // heartbeatInterval can't silently shrink the anti-flicker window.
+    initialElectionDelay = heartbeatInterval + 100,
     gracePeriod,
   } = options;
 
@@ -312,7 +314,11 @@ export function setupBroadcast<TStore extends object>(
         tabId: TAB_ID,
         ts: Date.now(),
       } satisfies Msg<never>);
-      electBroadcaster();
+      // No claiming while the deferred initial election is still pending —
+      // a heartbeat tick firing inside the window would self-elect before
+      // peer heartbeats arrive, defeating the anti-flicker delay. Yielding
+      // and peer pruning still run.
+      electBroadcaster(initialElectionTimer === null);
     }, heartbeatInterval);
   };
 

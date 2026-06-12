@@ -914,7 +914,7 @@ describe('initialElectionDelay', () => {
     }
   });
 
-  it('defaults to 400ms when not specified', () => {
+  it('defaults to heartbeatInterval + 100 (400ms with the default heartbeat)', () => {
     jest.useFakeTimers();
     try {
       const onBroadcasterChange = jest.fn();
@@ -922,10 +922,54 @@ describe('initialElectionDelay', () => {
         channel: 'delay-default',
         mode: 'one-to-many',
         onBroadcasterChange,
+      });
+
+      // The 300ms heartbeat tick fires inside the window — must not claim.
+      jest.advanceTimersByTime(399);
+      expect(onBroadcasterChange).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(1);
+      expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('derived default scales with a raised heartbeatInterval', () => {
+    jest.useFakeTimers();
+    try {
+      const onBroadcasterChange = jest.fn();
+      mountScoreBroadcaster({
+        channel: 'delay-derived',
+        mode: 'one-to-many',
+        onBroadcasterChange,
         heartbeatInterval: 1000,
       });
 
-      jest.advanceTimersByTime(399);
+      jest.advanceTimersByTime(1099);
+      expect(onBroadcasterChange).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(1);
+      expect(onBroadcasterChange).toHaveBeenLastCalledWith(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('heartbeat ticks inside the window do not claim — explicit delay > heartbeatInterval is honored', () => {
+    jest.useFakeTimers();
+    try {
+      const onBroadcasterChange = jest.fn();
+      mountScoreBroadcaster({
+        channel: 'delay-gated',
+        mode: 'one-to-many',
+        onBroadcasterChange,
+        heartbeatInterval: 100,
+        initialElectionDelay: 500,
+      });
+
+      // Four heartbeat ticks fire before the deferred election — none claims.
+      jest.advanceTimersByTime(499);
       expect(onBroadcasterChange).not.toHaveBeenCalled();
 
       jest.advanceTimersByTime(1);
