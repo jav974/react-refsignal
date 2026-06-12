@@ -29,7 +29,7 @@
 - [`watchSignals(deps, onFire, options?)`](#watchsignalsdeps-onfire-options)
 - [`WatchHandle`](#watchhandle)
 - [`batch(callback, deps?)`](#batchcallback-deps)
-- [`createRefSignalStore<TStore>(factory)`](#createrefsignalstoretstore-factory)
+- [`createRefSignalStore<TStore>(factory, debugName?)`](#createrefsignalstoretstore-factory-debugname)
 - [`useRefSignalStore<TStore>(store, options?)`](#userefsignalstoretstore-store-options)
 - [`createRefSignalContext<TName, TStore>(name, factory)`](#createrefsignalcontexttname-tstore-name-factory)
 - [`createRefSignalContextHook<TStore>(name)`](#createrefsignalcontexthooktstore-name)
@@ -700,9 +700,11 @@ Batches are nestable. If the callback throws, the batch still flushes via `final
 
 ---
 
-### `createRefSignalStore<TStore>(factory)`
+### `createRefSignalStore<TStore>(factory, debugName?)`
 
 Creates a module-scope signal store singleton. The factory is called once immediately — the returned store lives for the application's lifetime. No Provider required.
+
+When [DevTools](#devtools) are active, the store registers itself under `debugName`: the Signals panel groups its members, and anonymous member signals get derived names (`game.score` instead of `signal_3`). Stores without a `debugName` are auto-named (`store_1`). Zero cost in production or when DevTools aren't imported.
 
 Use [`useRefSignalStore`](#userefsignalstoretstore-store-options) to connect the store to React components. Use [`createRefSignalContext`](#createrefsignalcontexttname-tstore-name-factory) instead when you need per-subtree isolation (separate store per Provider mount).
 
@@ -713,7 +715,7 @@ const gameStore = createRefSignalStore(() => ({
   score: createRefSignal(0),
   level: createRefSignal(1),
   tag:   'game', // non-signal passthrough
-}));
+}), 'game'); // DevTools: members appear as game.score, game.level
 
 // Outside React — direct access, no Provider
 gameStore.score.update(42);

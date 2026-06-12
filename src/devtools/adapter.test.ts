@@ -498,4 +498,117 @@ describe('DevTools', () => {
       expect(devtools.getEvents().length).toBeLessThanOrEqual(3);
     });
   });
+
+  describe('registerStore', () => {
+    it('renames anonymous member signals to store.key', () => {
+      const score = createRefSignal(0);
+      const level = createRefSignal(1);
+      devtools.registerStore({ score, level }, 'game');
+
+      expect(devtools.getSignalName(score)).toBe('game.score');
+      expect(devtools.getSignalName(level)).toBe('game.level');
+      expect(devtools.getSignalByName('game.score')).toBe(score);
+    });
+
+    it('keeps explicit debug names and tags membership', () => {
+      const score = createRefSignal(0, 'myScore');
+      devtools.registerStore({ score }, 'game');
+
+      expect(devtools.getSignalName(score)).toBe('myScore');
+      const entry = devtools.getAllSignals().find((e) => e.id === 'myScore');
+      expect(entry?.store).toBe('game');
+    });
+
+    it('sets store membership on renamed entries', () => {
+      const score = createRefSignal(0);
+      devtools.registerStore({ score }, 'game');
+
+      const entry = devtools.getAllSignals().find((e) => e.id === 'game.score');
+      expect(entry?.store).toBe('game');
+      expect(entry?.name).toBe('game.score');
+    });
+
+    it('ignores non-signal store values', () => {
+      const score = createRefSignal(0);
+      devtools.registerStore({ score, tag: 'plain' }, 'game');
+
+      const ids = devtools.getAllSignals().map((e) => e.id);
+      expect(ids).toContain('game.score');
+      expect(ids).not.toContain('game.tag');
+    });
+
+    it('auto-names unnamed stores', () => {
+      const a = createRefSignal(0);
+      devtools.registerStore({ a });
+
+      const entry = devtools.getAllSignals().find((e) => e.signal === a);
+      expect(entry?.store).toMatch(/^store_\d+$/);
+      expect(entry?.id).toBe(`${entry?.store ?? ''}.a`);
+    });
+
+    it('suffixes colliding store names', () => {
+      const a = createRefSignal(0);
+      const b = createRefSignal(0);
+      const c = createRefSignal(0);
+      devtools.registerStore({ a }, 'game');
+      devtools.registerStore({ b }, 'game');
+      devtools.registerStore({ c }, 'game'); // third collision walks past #2
+
+      const entryB = devtools.getAllSignals().find((e) => e.signal === b);
+      expect(entryB?.store).toBe('game#2');
+      expect(entryB?.id).toBe('game#2.b');
+      const entryC = devtools.getAllSignals().find((e) => e.signal === c);
+      expect(entryC?.store).toBe('game#3');
+    });
+
+    it('skips devtools-internal member signals', () => {
+      const score = createRefSignal(0);
+      const internal = devtools.createInternal(0);
+      devtools.registerStore({ score, internal }, 'game');
+
+      const ids = devtools.getAllSignals().map((e) => e.id);
+      expect(ids).toContain('game.score');
+      expect(ids).not.toContain('game.internal');
+    });
+
+    it('registers members that were never individually registered', () => {
+      // Simulates a signal created before the adapter was set: full RefSignal
+      // shape, but absent from the registry.
+      const orphan = {
+        current: 0,
+        lastUpdated: 0,
+        subscribe: () => {},
+        unsubscribe: () => {},
+        update: () => {},
+        reset: () => {},
+        notify: () => {},
+        notifyUpdate: () => {},
+      };
+      devtools.registerStore({ orphan }, 'game');
+
+      const ids = devtools.getAllSignals().map((e) => e.id);
+      expect(ids).toContain('game.orphan');
+    });
+
+    it('emits a store:register event with member ids', () => {
+      const score = createRefSignal(0);
+      devtools.registerStore({ score }, 'game');
+
+      const event = devtools
+        .getEvents()
+        .find((e) => e.kind === 'store:register');
+      expect(event).toBeDefined();
+      expect(event?.store).toBe('game');
+      expect(event?.members).toEqual(['game.score']);
+    });
+
+    it('renamed members keep working in trackUpdate attribution', () => {
+      const score = createRefSignal(0);
+      devtools.registerStore({ score }, 'game');
+
+      score.update(5);
+      const last = devtools.getUpdateHistory().at(-1);
+      expect(last?.signalId).toBe('game.score');
+    });
+  });
 });

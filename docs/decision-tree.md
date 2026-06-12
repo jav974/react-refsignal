@@ -184,7 +184,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Q1{"Scope of shared state?"}
-    Q1 -->|"Global singleton — one instance for the whole app"| A["createRefSignalStore(factory)\nReturns the store directly — no Provider"]
+    Q1 -->|"Global singleton — one instance for the whole app"| A["createRefSignalStore(factory, debugName?)\nReturns the store directly — no Provider\ndebugName groups members in devtools"]
     Q1 -->|"Per-subtree — isolated store per Provider mount"| Q2
 
     A --> B["useRefSignalStore(store, options?)\nConnect to a component with opt-in re-renders"]

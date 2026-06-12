@@ -1,5 +1,6 @@
 import {
   createRefSignal,
+  isRefSignal,
   setDevToolsAdapter,
   type DevToolsAdapter,
   type DevToolsEvent,
@@ -38,6 +39,8 @@ export interface CascadeEdge {
 export interface SignalEntry {
   id: string;
   name?: string;
+  /** Store this signal belongs to — set by `registerStore`, groups the Signals panel. */
+  store?: string;
   signal: RefSignal;
 }
 
@@ -84,6 +87,8 @@ class RefSignalDevTools implements DevToolsAdapter {
   private signalsByName = new Map<string, RefSignal>();
   private signalEntries = new Map<string, SignalEntry>();
   private signalIdCounter = 0;
+  private storeNames = new Set<string>();
+  private storeIdCounter = 0;
   private updateHistory: SignalUpdate[] = [];
   private events: DevToolsEvent[] = [];
   private edges = new Map<string, CascadeEdge>();
@@ -176,6 +181,62 @@ class RefSignalDevTools implements DevToolsAdapter {
 
   getSignalName<T>(signal: RefSignal<T>): string | undefined {
     return this.signals.get(signal as object);
+  }
+
+  /**
+   * Group a store's member signals under one name. Called by
+   * `createRefSignalStore` after the factory runs — core only reports the
+   * fact; all naming policy lives here:
+   * - anonymous members are renamed `storeName.key` (registry id, timeline,
+   *   cascade edges, and `getSignalByName` all pick the new name up)
+   * - explicitly named members keep their name and only gain membership
+   * - unnamed stores are auto-named `store_N`; name collisions get `#N`
+   */
+  registerStore(store: object, name?: string): void {
+    let storeName = name ?? `store_${String(this.storeIdCounter++)}`;
+    if (this.storeNames.has(storeName)) {
+      let n = 2;
+      while (this.storeNames.has(`${storeName}#${String(n)}`)) n++;
+      storeName = `${storeName}#${String(n)}`;
+    }
+    this.storeNames.add(storeName);
+
+    const members: string[] = [];
+    for (const [key, value] of Object.entries(store)) {
+      if (!isRefSignal(value) || this.internalSignals.has(value)) continue;
+      const existingId = this.signals.get(value);
+      const existingEntry =
+        existingId !== undefined
+          ? this.signalEntries.get(existingId)
+          : undefined;
+
+      if (existingEntry?.name) {
+        // Explicit debug name wins — tag membership only.
+        existingEntry.store = storeName;
+        members.push(existingEntry.id);
+        continue;
+      }
+
+      // Anonymous (or somehow unregistered) — adopt the derived name.
+      const id = `${storeName}.${key}`;
+      if (existingId !== undefined) this.signalEntries.delete(existingId);
+      this.signals.set(value, id);
+      this.signalsByName.set(id, value);
+      this.signalEntries.set(id, {
+        id,
+        name: id,
+        store: storeName,
+        signal: value,
+      });
+      members.push(id);
+    }
+
+    this.emit({
+      kind: 'store:register',
+      store: storeName,
+      members,
+      t: Date.now(),
+    });
   }
 
   trackUpdate<T>(signal: RefSignal<T>, oldValue: T, newValue: T): void {
@@ -454,6 +515,8 @@ class RefSignalDevTools implements DevToolsAdapter {
     this.pulses.clear();
     this.broadcastChannels.clear();
     this.signalIdCounter = 0;
+    this.storeNames.clear();
+    this.storeIdCounter = 0;
   }
 }
 

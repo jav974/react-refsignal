@@ -7,6 +7,7 @@ import { renderHook } from '../test-utils/renderHook';
 import {
   createRefSignal,
   createComputedRefSignal,
+  setDevToolsAdapter,
   watch,
   type RefSignal,
   type ReadonlyRefSignal,
@@ -102,6 +103,45 @@ describe('createRefSignalStore', () => {
     const b = createRefSignalStore(makeStore);
     a.score.update(10);
     expect(b.score.current).toBe(0);
+  });
+
+  it('reports the store to the devtools adapter with its debug name', () => {
+    const registerStore = jest.fn();
+    const adapter = {
+      trackUpdate: jest.fn(),
+      registerSignal: jest.fn(),
+      getSignalName: jest.fn(),
+      trackEffectStart: jest.fn(),
+      trackEffectEnd: jest.fn(),
+      trackNotify: jest.fn(),
+      emit: jest.fn(),
+      registerStore,
+    };
+    setDevToolsAdapter(adapter);
+    try {
+      const store = createRefSignalStore(makeStore, 'game');
+      expect(registerStore).toHaveBeenCalledWith(store, 'game');
+    } finally {
+      setDevToolsAdapter(null);
+    }
+  });
+
+  it('works with an adapter that lacks the optional registerStore', () => {
+    const adapter = {
+      trackUpdate: jest.fn(),
+      registerSignal: jest.fn(),
+      getSignalName: jest.fn(),
+      trackEffectStart: jest.fn(),
+      trackEffectEnd: jest.fn(),
+      trackNotify: jest.fn(),
+      emit: jest.fn(),
+    };
+    setDevToolsAdapter(adapter);
+    try {
+      expect(() => createRefSignalStore(makeStore, 'game')).not.toThrow();
+    } finally {
+      setDevToolsAdapter(null);
+    }
   });
 });
 

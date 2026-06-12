@@ -35,6 +35,14 @@ export interface DevToolsAdapter {
   /** Generic bus channel — subsystems push typed events for their panels. */
   emit(event: DevToolsEvent): void;
   /**
+   * Optional: called by `createRefSignalStore` after the factory runs — the
+   * one place that knows a group of signals is one store. All policy lives
+   * adapter-side: walking the members, deriving names for anonymous signals
+   * (`game.score`), auto-naming unnamed stores, collision handling, grouping.
+   * Custom adapters can omit it.
+   */
+  registerStore?(store: object, debugName?: string): void;
+  /**
    * Called when a signal is touched via `notify()` / `notifyUpdate()` (the
    * direct-mutation hot path, distinct from `.update()` which carries
    * old → new diff via `trackUpdate`). Adapter typically throttles these
