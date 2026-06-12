@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { isRefSignal, RefSignal } from '../refsignal';
+import { isRefSignal, RefSignal, type ReadonlyRefSignal } from '../refsignal';
 import { useRefSignalRender } from '../hooks/useRefSignalRender';
 import type { EffectOptions } from '../hooks/useRefSignalEffect';
 import type { TimingOptions } from '../timing';
@@ -7,36 +7,42 @@ import type { TimingOptions } from '../timing';
 // ─── Shared store types ────────────────────────────────────────────────────────
 
 /**
- * Extracts the keys of a store whose values are RefSignal instances.
+ * Extracts the keys of a store whose values are readable signals —
+ * `RefSignal` or `ReadonlyRefSignal` (computed / memo / followed signals).
+ * Subscribing is a read-side operation, so render-side options accept both.
  * Non-signal values are excluded from the resulting union type.
  *
  * @example
- * type Store = { name: RefSignal<string>; score: RefSignal<number>; sessionId: string }
- * type Keys = RefSignalKeys<Store> // 'name' | 'score'
+ * type Store = { name: RefSignal<string>; upper: ReadonlyRefSignal<string>; sessionId: string }
+ * type Keys = RefSignalKeys<Store> // 'name' | 'upper'
  */
 export type RefSignalKeys<TStore> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [K in keyof TStore]: TStore[K] extends RefSignal<any> ? K : never;
+  [K in keyof TStore]: TStore[K] extends ReadonlyRefSignal<any> ? K : never;
 }[keyof TStore];
 
 /**
- * Replaces each RefSignal<V> in the store with its inner value V,
- * and generates a `set${Key}` setter for each signal key.
- * Non-signal values are left unchanged. No setter is generated for them.
+ * Replaces each readable signal in the store with its inner value V, and
+ * generates a `set${Key}` setter for each *writable* signal key. Readonly
+ * signal keys (computed / memo) unwrap to their value but get no setter —
+ * the value is derived, so there is nothing valid to set. Non-signal values
+ * are left unchanged.
  *
  * @example
- * type Store = { name: RefSignal<string>; score: RefSignal<number>; sessionId: string }
+ * type Store = { name: RefSignal<string>; upper: ReadonlyRefSignal<string>; sessionId: string }
  * type Unwrapped = UnwrappedStore<Store>
  * // {
  * //   name: string
- * //   score: number
+ * //   upper: string
  * //   sessionId: string
  * //   setName: (value: string) => void
- * //   setScore: (value: number) => void
+ * //   // no setUpper — readonly signals are not writable
  * // }
  */
 export type UnwrappedStore<TStore> = {
-  [K in keyof TStore]: TStore[K] extends RefSignal<infer V> ? V : TStore[K];
+  [K in keyof TStore]: TStore[K] extends ReadonlyRefSignal<infer V>
+    ? V
+    : TStore[K];
 } & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [K in keyof TStore as TStore[K] extends RefSignal<any>
@@ -45,7 +51,7 @@ export type UnwrappedStore<TStore> = {
 };
 
 export type StoreSnapshot<TStore> = {
-  readonly [K in keyof TStore]: TStore[K] extends RefSignal<infer V>
+  readonly [K in keyof TStore]: TStore[K] extends ReadonlyRefSignal<infer V>
     ? V
     : TStore[K];
 };
