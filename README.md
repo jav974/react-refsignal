@@ -197,7 +197,7 @@ import { createRefSignalStore, useRefSignalStore, createRefSignal } from 'react-
 const gameStore = createRefSignalStore(() => ({
   score: createRefSignal(0),
   level: createRefSignal(1),
-}));
+}), 'game'); // optional name — groups members in devtools as game.score, game.level
 
 // Outside React — direct access
 gameStore.score.update(42);

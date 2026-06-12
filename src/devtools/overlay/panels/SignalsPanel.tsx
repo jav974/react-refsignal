@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type ReactElement } from 'react';
 import { listenersMap } from '../../../refsignal';
 import { devtools, type SignalEntry } from '../../adapter';
 import { formatValue, typeOf } from '../format';
@@ -18,12 +18,63 @@ const RENDER_CAP = 200;
 const subscriberCount = (entry: SignalEntry): number =>
   listenersMap.get(entry.signal as object)?.size ?? 0;
 
+function renderRow(
+  entry: SignalEntry,
+  selectedId: string | null,
+  setSelectedId: (id: string) => void,
+  inGroup: boolean,
+): ReactElement {
+  return (
+    <tr
+      key={entry.id}
+      onClick={() => {
+        setSelectedId(entry.id);
+      }}
+      style={{
+        cursor: 'pointer',
+        background: entry.id === selectedId ? s.colors.bgAlt : undefined,
+      }}
+    >
+      <td style={{ ...s.td, paddingLeft: inGroup ? 16 : undefined }}>
+        {inGroup && entry.store !== undefined
+          ? entry.id.startsWith(`${entry.store}.`)
+            ? entry.id.slice(entry.store.length + 1)
+            : entry.id
+          : entry.id}
+        {!entry.name && (
+          <span
+            style={{
+              color: s.colors.textMuted,
+              marginLeft: 4,
+              fontSize: 10,
+            }}
+          >
+            (anon)
+          </span>
+        )}
+      </td>
+      <td style={{ ...s.td, color: s.colors.textMuted }}>
+        {typeOf(entry.signal.current)}
+      </td>
+      <td style={s.tdMono}>{formatValue(entry.signal.current)}</td>
+      <td style={s.td}>{subscriberCount(entry)}</td>
+      <td style={{ ...s.td, color: s.colors.textMuted }}>
+        {entry.signal.lastUpdated}
+      </td>
+    </tr>
+  );
+}
+
 export function SignalsPanel() {
   useDevtoolsRender();
   const [sortKey, setSortKey] = useState<SortKey>('updated');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [filter, setFilter] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const [collapsedStores, setCollapsedStores] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const rows = devtools.getAllSignals();
   const filtered = useMemo(() => {
@@ -32,7 +83,8 @@ export function SignalsPanel() {
       ? rows.filter(
           (r) =>
             r.id.toLowerCase().includes(f) ||
-            (r.name?.toLowerCase().includes(f) ?? false),
+            (r.name?.toLowerCase().includes(f) ?? false) ||
+            (r.store?.toLowerCase().includes(f) ?? false),
         )
       : rows.slice();
     items.sort((a, b) => {
@@ -57,6 +109,35 @@ export function SignalsPanel() {
 
   const visible = filtered.slice(0, RENDER_CAP);
   const truncated = filtered.length > RENDER_CAP;
+
+  // Partition the visible rows into store groups (ordered by store name) and
+  // loose signals. The sort applies *within* each section.
+  const { storeGroups, loose } = useMemo(() => {
+    const byStore = new Map<string, SignalEntry[]>();
+    const rest: SignalEntry[] = [];
+    for (const e of visible) {
+      if (e.store !== undefined) {
+        const arr = byStore.get(e.store) ?? [];
+        arr.push(e);
+        byStore.set(e.store, arr);
+      } else {
+        rest.push(e);
+      }
+    }
+    const groups = Array.from(byStore.entries()).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    return { storeGroups: groups, loose: rest };
+  }, [visible]);
+
+  const toggleStore = (storeName: string): void => {
+    setCollapsedStores((prev) => {
+      const next = new Set(prev);
+      if (next.has(storeName)) next.delete(storeName);
+      else next.add(storeName);
+      return next;
+    });
+  };
 
   const selected = selectedId
     ? (filtered.find((r) => r.id === selectedId) ??
@@ -135,48 +216,61 @@ export function SignalsPanel() {
             </tr>
           </thead>
           <tbody>
-            {visible.map((entry) => (
-              <tr
-                key={entry.id}
-                onClick={() => {
-                  setSelectedId(entry.id);
-                }}
-                style={{
-                  cursor: 'pointer',
-                  background:
-                    entry.id === selectedId ? s.colors.bgAlt : undefined,
-                }}
-              >
-                <td style={s.td}>
-                  {entry.id}
-                  {!entry.name && (
-                    <span
+            {storeGroups.map(([storeName, members]) => {
+              const isCollapsed = collapsedStores.has(storeName);
+              return (
+                <Fragment key={`store:${storeName}`}>
+                  <tr
+                    onClick={() => {
+                      toggleStore(storeName);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                    data-testid={`store-group-${storeName}`}
+                  >
+                    <td
+                      colSpan={5}
                       style={{
-                        color: s.colors.textMuted,
-                        marginLeft: 4,
-                        fontSize: 10,
+                        ...s.td,
+                        background: s.colors.bgAlt,
+                        fontWeight: 600,
                       }}
                     >
-                      (anon)
-                    </span>
-                  )}
-                </td>
-                <td style={{ ...s.td, color: s.colors.textMuted }}>
-                  {typeOf(entry.signal.current)}
-                </td>
-                <td style={s.tdMono}>{formatValue(entry.signal.current)}</td>
-                <td style={s.td}>{subscriberCount(entry)}</td>
-                <td style={{ ...s.td, color: s.colors.textMuted }}>
-                  {entry.signal.lastUpdated}
-                </td>
-              </tr>
-            ))}
+                      {isCollapsed ? '▸' : '▾'} {storeName}
+                      <span
+                        style={{
+                          color: s.colors.textMuted,
+                          marginLeft: 4,
+                          fontSize: 10,
+                          fontWeight: 400,
+                        }}
+                      >
+                        ({members.length} signal
+                        {members.length === 1 ? '' : 's'})
+                      </span>
+                    </td>
+                  </tr>
+                  {!isCollapsed &&
+                    members.map((entry) =>
+                      renderRow(entry, selectedId, setSelectedId, true),
+                    )}
+                </Fragment>
+              );
+            })}
+            {loose.map((entry) =>
+              renderRow(entry, selectedId, setSelectedId, false),
+            )}
           </tbody>
         </table>
       </div>
       {selected && (
         <div style={{ ...s.card, width: 320, alignSelf: 'flex-start' }}>
           <div style={s.cardTitle}>{selected.id}</div>
+          {selected.store !== undefined && (
+            <div style={s.cardRow}>
+              <span style={s.cardLabel}>Store</span>
+              <span>{selected.store}</span>
+            </div>
+          )}
           <div style={s.cardRow}>
             <span style={s.cardLabel}>Type</span>
             <span>{typeOf(selected.signal.current)}</span>

@@ -1,3 +1,5 @@
+import { getDevToolsAdapter } from '../refsignal';
+
 /**
  * Creates a module-scope signal store singleton.
  *
@@ -6,6 +8,12 @@
  * Calls `factory()` once immediately — the returned store lives for the
  * application's lifetime. Use {@link useRefSignalStore} to connect the store
  * to React components with opt-in re-renders, timing, and value unwrapping.
+ *
+ * When DevTools are active, the store registers itself with `debugName`: the
+ * Signals panel groups its members under the store, and anonymous member
+ * signals get derived names (`game.score` instead of `signal_3`). Without a
+ * `debugName` the store is auto-named (`store_1`). No-op in production or
+ * when DevTools aren't imported.
  *
  * Signals in the store are accessible directly outside React — no Provider,
  * no hook required for imperative reads and writes.
@@ -22,7 +30,7 @@
  * const gameStore = createRefSignalStore(() => ({
  *   score: createRefSignal(0),
  *   level: createRefSignal(1),
- * }));
+ * }), 'game'); // ← optional debug name — groups members in DevTools
  *
  * // Outside React — direct access
  * gameStore.score.update(42);
@@ -43,6 +51,9 @@
  */
 export function createRefSignalStore<TStore extends object>(
   factory: () => TStore,
+  debugName?: string,
 ): TStore {
-  return factory();
+  const store = factory();
+  getDevToolsAdapter()?.registerStore?.(store, debugName);
+  return store;
 }

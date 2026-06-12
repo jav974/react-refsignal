@@ -403,6 +403,75 @@ describe('SignalsPanel', () => {
     expect(screen.getByText(/\(anon\)/)).toBeTruthy();
   });
 
+  it('groups store members under a collapsible header', () => {
+    const score = createRefSignal(0);
+    const level = createRefSignal(1);
+    devtools.registerStore({ score, level }, 'game');
+    createRefSignal(9, 'loose');
+    render(<SignalsPanel />);
+
+    // Group header with member count; member rows show the short key.
+    const header = screen.getByTestId('store-group-game');
+    expect(within(header).getByText(/game/)).toBeTruthy();
+    expect(within(header).getByText(/2 signals/)).toBeTruthy();
+    expect(screen.getByText('score')).toBeTruthy();
+    expect(screen.getByText('level')).toBeTruthy();
+    expect(screen.getByText('loose')).toBeTruthy();
+
+    // Collapse hides member rows, loose signals stay.
+    act(() => {
+      fireEvent.click(header);
+    });
+    expect(screen.queryByText('score')).toBeNull();
+    expect(screen.queryByText('level')).toBeNull();
+    expect(screen.getByText('loose')).toBeTruthy();
+
+    // Expand brings them back.
+    act(() => {
+      fireEvent.click(screen.getByTestId('store-group-game'));
+    });
+    expect(screen.getByText('score')).toBeTruthy();
+  });
+
+  it('orders multiple store groups by name and shows full ids for explicitly named members', () => {
+    const xp = createRefSignal(0);
+    const hp = createRefSignal(100, 'vitals'); // explicit name — kept, not renamed
+    devtools.registerStore({ xp }, 'zeta');
+    devtools.registerStore({ hp }, 'alpha');
+    render(<SignalsPanel />);
+
+    const headers = screen.getAllByTestId(/store-group-/);
+    expect(headers[0].getAttribute('data-testid')).toBe('store-group-alpha');
+    expect(headers[1].getAttribute('data-testid')).toBe('store-group-zeta');
+    // Explicitly named member keeps its full name in the row (no store prefix to strip).
+    expect(screen.getByText('vitals')).toBeTruthy();
+  });
+
+  it('shows the store name in the detail card', () => {
+    const score = createRefSignal(0);
+    devtools.registerStore({ score }, 'game');
+    render(<SignalsPanel />);
+    act(() => {
+      fireEvent.click(screen.getByText('score'));
+    });
+    expect(screen.getByText('Store')).toBeTruthy();
+    expect(screen.getByText('game.score')).toBeTruthy(); // card title = full id
+  });
+
+  it('filter matches store names', () => {
+    const score = createRefSignal(0);
+    devtools.registerStore({ score }, 'game');
+    createRefSignal(1, 'unrelated');
+    render(<SignalsPanel />);
+    act(() => {
+      fireEvent.change(screen.getByPlaceholderText(/filter by name/i), {
+        target: { value: 'game' },
+      });
+    });
+    expect(screen.getByText('score')).toBeTruthy();
+    expect(screen.queryByText('unrelated')).toBeNull();
+  });
+
   it('opens a detail card when a row is clicked', () => {
     createRefSignal(100, 'clicky');
     render(<SignalsPanel />);

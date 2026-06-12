@@ -125,7 +125,9 @@ devtools.reset();              // clear all tracking state
 
 Live table of every registered signal. Anonymous signals (created without a debug name) are tagged `(anon)` and given an auto-id like `signal_3`. Click a row to open a detail card with the full value and a "Copy value" button.
 
-Sort by name, subscriber count, or last-updated counter. Filter by name with the search box.
+Signals belonging to a [`createRefSignalStore`](api.md#createrefsignalstoretstore-factory-debugname) render grouped under a collapsible store header. Pass a debug name (`createRefSignalStore(factory, 'game')`) and anonymous members are automatically named `game.score`, `game.level` — one name fixes the whole store. Unnamed stores still group, under an auto-name (`store_1`).
+
+Sort by name, subscriber count, or last-updated counter. Filter by name (store names match too) with the search box.
 
 ### Timeline
 
@@ -250,6 +252,8 @@ const myAdapter: DevToolsAdapter = {
 
 setDevToolsAdapter(myAdapter);
 ```
+
+`registerStore` is an optional adapter method — `createRefSignalStore` calls it (when present) with the store object and its debug name, so adapters can group member signals. Omit it and stores simply aren't grouped.
 
 Importing `react-refsignal/devtools` is **not** required if you ship your own adapter — `setDevToolsAdapter` is exported from the core entry.
 
