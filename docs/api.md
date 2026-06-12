@@ -366,8 +366,8 @@ Options accepted by `useRefSignalStore`, `createRefSignalContext`, and `createRe
 
 | Option | Type | Description |
 |---|---|---|
-| `renderOn` | `Array<RefSignalKeys<TStore>>` \| `'all'` | Signal keys that trigger a re-render. Omit to never re-render. |
-| `unwrap` | `boolean` | If `true`, returns plain values with auto-generated setters instead of raw signals. Requires `renderOn`. |
+| `renderOn` | `Array<RefSignalKeys<TStore>>` \| `'all'` | Signal keys that trigger a re-render. Accepts both `RefSignal` and `ReadonlyRefSignal` keys (computed / memo signals) — subscribing is a read-side operation. Omit to never re-render. |
+| `unwrap` | `boolean` | If `true`, returns plain values with auto-generated setters instead of raw signals. Readonly signal keys unwrap to their value but get no setter — the value is derived. Requires `renderOn`. |
 | `filter` | `(store: StoreSnapshot<TStore>) => boolean` | Only re-render if this returns `true`. Receives the store snapshot — signals unwrapped to their current values. |
 | `throttle` / `debounce` / `maxWait` / `frame` | — | Same as [`TimingOptions`](#timingoptions). |
 
@@ -407,7 +407,7 @@ const result = useRefSignalMemo(
 - The returned signal can be subscribed to like any other signal.
 - `options` is a [`WatchOptions`](#watchoptions) — timing, filter, and `trackSignals` for dynamic-signal traversal.
 
-Returns a [`ReadonlyRefSignal<T>`](#readonlyrefsignalt) — read-side APIs (`.current`, `.lastUpdated`, `.subscribe`/`.unsubscribe`, `.getDebugName`) only; the write-side APIs (`.update`, `.reset`, `.notify`, `.notifyUpdate`) are hidden. The lifetime is tied to the component, so no `.dispose()` either. Pass it as a dep wherever a `ReadonlyRefSignal` is accepted: `useRefSignalRender`, `useRefSignalEffect`, `useRefSignalMemo`, `useRefSignalFollow`, `createComputedRefSignal`, `watch`, `watchSignals`, and `WatchOptions.trackSignals`.
+Returns a [`ReadonlyRefSignal<T>`](#readonlyrefsignalt) — read-side APIs (`.current`, `.lastUpdated`, `.subscribe`/`.unsubscribe`, `.getDebugName`) only; the write-side APIs (`.update`, `.reset`, `.notify`, `.notifyUpdate`) are hidden. The lifetime is tied to the component, so no `.dispose()` either. Pass it as a dep wherever a `ReadonlyRefSignal` is accepted: `useRefSignalRender`, `useRefSignalEffect`, `useRefSignalMemo`, `useRefSignalFollow`, `createComputedRefSignal`, `watch`, `watchSignals`, and `WatchOptions.trackSignals` — and as a `renderOn` key when placed in a store or context.
 
 ---
 

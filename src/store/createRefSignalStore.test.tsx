@@ -4,7 +4,13 @@
 import React, { ReactNode } from 'react';
 import { act } from 'react';
 import { renderHook } from '../test-utils/renderHook';
-import { createRefSignal, watch } from '../refsignal';
+import {
+  createRefSignal,
+  createComputedRefSignal,
+  watch,
+  type RefSignal,
+  type ReadonlyRefSignal,
+} from '../refsignal';
 import { createRefSignalStore } from './createRefSignalStore';
 import { type RefSignalKeys } from './useRefSignalStore';
 import {
@@ -281,6 +287,70 @@ describe('useRefSignalStore — renderOn key validation (JS callers)', () => {
     const store = createRefSignalStore(makeStore);
     renderHook(() => useRefSignalStore(store, { renderOn: ['score'] }));
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRefSignalStore — ReadonlyRefSignal keys in renderOn', () => {
+  type DerivedStore = {
+    count: RefSignal<number>;
+    double: ReadonlyRefSignal<number>;
+  };
+
+  function makeDerivedStore(): DerivedStore {
+    const count = createRefSignal(0);
+    const double = createComputedRefSignal(() => count.current * 2, [count]);
+    return { count, double };
+  }
+
+  it('accepts a readonly signal key and re-renders when the computed fires', () => {
+    const store = makeDerivedStore();
+    let renders = 0;
+    renderHook(() => {
+      renders++;
+      return useRefSignalStore(store, { renderOn: ['double'] });
+    });
+    expect(renders).toBe(1);
+    act(() => {
+      store.count.update(5);
+    });
+    expect(store.double.current).toBe(10);
+    expect(renders).toBe(2);
+  });
+
+  it('unwraps a readonly signal key to its value, with no setter in the type', () => {
+    const store = makeDerivedStore();
+    const { result } = renderHook(() =>
+      useRefSignalStore(store, { renderOn: ['double'], unwrap: true }),
+    );
+    expect(result.current.double).toBe(0);
+    act(() => {
+      store.count.update(3);
+    });
+    expect(result.current.double).toBe(6);
+    // @ts-expect-error — readonly signal keys get no auto-generated setter
+    void result.current.setDouble;
+    // Writable keys still do.
+    expect(typeof result.current.setCount).toBe('function');
+  });
+
+  it('passes the unwrapped readonly value to the store-snapshot filter', () => {
+    const store = makeDerivedStore();
+    let renders = 0;
+    renderHook(() => {
+      renders++;
+      return useRefSignalStore(store, {
+        renderOn: ['double'],
+        filter: (s) => s.double >= 10, // s.double: number — snapshot unwraps readonly signals
+      });
+    });
+    act(() => {
+      store.count.update(2); // double = 4 — filtered out
+    });
+    expect(renders).toBe(1);
+    act(() => {
+      store.count.update(6); // double = 12 — passes
+    });
+    expect(renders).toBe(2);
   });
 });
 
