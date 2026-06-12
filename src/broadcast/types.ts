@@ -52,19 +52,22 @@ type BroadcastCommonOptions = {
   gracePeriod?: number;
   /**
    * Delay in ms before running the first election after setup or visibility-resume.
-   * `mode: 'one-to-many'` only. Default: 400.
+   * `mode: 'one-to-many'` only. Default: `heartbeatInterval + 100`.
    *
    * The delay gives existing peers a window to respond to our initial `hello`
    * with their own heartbeats. Without it, a tab joining an existing session
    * transiently self-elects before any peer heartbeats arrive, producing a
    * visible flicker of `isBroadcaster` from `false → true → false`.
    *
-   * **Should be ≥ `heartbeatInterval`** — the joiner must wait at least one
-   * heartbeat cycle to be sure of hearing every existing peer. If you raise
-   * `heartbeatInterval`, raise this in step.
+   * The default scales with `heartbeatInterval` automatically — one full
+   * heartbeat cycle plus a 100ms jitter buffer — so raising the heartbeat
+   * never silently shrinks the anti-flicker window. While the window is
+   * pending, heartbeat ticks don't claim leadership (yielding still works),
+   * so the configured delay is honored exactly.
    *
-   * - Set to `0` to elect synchronously (lone-tab scenarios; fastest, accepts the flicker).
-   * - Values ≥ `heartbeatInterval` are the safe range; smaller values risk the flicker described above.
+   * Set to `0` to elect synchronously (lone-tab scenarios; fastest, accepts
+   * the flicker). Explicit values < `heartbeatInterval` risk the flicker
+   * described above.
    */
   initialElectionDelay?: number;
 };
