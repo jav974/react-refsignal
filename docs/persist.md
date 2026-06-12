@@ -109,7 +109,7 @@ All three signals are stored under a single key as one JSON blob. When the page 
 Use `usePersist` when your Provider needs to be a full React component — for example, when the storage key is derived from a prop (`userId`, `roomId`, route param), when you want to gate rendering until hydration completes, or when you need to combine persistence with other hooks such as data fetching, auth, or a WebSocket subscription. The hook ties persistence to the Provider's lifetime: subscriptions are created on mount and torn down on unmount, so no writes occur after the component leaves the tree.
 
 Returns `{ isHydrated, flush, clear }`:
-- `isHydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes. Use it to gate rendering.
+- `isHydrated` — a `ReadonlyRefSignal<boolean>` that becomes `true` once hydration completes. Use it to gate rendering. The hook owns the write side — consumers only read or subscribe.
 - `flush` — writes the current store state to storage immediately, bypassing `filter` and any pending throttle/debounce timer. Returns a `Promise<void>` that resolves when the write completes; rejects if the storage adapter throws. Fire-and-forget is still valid — the returned promise is only interesting for callers that need to await completion (e.g., before navigation) or detect write failures.
 - `clear` — removes the storage key and resets all persisted signals to their defaults. Cancels pending timers and suppresses the save-on-reset cycle so storage stays empty. Returns a `Promise<void>` that resolves once the storage write is complete.
 
@@ -547,7 +547,7 @@ function usePersist<TStore>(
   store: TStore,
   options: PersistOptions<TStore>,
 ): {
-  isHydrated: RefSignal<boolean>;
+  isHydrated: ReadonlyRefSignal<boolean>;
   flush: () => Promise<void>;
   clear: () => Promise<void>;
 }

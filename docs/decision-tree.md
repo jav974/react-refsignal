@@ -199,7 +199,7 @@ flowchart TD
     Q3 -->|All signals| G["renderOn: ALL"]
 
     F & G --> Q4{"Want plain values + auto-generated setters instead of signal refs?"}
-    Q4 -->|Yes| H["unwrap: true\nrequires renderOn — type error without it"]
+    Q4 -->|Yes| H["unwrap: true\nrequires renderOn — type error without it\n(plain JS: dev-mode warning, JSX never refreshes)"]
     Q4 -->|No| I["Read signal.current in JSX"]
 ```
 
@@ -269,7 +269,7 @@ flowchart TD
     Q1 -->|Entire store| Q2{"Provider lifecycle?"}
 
     Q2 -->|"Factory — lives for app lifetime"| B["broadcast(factory, options) wrapper"]
-    Q2 -->|Provider mounts and unmounts| C["useBroadcast(store, options)\nReturns { isBroadcaster: RefSignal<boolean> }"]
+    Q2 -->|Provider mounts and unmounts| C["useBroadcast(store, options)\nReturns { isBroadcaster, isStableBroadcaster }\n(both ReadonlyRefSignal<boolean>)"]
 
     A & B & C --> Q3{"How should tabs coordinate?"}
     Q3 -->|"All tabs send and receive equally — default"| D["mode: 'many-to-many'"]

@@ -796,7 +796,7 @@ const store = useUserContext({ renderOn: ALL });
 // equivalent: useUserContext({ renderOn: 'all' })
 ```
 
-Passing a non-signal key in `renderOn` is a TypeScript error.
+Passing a non-signal key in `renderOn` is a TypeScript error. Plain JavaScript callers bypass that check — the key is silently ignored and never triggers a re-render, so a dev-mode console warning fires instead.
 
 **Timing and filter options** — all [`EffectOptions`](#effectoptions) fields are accepted alongside `renderOn` and `unwrap`. `filter` is upgraded to receive the store snapshot directly (see [`SignalStoreOptions`](#signalstoreoptionststore)):
 
@@ -826,7 +826,7 @@ const { name, setName, score, setScore, sessionId } = useUserContext({
 // sessionId: string (passthrough)
 ```
 
-> **Warning:** `unwrap: true` without `renderOn` snapshots `.current` values at mount and never refreshes them. The component reads stale values silently. Always combine `unwrap: true` with a `renderOn` list when the unwrapped values are used in JSX.
+> **Warning:** `unwrap: true` without `renderOn` is a TypeScript error — the options type requires `renderOn` when unwrapping. Plain JavaScript callers bypass that check: the hook still runs, but nothing subscribes, so the component never re-renders and JSX shows stale values (the proxy reads live `.current`, so event handlers see fresh data — JSX doesn't). A dev-mode console warning fires in this case. Always combine `unwrap: true` with a `renderOn` list.
 
 ---
 
@@ -1030,7 +1030,7 @@ const { GameProvider, useGameContext } = createRefSignalContext(
 
 // Hook variant — returns { isHydrated, flush, clear }
 const { isHydrated, flush, clear } = usePersist(store, { key: 'game', keys: ['score', 'level'] });
-// isHydrated: RefSignal<boolean>    — true once storage read resolves
+// isHydrated: ReadonlyRefSignal<boolean> — true once storage read resolves
 // flush():    () => Promise<void>    — write current state immediately; awaitable; rejects on adapter failure
 // clear():    () => Promise<void>    — wipe storage + reset all signals to defaults
 ```

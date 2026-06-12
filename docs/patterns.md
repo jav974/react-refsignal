@@ -593,7 +593,7 @@ function LeaderPoller({
   userId,
 }: {
   messages: RefSignal<MessagesData | undefined>;
-  isBroadcaster: RefSignal<boolean>;
+  isBroadcaster: ReadonlyRefSignal<boolean>;
   userId: string;
 }) {
   // Re-render this leaf when leadership flips so the query re-evaluates.

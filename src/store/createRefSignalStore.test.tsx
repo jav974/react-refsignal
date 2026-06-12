@@ -6,6 +6,7 @@ import { act } from 'react';
 import { renderHook } from '../test-utils/renderHook';
 import { createRefSignal, watch } from '../refsignal';
 import { createRefSignalStore } from './createRefSignalStore';
+import { type RefSignalKeys } from './useRefSignalStore';
 import {
   useRefSignalStore,
   type SignalStoreOptionsPlain,
@@ -192,6 +193,94 @@ describe('useRefSignalStore — unwrap', () => {
     });
     expect(result.current.tag).toBe('game');
     expect((result.current as Record<string, unknown>).setTag).toBeUndefined();
+  });
+});
+
+describe('useRefSignalStore — unwrap without renderOn (JS callers)', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it('warns in development — the type system blocks this, plain JS does not', () => {
+    const store = createRefSignalStore(makeStore);
+    // Cast simulates an untyped JS caller; TS rejects this options shape.
+    renderHook(() =>
+      useRefSignalStore(store, {
+        unwrap: true,
+      } as unknown as SignalStoreOptionsUnwrapped<GameStore>),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('unwrap: true without renderOn'),
+    );
+  });
+
+  it('does not warn when renderOn is provided', () => {
+    mountStoreUnwrapped({ renderOn: ['score'], unwrap: true });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRefSignalStore — renderOn key validation (JS callers)', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  // The warning dedupe set is module-global, so each test uses a distinct
+  // bad key to stay independent of execution order.
+
+  it('warns when a renderOn key does not resolve to a signal', () => {
+    const store = createRefSignalStore(makeStore);
+    renderHook(() =>
+      useRefSignalStore(store, {
+        // Cast simulates an untyped JS caller; TS rejects unknown keys.
+        renderOn: ['scoer'] as unknown as Array<RefSignalKeys<GameStore>>,
+      }),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('renderOn key "scoer"'),
+    );
+  });
+
+  it('warns for a non-signal store value used as a renderOn key', () => {
+    const store = createRefSignalStore(makeStore);
+    renderHook(() =>
+      useRefSignalStore(store, {
+        renderOn: ['tag'] as unknown as Array<RefSignalKeys<GameStore>>,
+      }),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('renderOn key "tag"'),
+    );
+  });
+
+  it('warns only once per key across re-renders', () => {
+    const store = createRefSignalStore(makeStore);
+    const { rerender } = renderHook(() =>
+      useRefSignalStore(store, {
+        renderOn: ['levle'] as unknown as Array<RefSignalKeys<GameStore>>,
+      }),
+    );
+    rerender();
+    rerender();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not warn for valid signal keys', () => {
+    const store = createRefSignalStore(makeStore);
+    renderHook(() => useRefSignalStore(store, { renderOn: ['score'] }));
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
 
