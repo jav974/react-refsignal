@@ -54,6 +54,13 @@ type BaseStoreOptions<TStore> = TimingOptions & {
   filter?: (store: StoreSnapshot<TStore>) => boolean;
 };
 
+const IS_PRODUCTION =
+  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
+
+// Dev-warning dedupe — a component re-rendering at frame rate must not flood
+// the console with the same diagnostic. Keyed globally; good enough for dev.
+const warnedRenderOnKeys = new Set<PropertyKey>();
+
 /**
  * Options accepted by `useRefSignalStore`. Shape depends on `unwrap`:
  * - `unwrap: true` (Unwrapped variant) requires `renderOn` — unwrapping
@@ -142,12 +149,43 @@ export function useRefSignalStore<TStore extends object>(
   store: TStore,
   options?: SignalStoreOptions<TStore>,
 ): TStore | UnwrappedStore<TStore> {
+  // TypeScript rejects `unwrap` without `renderOn` at compile time, but plain
+  // JS callers reach here unchecked — and get values that never refresh in JSX.
+  // The cast defeats the union narrowing that makes this state "impossible".
+  const uncheckedOptions = options as
+    | { unwrap?: boolean; renderOn?: unknown }
+    | undefined;
+  if (
+    !IS_PRODUCTION &&
+    uncheckedOptions?.unwrap &&
+    uncheckedOptions.renderOn === undefined
+  ) {
+    console.warn(
+      '[react-refsignal] unwrap: true without renderOn — unwrapped values never trigger a re-render, so JSX will show stale values. Add renderOn (e.g. renderOn: ALL).',
+    );
+  }
+
   // ── Resolve which signals to subscribe to ─────────────────────────────────
   let signals: RefSignal[];
   if (options?.renderOn === 'all') {
     signals = Object.values(store).filter(isRefSignal);
   } else if (options?.renderOn !== undefined) {
-    signals = options.renderOn.map((key) => store[key] as RefSignal);
+    // Same JS-caller gap as the unwrap guard above: TypeScript rejects keys
+    // that aren't signals on the store, but a plain-JS typo reaches here —
+    // and an unresolved key would crash the render-snapshot pass (reading
+    // .lastUpdated on undefined). Filter non-signals out; warn in dev.
+    signals = [];
+    for (const key of options.renderOn) {
+      const value = (store as Record<PropertyKey, unknown>)[key];
+      if (isRefSignal(value)) {
+        signals.push(value);
+      } else if (!IS_PRODUCTION && !warnedRenderOnKeys.has(key)) {
+        warnedRenderOnKeys.add(key);
+        console.warn(
+          `[react-refsignal] renderOn key "${String(key)}" does not resolve to a signal on the store — updates will never trigger a re-render. Check for a typo or a non-signal value.`,
+        );
+      }
+    }
   } else {
     signals = [];
   }

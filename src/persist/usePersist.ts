@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import type { RefSignal } from '../refsignal';
+import type { ReadonlyRefSignal } from '../refsignal';
 import { useRefSignal } from '../hooks/useRefSignal';
 import { PersistOptions } from './types';
 import { setupPersist } from './persist';
@@ -13,8 +13,9 @@ const noopAsync = async () => {};
  * @see [Decision Tree §9 — Persistence](https://github.com/jav974/react-refsignal/blob/main/docs/decision-tree.md#9-persistence)
  *
  * Returns `{ isHydrated, flush, clear }`:
- * - `isHydrated` — a `RefSignal<boolean>` that becomes `true` once hydration completes.
- *   Use it to gate rendering until stored values are loaded.
+ * - `isHydrated` — a `ReadonlyRefSignal<boolean>` that becomes `true` once hydration
+ *   completes. Use it to gate rendering until stored values are loaded. The hook owns
+ *   the write side — consumers only read or subscribe.
  * - `flush` — writes the current store state to storage immediately, bypassing
  *   `filter` and any pending throttle/debounce timer. Returns a `Promise<void>`
  *   that resolves when the write completes; rejects on adapter failure.
@@ -35,7 +36,7 @@ export function usePersist<TStore extends object>(
   store: TStore,
   options: PersistOptions<TStore>,
 ): {
-  isHydrated: RefSignal<boolean>;
+  isHydrated: ReadonlyRefSignal<boolean>;
   flush: () => Promise<void>;
   clear: () => Promise<void>;
 } {
