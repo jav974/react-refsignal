@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { autorun, observable, runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import { canvasStyle, useCanvasScene } from '../canvas-helpers';
+import { canvasStyle, useCanvasDrag, useCanvasScene } from '../canvas-helpers';
 import {
   MOBX_C,
   bumpRender,
@@ -143,7 +143,7 @@ function MCanvasView({
       dirtyRef.current = true;
     });
   }, [observableNodes]);
-  const { canvasRef } = useCanvasScene({
+  const { canvasRef, layoutRef } = useCanvasScene({
     w,
     h,
     edges,
@@ -151,7 +151,17 @@ function MCanvasView({
     readPositions,
     dirtyRef,
   });
-  return <canvas ref={canvasRef} style={canvasStyle} />;
+  const drag = useCanvasDrag({
+    canvasRef,
+    layoutRef,
+    readPositions,
+    writeNode: (i, p) =>
+      runInAction(() => {
+        observableNodes[i].x = p.x;
+        observableNodes[i].y = p.y;
+      }),
+  });
+  return <canvas ref={canvasRef} style={canvasStyle} {...drag} />;
 }
 
 export function MGraph({

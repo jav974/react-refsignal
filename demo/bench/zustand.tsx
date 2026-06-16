@@ -23,7 +23,7 @@ import React, {
 } from 'react';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { canvasStyle, useCanvasScene } from '../canvas-helpers';
+import { canvasStyle, useCanvasDrag, useCanvasScene } from '../canvas-helpers';
 import {
   ZUS_C,
   bumpRender,
@@ -142,7 +142,7 @@ function ZCanvasView({ edges, w, h }: { edges: Edge[]; w: number; h: number }) {
       dirtyRef.current = true;
     });
   }, [store]);
-  const { canvasRef } = useCanvasScene({
+  const { canvasRef, layoutRef } = useCanvasScene({
     w,
     h,
     edges,
@@ -150,7 +150,18 @@ function ZCanvasView({ edges, w, h }: { edges: Edge[]; w: number; h: number }) {
     readPositions,
     dirtyRef,
   });
-  return <canvas ref={canvasRef} style={canvasStyle} />;
+  const drag = useCanvasDrag({
+    canvasRef,
+    layoutRef,
+    readPositions,
+    writeNode: (i, p) =>
+      store.setState((prev) => {
+        const next = [...prev.positions];
+        next[i] = p;
+        return { positions: next };
+      }),
+  });
+  return <canvas ref={canvasRef} style={canvasStyle} {...drag} />;
 }
 
 export function ZGraph({
@@ -329,7 +340,7 @@ function ZImpCanvasView({
       dirtyRef.current = true;
     });
   }, [store]);
-  const { canvasRef } = useCanvasScene({
+  const { canvasRef, layoutRef } = useCanvasScene({
     w,
     h,
     edges,
@@ -337,7 +348,18 @@ function ZImpCanvasView({
     readPositions,
     dirtyRef,
   });
-  return <canvas ref={canvasRef} style={canvasStyle} />;
+  const drag = useCanvasDrag({
+    canvasRef,
+    layoutRef,
+    readPositions,
+    writeNode: (i, p) =>
+      store.setState((prev) => {
+        const next = [...prev.positions];
+        next[i] = p;
+        return { positions: next };
+      }),
+  });
+  return <canvas ref={canvasRef} style={canvasStyle} {...drag} />;
 }
 
 export function ZImpGraph({

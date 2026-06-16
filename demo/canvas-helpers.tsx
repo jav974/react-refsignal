@@ -6,7 +6,7 @@
 // just owns the canvas element, the rAF loop, hit-testing, and the
 // raster primitives that match the SVG node visuals.
 
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
 export type Pos = { x: number; y: number };
 export type Edge = [number, number];
@@ -259,4 +259,63 @@ export function hitTest(positions: Pos[], p: Pos): number {
     }
   }
   return bestIdx;
+}
+
+// Manual pointer drag for the canvas renderer. The SVG branch wires drag
+// per-<g>; on canvas there are no DOM nodes to hook, so we hit-test against
+// the live positions on pointerdown and forward moves to `writeNode`, which
+// each mode implements against its own store (sig.update / store.set / etc).
+export function useCanvasDrag({
+  canvasRef,
+  layoutRef,
+  readPositions,
+  writeNode,
+}: {
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  layoutRef: React.RefObject<CanvasLayout>;
+  readPositions: () => Pos[];
+  writeNode: (idx: number, pos: Pos) => void;
+}) {
+  const dragIdx = useRef(-1);
+  const offset = useRef({ x: 0, y: 0 });
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const p = clientToCanvas(canvas, e.clientX, e.clientY, layoutRef.current);
+      const idx = hitTest(readPositions(), p);
+      if (idx < 0) return;
+      const node = readPositions()[idx];
+      offset.current = { x: node.x - p.x, y: node.y - p.y };
+      dragIdx.current = idx;
+      canvas.setPointerCapture(e.pointerId);
+    },
+    [canvasRef, layoutRef, readPositions],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (dragIdx.current < 0) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const p = clientToCanvas(canvas, e.clientX, e.clientY, layoutRef.current);
+      writeNode(dragIdx.current, {
+        x: p.x + offset.current.x,
+        y: p.y + offset.current.y,
+      });
+    },
+    [canvasRef, layoutRef, writeNode],
+  );
+
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (dragIdx.current < 0) return;
+      dragIdx.current = -1;
+      canvasRef.current?.releasePointerCapture(e.pointerId);
+    },
+    [canvasRef],
+  );
+
+  return { onPointerDown, onPointerMove, onPointerUp };
 }

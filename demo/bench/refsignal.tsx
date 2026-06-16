@@ -16,7 +16,7 @@ import {
   useRefSignalRender,
 } from 'react-refsignal';
 import type { RefSignal } from 'react-refsignal';
-import { canvasStyle, useCanvasScene } from '../canvas-helpers';
+import { canvasStyle, useCanvasDrag, useCanvasScene } from '../canvas-helpers';
 import {
   SIG_C,
   bumpRender,
@@ -148,7 +148,7 @@ function SigCanvasView({
       for (const s of sigs) s.unsubscribe(onChange);
     };
   }, [sigs]);
-  const { canvasRef } = useCanvasScene({
+  const { canvasRef, layoutRef } = useCanvasScene({
     w,
     h,
     edges,
@@ -156,7 +156,13 @@ function SigCanvasView({
     readPositions,
     dirtyRef,
   });
-  return <canvas ref={canvasRef} style={canvasStyle} />;
+  const drag = useCanvasDrag({
+    canvasRef,
+    layoutRef,
+    readPositions,
+    writeNode: (i, p) => sigs[i].update(p),
+  });
+  return <canvas ref={canvasRef} style={canvasStyle} {...drag} />;
 }
 
 export function SigGraph({
