@@ -11,7 +11,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { canvasStyle, useCanvasScene } from '../canvas-helpers';
+import { canvasStyle, useCanvasDrag, useCanvasScene } from '../canvas-helpers';
 import {
   REACT_C,
   bumpRender,
@@ -78,11 +78,13 @@ function RCanvasView({
   edges,
   w,
   h,
+  writeNode,
 }: {
   positions: Pos[];
   edges: Edge[];
   w: number;
   h: number;
+  writeNode: (idx: number, pos: Pos) => void;
 }) {
   bumpRender();
   const posRef = useRef(positions);
@@ -92,7 +94,7 @@ function RCanvasView({
     dirtyRef.current = true;
   }, [positions]);
   const readPositions = useCallback(() => posRef.current, []);
-  const { canvasRef } = useCanvasScene({
+  const { canvasRef, layoutRef } = useCanvasScene({
     w,
     h,
     edges,
@@ -100,7 +102,13 @@ function RCanvasView({
     readPositions,
     dirtyRef,
   });
-  return <canvas ref={canvasRef} style={canvasStyle} />;
+  const drag = useCanvasDrag({
+    canvasRef,
+    layoutRef,
+    readPositions,
+    writeNode,
+  });
+  return <canvas ref={canvasRef} style={canvasStyle} {...drag} />;
 }
 
 export function RGraph({
@@ -178,7 +186,22 @@ export function RGraph({
 
   const r = renderer ?? BENCH.renderer;
   if (r === 'canvas') {
-    return <RCanvasView positions={positions} edges={edges} w={w} h={h} />;
+    return (
+      <RCanvasView
+        positions={positions}
+        edges={edges}
+        w={w}
+        h={h}
+        writeNode={(i, p) =>
+          setPositions((prev) => {
+            const next = [...prev];
+            next[i] = p;
+            posRef.current = next;
+            return next;
+          })
+        }
+      />
+    );
   }
   return (
     <svg ref={svgRef} viewBox={`0 0 ${w} ${h}`} style={svgStyle}>

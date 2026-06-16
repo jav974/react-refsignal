@@ -19,7 +19,7 @@ import {
   useStore as useJotaiStore,
 } from 'jotai';
 import type { PrimitiveAtom } from 'jotai';
-import { canvasStyle, useCanvasScene } from '../canvas-helpers';
+import { canvasStyle, useCanvasDrag, useCanvasScene } from '../canvas-helpers';
 import {
   JOTAI_C,
   bumpRender,
@@ -150,7 +150,7 @@ function JCanvasView({
       for (const u of unsubs) u();
     };
   }, [atoms, store]);
-  const { canvasRef } = useCanvasScene({
+  const { canvasRef, layoutRef } = useCanvasScene({
     w,
     h,
     edges,
@@ -158,7 +158,13 @@ function JCanvasView({
     readPositions,
     dirtyRef,
   });
-  return <canvas ref={canvasRef} style={canvasStyle} />;
+  const drag = useCanvasDrag({
+    canvasRef,
+    layoutRef,
+    readPositions,
+    writeNode: (i, p) => store.set(atoms[i], p),
+  });
+  return <canvas ref={canvasRef} style={canvasStyle} {...drag} />;
 }
 
 export function JGraph({
