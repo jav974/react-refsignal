@@ -56,12 +56,14 @@ function steerAndMove(
   speed: number,
   world: Vec,
 ): void {
-  const dlen = Math.hypot(ddx, ddy) || 1;
+  // sqrt(x*x + y*y) over Math.hypot — hypot's overflow guard is needless for
+  // these small deltas and measurably slower in this per-agent hot loop.
+  const dlen = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
   const desVx = (ddx / dlen) * speed;
   const desVy = (ddy / dlen) * speed;
   const sVx = a.vx * (1 - TURN_RATE) + desVx * TURN_RATE;
   const sVy = a.vy * (1 - TURN_RATE) + desVy * TURN_RATE;
-  const sLen = Math.hypot(sVx, sVy) || 1;
+  const sLen = Math.sqrt(sVx * sVx + sVy * sVy) || 1;
   a.vx = (sVx / sLen) * speed;
   a.vy = (sVy / sLen) * speed;
   let nx = ap.x + a.vx;
@@ -80,7 +82,14 @@ function steerAndMove(
     ny = world.y;
     a.vy = -Math.abs(a.vy);
   }
-  a.position.update({ x: nx, y: ny });
+  // Mutate in place + notify rather than `update({ x, y })`: this runs once per
+  // agent per tick (×360 ×~60/s), and the fresh-object allocation was the
+  // dominant GC pressure. ap IS a.position.current; nx/ny are already read off
+  // it above, and consumers (AgentDot, the AI scan) read x/y straight off
+  // `.current` without retaining the reference, so in-place is safe.
+  ap.x = nx;
+  ap.y = ny;
+  a.position.notify();
 }
 
 // Pairwise eat-test over two buckets. `sameBucket` short-circuits the i/j
@@ -146,6 +155,35 @@ export function makePellet(id: number, world: Vec): Pellet {
   };
 }
 
+// Cell-neighbor offsets (E, SW, S, SE) — covers each cross-cell agent pair
+// exactly once. Module-scope so it isn't rebuilt every tick.
+const NEIGH: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+];
+
+// Persistent spatial-hash buckets, reused across ticks. Reallocating hundreds
+// of cell arrays every frame was needless GC churn; instead each cell is
+// truncated (length = 0, keeping its backing capacity) and refilled, rebuilt
+// only when the cell count changes (world resize). tick() is single-threaded
+// and non-reentrant, so sharing these scratch buffers is safe.
+let aGrid: Agent[][] = [];
+let pGrid: Pellet[][] = [];
+
+function resetGrids(total: number): void {
+  if (aGrid.length !== total) {
+    aGrid = Array.from({ length: total }, () => []);
+    pGrid = Array.from({ length: total }, () => []);
+    return;
+  }
+  for (let i = 0; i < total; i++) {
+    aGrid[i].length = 0;
+    pGrid[i].length = 0;
+  }
+}
+
 function tryEat(a: Agent, b: Agent) {
   const ap = a.position.current;
   const bp = b.position.current;
@@ -190,12 +228,7 @@ export function tick(
   const cw = ((world.x / GRID_CELL) | 0) + 2;
   const ch = ((world.y / GRID_CELL) | 0) + 2;
   const total = cw * ch;
-  const aGrid: Agent[][] = new Array(total);
-  const pGrid: Pellet[][] = new Array(total);
-  for (let i = 0; i < total; i++) {
-    aGrid[i] = [];
-    pGrid[i] = [];
-  }
+  resetGrids(total);
 
   const cellAt = (x: number, y: number) => {
     let cx = (x / GRID_CELL) | 0;
@@ -394,19 +427,13 @@ export function tick(
     // ─── 2. Agent-agent collisions via grid. ──────────────────────────
     // For each cell: pairs within + pairs with 4 "later" neighbor cells.
     // 4 neighbors (E, SW, S, SE) covers each cross-cell pair exactly once.
-    const neigh: [number, number][] = [
-      [1, 0],
-      [-1, 1],
-      [0, 1],
-      [1, 1],
-    ];
     for (let cy = 0; cy < ch; cy++) {
       for (let cx = 0; cx < cw; cx++) {
         const bucket = aGrid[cy * cw + cx];
         eatPairs(bucket, bucket, true);
-        for (let n = 0; n < neigh.length; n++) {
-          const ncx = cx + neigh[n][0];
-          const ncy = cy + neigh[n][1];
+        for (let n = 0; n < NEIGH.length; n++) {
+          const ncx = cx + NEIGH[n][0];
+          const ncy = cy + NEIGH[n][1];
           if (ncx < 0 || ncx >= cw || ncy < 0 || ncy >= ch) continue;
           eatPairs(bucket, aGrid[ncy * cw + ncx], false);
         }

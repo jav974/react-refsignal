@@ -5,7 +5,11 @@
 // `trackSignals` for emergent pack-hunting.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePulseRefSignal, useRefSignalEffect } from 'react-refsignal';
+import {
+  usePulseRefSignal,
+  useRefSignal,
+  useRefSignalEffect,
+} from 'react-refsignal';
 import { CodeChip } from '../../common/components/CodeChip';
 import { FpsBadge } from '../../common/components/FpsBadge';
 import { Stat } from '../../common/components/Stat';
@@ -28,6 +32,7 @@ import {
   AliveCount,
   BiggestBadge,
   CallsCount,
+  TickStat,
 } from './components/ToolbarStats';
 import { WinnerBanner } from './components/WinnerBanner';
 import { COUNTS, DEFAULT_COUNT } from './logic/config';
@@ -47,7 +52,10 @@ export default function Agents() {
   const [seed, setSeed] = useState(0);
   const [count, setCount] = useState<Count>(DEFAULT_COUNT);
   const [running, setRunning] = useState(true);
-  const [tickN, setTickN] = useState(0);
+  // Tick count lives in a signal, not React state — bumping it each tick must
+  // not re-render Agents (which would re-render all 360 AgentDots + pellets).
+  // Only <TickStat> subscribes to it.
+  const tickN = useRefSignal(0, 'agents.tickN');
   const [winner, setWinner] = useState<Agent | null>(null);
   const [controlledId, setControlledId] = useState<number | null>(null);
   // World-coord mouse — ref (not state) so motion doesn't trigger re-renders.
@@ -102,10 +110,10 @@ export default function Agents() {
   useEffect(() => {
     killFeed.update([]);
     setWinner(null);
-    setTickN(0);
+    tickN.update(0);
     setRunning(true);
     setControlledId(null);
-  }, [agents, killFeed]);
+  }, [agents, killFeed, tickN]);
 
   // Auto-release control when the controlled agent dies.
   useEffect(() => {
@@ -139,12 +147,12 @@ export default function Agents() {
         mouse: mouseRef.current,
       });
       lastTickRef.current = now;
-      setTickN((n) => n + 1);
+      tickN.update(tickN.current + 1);
       if (result.gameOver) {
         setWinner(result.survivor);
       }
     }
-  }, [frame, running, agents, pellets, world, winner, controlledId]);
+  }, [frame, running, agents, pellets, world, winner, controlledId, tickN]);
 
   const reset = () => {
     setSeed((s) => s + 1);
@@ -189,7 +197,7 @@ export default function Agents() {
           {controlledId !== null && agents[controlledId] && (
             <Stat label="control" value={agents[controlledId].name} highlight />
           )}
-          <Stat label="tick" value={tickN} />
+          <TickStat tick={tickN} />
           <AliveCount agents={agents} />
           <BiggestBadge agents={agents} />
           <CallsCount agents={agents} />

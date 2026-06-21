@@ -1,11 +1,21 @@
-// The three reactive toolbar badges. Each subscribes only to its own slice of
-// the agent signals (alive / size / callTarget), `frame`-coalesced — so a
-// position-only tick never re-renders them.
+// Toolbar badges — each subscribes only to its own slice of the agent signals,
+// frame-coalesced, so a slice change re-renders just that badge. None of them
+// re-render the Agents tree: the sim drives the SVG imperatively and the tick
+// count lives in its own signal (TickStat), so the 360-agent scene never
+// re-renders. That decoupling — not throttling these badges — is what keeps it
+// smooth.
 
 import { useMemo } from 'react';
-import { useRefSignalRender } from 'react-refsignal';
+import { useRefSignalRender, type ReadonlyRefSignal } from 'react-refsignal';
 import { Stat } from '../../../common/components/Stat';
 import type { Agent } from '../types';
+
+// Tick counter in its own leaf — bumping the count re-renders only this badge,
+// never the scene above it.
+export function TickStat({ tick }: { tick: ReadonlyRefSignal<number> }) {
+  useRefSignalRender([tick], { frame: true });
+  return <Stat label="tick" value={tick.current} />;
+}
 
 export function AliveCount({ agents }: { agents: Agent[] }) {
   const sigs = useMemo(() => agents.map((a) => a.alive), [agents]);

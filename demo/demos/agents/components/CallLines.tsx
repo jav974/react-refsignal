@@ -44,14 +44,19 @@ function CallLine({ agent, agents }: { agent: Agent; agents: Agent[] }) {
       el.setAttribute('y2', tp.y.toFixed(1));
       el.setAttribute('stroke', `hsl(${agent.hue} 70% 60%)`);
     },
-    [agent.callTarget, agent.position, agent.alive],
+    [agent.callTarget, agent.alive],
     {
-      // Dynamic dep — re-subscribes to the new target's signals when callTarget swaps.
+      // Positions move every tick, so subscribing to them statically would fire
+      // this effect 360×/tick — even for the (majority) agents whose line is
+      // hidden. Instead, track the caller's AND the called target's position
+      // only while a call is live; an idle line then re-runs solely on its own
+      // call-state / alive changes. trackSignals also re-subscribes to the new
+      // target's signals when callTarget swaps. Cost scales with calls, not N.
       trackSignals: () => {
         const id = agent.callTarget.current;
         if (id === null) return [];
         const target = agents[id];
-        return target ? [target.position, target.alive] : [];
+        return target ? [agent.position, target.position, target.alive] : [];
       },
     },
   );

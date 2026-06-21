@@ -17,7 +17,7 @@ export function Leaderboard({ agents }: { agents: Agent[] }) {
     [agents],
   );
   useRefSignalRender(sigs, { frame: true });
-  // Re-sort top-5 in the body. Cheap at N=60.
+  // Re-sort top-5 in the body. Cheap at N.
   const top = [...agents]
     .filter((a) => a.alive.current)
     .sort((a, b) => b.size.current - a.size.current)

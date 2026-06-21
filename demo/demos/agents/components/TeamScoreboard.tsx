@@ -32,7 +32,7 @@ function TeamRow({ team, agents }: { team: number; agents: Agent[] }) {
     () => teamAgents.flatMap((a) => [a.size, a.alive]),
     [teamAgents],
   );
-  // Re-renders only on its own team's signals — other teams don't trigger anything here.
+  // Re-renders only on its own team's signals — other teams trigger nothing here.
   useRefSignalRender(sigs, { frame: true });
 
   let alive = 0;
