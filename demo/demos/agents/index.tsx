@@ -152,7 +152,10 @@ export default function Agents() {
         setWinner(result.survivor);
       }
     }
-  }, [frame, running, agents, pellets, world, winner, controlledId, tickN]);
+    // tickN is intentionally NOT a dep: it's written here, and subscribing to a
+    // signal you write re-fires the effect (re-entrancy). The latest closure is
+    // always used, so reading/writing tickN.current works without listing it.
+  }, [frame, running, agents, pellets, world, winner, controlledId]);
 
   const reset = () => {
     setSeed((s) => s + 1);

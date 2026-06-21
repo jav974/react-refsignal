@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   usePulseRefSignal,
+  useRefSignal,
   useRefSignalEffect,
   type RefSignal,
 } from 'react-refsignal';
@@ -22,6 +23,7 @@ import {
 } from '../../common/styles';
 import { Cell, takeRenders } from './components/Cell';
 import { CanvasGrid } from './components/CanvasGrid';
+import { GolStats } from './components/GolStats';
 import {
   clearGrid,
   makeGrid,
@@ -53,8 +55,11 @@ export default function GameOfLife() {
   const [cellPx, setCellPx] = useState<CellPx>(6); // Canvas mode: pixels per cell
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState(20); // ticks/sec target
-  const [tickN, setTickN] = useState(0);
-  const [stats, setStats] = useState({ alive: 0, changed: 0, rps: 0 });
+  // Live counters in signals, not React state — bumping them each tick must not
+  // re-render GameOfLife (that would re-create the whole cell grid). Only the
+  // <GolStats> leaf subscribes. (Same move as the agents demo.)
+  const tickN = useRefSignal(0, 'gol.tickN');
+  const stats = useRefSignal({ alive: 0, changed: 0, rps: 0 }, 'gol.stats');
 
   // Canvas-mode stage size; initial fallback corrected after mount.
   const { ref: stageRef, size: stage } = useElementSize(() => ({
@@ -87,9 +92,9 @@ export default function GameOfLife() {
       ? PATTERNS[1]
       : PATTERNS[0];
     placePattern(grid, initial);
-    setTickN(0);
-    setStats({ alive: 0, changed: 0, rps: 0 });
-  }, [grid, dims.w, dims.h]);
+    tickN.update(0);
+    stats.update({ alive: 0, changed: 0, rps: 0 });
+  }, [grid, dims.w, dims.h, tickN, stats]);
 
   // Tick loop, rate-gated against `frame.elapsed`.
   const frame = usePulseRefSignal('frame', 'gol.frame');
@@ -105,8 +110,8 @@ export default function GameOfLife() {
     if (!running) return;
     const now = frame.elapsed;
     const interval = 1000 / speed;
-    let alive = stats.alive;
-    let changed = stats.changed;
+    let alive = stats.current.alive;
+    let changed = stats.current.changed;
     let didTick = false;
     if (now - lastTickRef.current >= interval) {
       const r = tick(grid);
@@ -117,12 +122,14 @@ export default function GameOfLife() {
     }
     if (now - sampleStartRef.current >= 1000) {
       const rps = takeRenders();
-      setStats({ alive, changed, rps });
+      stats.update({ alive, changed, rps });
       sampleStartRef.current = now;
     } else if (didTick) {
-      setStats((s) => ({ ...s, alive, changed }));
+      stats.update({ ...stats.current, alive, changed });
     }
-    if (didTick) setTickN((n) => n + 1);
+    if (didTick) tickN.update(tickN.current + 1);
+    // tickN/stats are written here, not subscribed — they stay out of the deps
+    // (subscribing to a signal you write would re-fire the effect).
   }, [frame, running, speed, grid]);
 
   const onPaint = useCallback(
@@ -135,13 +142,11 @@ export default function GameOfLife() {
 
   const stepOnce = useCallback(() => {
     const { alive, changed } = tick(grid);
-    setTickN((n) => n + 1);
-    setStats((s) => ({ ...s, alive, changed }));
-  }, [grid]);
+    tickN.update(tickN.current + 1);
+    stats.update({ ...stats.current, alive, changed });
+  }, [grid, tickN, stats]);
 
   const total = dims.w * dims.h;
-  const changedPct =
-    total > 0 ? ((stats.changed / total) * 100).toFixed(1) : '0';
 
   return (
     <div style={pageStyle}>
@@ -265,14 +270,7 @@ export default function GameOfLife() {
 
         <span style={rightGroup}>
           <Stat label="grid" value={`${dims.w}×${dims.h}`} />
-          <Stat label="tick" value={tickN} />
-          <Stat label="alive" value={`${stats.alive}/${total}`} />
-          <Stat
-            label="changed/tick"
-            value={`${stats.changed} (${changedPct}%)`}
-            highlight
-          />
-          <Stat label="renders/s" value={stats.rps || '--'} />
+          <GolStats tickN={tickN} stats={stats} total={total} />
           <FpsBadge src={frame} />
         </span>
       </div>

@@ -56,13 +56,20 @@ export function placePattern(grid: RefSignal<number>[][], pattern: Pattern) {
   });
 }
 
+// Reused snapshot buffer — `tick` runs up to 60×/s and a fresh
+// Uint8Array(w*h) each time was needless GC churn. Grown when the grid does;
+// only indices [0, w*h) are written-then-read each tick, so a larger leftover
+// buffer is harmless. (tick is single-threaded and non-reentrant.)
+let snapshot = new Uint8Array(0);
+
 export function tick(grid: RefSignal<number>[][]): {
   changed: number;
   alive: number;
 } {
   const { w, h } = dimsOf(grid);
   // Snapshot to a flat buffer first — neighbour reads must not see partial updates.
-  const cur = new Uint8Array(w * h);
+  const cur =
+    snapshot.length >= w * h ? snapshot : (snapshot = new Uint8Array(w * h));
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       cur[y * w + x] = grid[y][x].current > 0 ? 1 : 0;
