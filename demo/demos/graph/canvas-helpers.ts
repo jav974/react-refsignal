@@ -103,33 +103,13 @@ function getNodeSprite(accent: string): HTMLCanvasElement {
   return sprite;
 }
 
-function drawNode(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  id: number,
-  accent: string,
-  sprite: HTMLCanvasElement,
-) {
-  ctx.drawImage(
-    sprite,
-    cx - NODE_SPRITE_W / 2,
-    cy - NODE_SPRITE_H / 2,
-    NODE_SPRITE_W,
-    NODE_SPRITE_H,
-  );
-  // Per-id parts (text label + bar fill width) drawn on top.
-  ctx.fillStyle = '#e2e8f0';
-  ctx.font = '600 7px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(id), cx, cy - 7);
-  ctx.fillStyle = accent;
-  ctx.globalAlpha = 0.5;
-  ctx.fillRect(cx - 16, cy + 5, barW(id), 2.5);
-  ctx.globalAlpha = 1;
-}
-
+// Draw in batched passes (bodies → labels → bars) rather than fully drawing
+// each node before the next. The per-node parts (font, fill colors, alpha)
+// are identical across nodes, so setting them once per pass instead of once
+// per node removes tens of thousands of canvas state mutations per redraw at
+// high node counts — `ctx.font =` in particular re-parses the font string on
+// every assignment, and that per-node reassignment was the redraw bottleneck
+// (and why the canvas felt laggy while the dirty-flag gating was already fine).
 export function drawScene(
   ctx: CanvasRenderingContext2D,
   positions: Pos[],
@@ -141,6 +121,7 @@ export function drawScene(
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.restore();
 
+  // Edges — one path, one stroke.
   ctx.strokeStyle = 'rgba(255,255,255,0.18)';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -153,11 +134,39 @@ export function drawScene(
   }
   ctx.stroke();
 
+  const n = positions.length;
   const sprite = getNodeSprite(accent);
-  for (let i = 0; i < positions.length; i++) {
+
+  // Pass 1: node bodies — one blit each, no per-node ctx state.
+  for (let i = 0; i < n; i++) {
     const p = positions[i];
-    drawNode(ctx, p.x, p.y, i, accent, sprite);
+    ctx.drawImage(
+      sprite,
+      p.x - NODE_SPRITE_W / 2,
+      p.y - NODE_SPRITE_H / 2,
+      NODE_SPRITE_W,
+      NODE_SPRITE_H,
+    );
   }
+
+  // Pass 2: id labels — text state set once for all.
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '600 7px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < n; i++) {
+    const p = positions[i];
+    ctx.fillText(String(i), p.x, p.y - 7);
+  }
+
+  // Pass 3: metric bars — one fillStyle + alpha for all.
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = 0.5;
+  for (let i = 0; i < n; i++) {
+    const p = positions[i];
+    ctx.fillRect(p.x - 16, p.y + 5, barW(i), 2.5);
+  }
+  ctx.globalAlpha = 1;
 }
 
 export type CanvasLayout = { scale: number; dx: number; dy: number };
