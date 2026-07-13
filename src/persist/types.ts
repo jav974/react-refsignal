@@ -9,17 +9,23 @@ type PersistableKeys<TStore> = {
     : never;
 }[keyof TStore];
 
-export interface PersistStorage {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<void>;
+export interface PersistStorage<V = string> {
+  get(key: string): Promise<V | null>;
+  set(key: string, value: V): Promise<void>;
   remove(key: string): Promise<void>;
+  /** When `true`, persist stores values untouched (structured clone), skipping `serialize`/`deserialize`. Set by `indexedDBStorage({ structured: true })`. */
+  readonly structured?: boolean;
 }
 
 export type PersistStorageShorthand = 'local' | 'session' | 'indexeddb';
 
-/** Discriminated union — IDB-specific options are only valid when `storage: 'indexeddb'`. */
+/**
+ * Discriminated union — IDB-specific options are only valid when `storage: 'indexeddb'`.
+ * `structured` is a type error on string backends; structured custom adapters are `PersistStorage<unknown>`.
+ */
 export type StorageConfig =
-  | { storage?: 'local' | 'session' | PersistStorage }
+  | { storage?: 'local' | 'session' | PersistStorage; structured?: never }
+  | { storage: PersistStorage<unknown>; structured?: never }
   | ({ storage: 'indexeddb' } & IDBStorageOptions);
 
 type PersistCommonOptions = {

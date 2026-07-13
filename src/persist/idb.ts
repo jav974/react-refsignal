@@ -9,6 +9,16 @@ export interface IDBStorageOptions {
   dbVersion?: OpenParams[1];
   /** Object store name used to hold persisted values. Default: `'persist'`. */
   storeName?: string;
+  /**
+   * Store values via IndexedDB's native structured clone instead of
+   * `JSON.stringify` — lets a signal hold a `Blob`/`ArrayBuffer`/`TypedArray`/
+   * `Date`/`Map`/`Set` with no base64/JSON round-trip. Skips `serialize`/
+   * `deserialize`. Default: `false`.
+   *
+   * Opt-in and not backward-compatible per key: a key switched to/from
+   * structured reads its old data as corrupt. Use a fresh key or bump `dbVersion`.
+   */
+  structured?: boolean;
 }
 
 /**
@@ -28,8 +38,18 @@ export interface IDBStorageOptions {
  * const idb = indexedDBStorage({ dbName: 'myApp', storeName: 'cache' });
  * persist(factoryA, { key: 'a', storage: idb });
  * persist(factoryB, { key: 'b', storage: idb });
+ *
+ * @example
+ * // Structured mode — store a Blob natively (no base64/JSON round-trip)
+ * const attachment = createRefSignal<Blob | null>(null, {
+ *   persist: { key: 'attachment', storage: 'indexeddb', structured: true },
+ * });
  */
-export function indexedDBStorage(options?: IDBStorageOptions): PersistStorage {
+export function indexedDBStorage(
+  options?: IDBStorageOptions,
+): PersistStorage<unknown> {
+  const structured = options?.structured ?? false;
+
   // SSR guard — IndexedDB is browser-only; return a no-op adapter that lets
   // hydration resolve immediately with no stored data.
   if (typeof indexedDB === 'undefined') {
@@ -37,6 +57,7 @@ export function indexedDBStorage(options?: IDBStorageOptions): PersistStorage {
       get: () => Promise.resolve(null),
       set: () => Promise.resolve(),
       remove: () => Promise.resolve(),
+      structured,
     };
   }
 
@@ -97,7 +118,7 @@ export function indexedDBStorage(options?: IDBStorageOptions): PersistStorage {
   return {
     get: (key) =>
       tx('readonly', (store) => store.get(key)).then((v) =>
-        v == null ? null : (v as string),
+        v == null ? null : v,
       ),
 
     set: (key, value) =>
@@ -105,5 +126,7 @@ export function indexedDBStorage(options?: IDBStorageOptions): PersistStorage {
 
     remove: (key) =>
       tx('readwrite', (store) => store.delete(key)).then(() => undefined),
+
+    structured,
   };
 }

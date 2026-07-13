@@ -43,16 +43,31 @@ export const sessionStorageAdapter: PersistStorage = syncStorageAdapter(
   () => window.sessionStorage,
 );
 
-export function resolveStorage(config: StorageConfig): PersistStorage {
-  const { storage } = config as { storage?: unknown };
+const IS_PROD =
+  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
 
-  if (!storage || storage === 'local') return localStorageAdapter;
-  if (storage === 'session') return sessionStorageAdapter;
+export function resolveStorage(config: StorageConfig): PersistStorage<unknown> {
+  const { storage, structured } = config as {
+    storage?: unknown;
+    structured?: boolean;
+  };
+
+  if (!storage || storage === 'local' || storage === 'session') {
+    if (!IS_PROD && structured) {
+      console.warn(
+        `[refsignal] \`structured: true\` has no effect on ${
+          storage === 'session' ? 'sessionStorage' : 'localStorage'
+        } — string-only backends cannot store binary values. ` +
+          'Use `storage: "indexeddb"` (or a structured custom adapter) for Blob/ArrayBuffer/Date/Map/Set.',
+      );
+    }
+    return storage === 'session' ? sessionStorageAdapter : localStorageAdapter;
+  }
   if (storage === 'indexeddb') {
     const { dbName, dbVersion, storeName } = config as IDBStorageOptions;
-    return indexedDBStorage({ dbName, dbVersion, storeName });
+    return indexedDBStorage({ dbName, dbVersion, storeName, structured });
   }
-  return storage as PersistStorage;
+  return storage as PersistStorage<unknown>;
 }
 
 /**

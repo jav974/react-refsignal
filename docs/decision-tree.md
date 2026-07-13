@@ -223,6 +223,7 @@ flowchart TD
     Q3 -->|Default| D["localStorage"]
     Q3 -->|Tab session only| E["storage: 'session'"]
     Q3 -->|"Large data / beyond localStorage limits"| F["storage: 'indexeddb'\nOptions: dbName, dbVersion, storeName"]
+    Q3 -->|"Binary / rich values (Blob, ArrayBuffer, Date, Map, Set)"| Fs["storage: 'indexeddb', structured: true\nNative structured clone — no base64/JSON\nOpt-in, not backward-compatible with an existing key"]
     Q3 -->|Custom backend| G["Implement PersistStorage\n{ get, set, remove } returning Promise"]
 
     A & B & C --> Q4{"Data shape may change across releases?"}
