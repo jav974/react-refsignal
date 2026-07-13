@@ -14,6 +14,7 @@ Persist signal values across page loads using any async storage backend — `loc
 - [Storage backends](#storage-backends)
   - [localStorage and sessionStorage](#localstorage-and-sessionstorage)
   - [IndexedDB](#indexeddb)
+    - [Structured mode (Blobs and rich values)](#structured-mode-blobs-and-rich-values)
   - [Custom adapter](#custom-adapter)
 - [Versioning and migration](#versioning-and-migration)
 - [Hydration timing](#hydration-timing)
@@ -226,7 +227,7 @@ import { localStorageAdapter, sessionStorageAdapter } from 'react-refsignal/pers
 IndexedDB is the right backend when you need:
 - More than ~5 MB of storage
 - Storage that does not block the main thread on reads
-- A non-string value store (values are serialized strings internally, but the async API avoids I/O contention)
+- To store **binary or rich values natively** — `Blob`, `ArrayBuffer`, typed arrays, `Date`, `Map`, `Set` — without base64/JSON (see [Structured mode](#structured-mode-blobs-and-rich-values) below)
 
 **Inline shorthand** — the common case, one store per app:
 
@@ -257,6 +258,33 @@ Both `persist` calls share the same database connection. Each uses its own stora
 
 The database is opened lazily on first read or write. If `indexedDB` is unavailable, operations fail silently (writes are swallowed, reads return `null`, signals keep their defaults).
 
+#### Structured mode (Blobs and rich values)
+
+By default persist runs every value through `JSON.stringify` before writing — so a `Blob` must be base64-encoded first (~33% storage and memory overhead), and a `Date` or `Map` survives only if you hand-convert it in `serialize`/`deserialize`.
+
+IndexedDB already stores values via the [structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), which handles `Blob`, `ArrayBuffer`, typed arrays, `Date`, `Map`, `Set`, and nested combinations of them. Opt in with `structured: true` and persist **skips serialization entirely**, handing the value straight to the backend:
+
+```ts
+import { createRefSignal } from 'react-refsignal';
+
+// A voice note stored as a real Blob — no base64, no JSON.
+const attachment = createRefSignal<Blob | null>(null, {
+  persist: { key: 'attachment', storage: 'indexeddb', structured: true },
+});
+
+attachment.update(await recorder.getBlob()); // persisted as-is
+// After reload, `attachment.current` hydrates back as a live Blob.
+```
+
+Also available on the factory form: `indexedDBStorage({ structured: true })`.
+
+**Notes and limits:**
+
+- **Opt-in and not backward-compatible with an existing key.** Values written in string mode cannot be read in structured mode and vice-versa — a key switched to `structured` reads its old data as corrupt and discards it. Use a fresh `key` (or bump `dbVersion`) when migrating.
+- **String backends can't use it.** `structured` only applies to IndexedDB (or a custom adapter that stores non-string values). Passing it with `localStorage`/`sessionStorage` is a no-op and warns in development.
+- **`serialize`/`deserialize` are ignored** in structured mode — the platform does the cloning. Passing them warns in development.
+- **Whole-value rewrite still applies.** Structured clone removes the base64 tax, not the cost of re-cloning the *entire* value on each update. A `RefSignal<Map<string, Blob>>` re-writes every entry when any one changes — great for a small, bounded, low-churn map; for a growing set of blobs prefer one persisted signal per entry (`createRefSignal({ persist: { key: \`blob:${id}\` } })`), where decomposition *is* per-entry persistence.
+
 ### Custom adapter
 
 Any object implementing `PersistStorage` works as a backend — OPFS, SQLite over WASM, a remote API, an in-memory store for tests:
@@ -273,7 +301,7 @@ const myAdapter: PersistStorage = {
 persist(factory, { key: 'game', storage: myAdapter });
 ```
 
-The interface is intentionally minimal — three async methods, string keys, string values (the serialized envelope).
+The interface is intentionally minimal — three async methods, string keys, string values (the serialized envelope). An adapter that stores richer values (an OPFS/IndexedDB-backed store that can hold `Blob`s) may declare itself structured with a `structured: true` marker (`PersistStorage<unknown>`); persist then hands it the envelope object untouched instead of a JSON string — see [Structured mode](#structured-mode-blobs-and-rich-values).
 
 ---
 
@@ -497,6 +525,7 @@ Options for the `persist` field on `createRefSignal` / `useRefSignal`.
 | `dbName` | `string` | `'refsignal'` | `'indexeddb'` only. Database name (`IDBFactory.open` param). |
 | `dbVersion` | `number` | `1` | `'indexeddb'` only. Database schema version (`IDBFactory.open` param). |
 | `storeName` | `string` | `'persist'` | `'indexeddb'` only. Object store name. |
+| `structured` | `boolean` | `false` | `'indexeddb'` only. Store values via structured clone (native `Blob`/`ArrayBuffer`/`Date`/`Map`/`Set`) instead of JSON. Skips `serialize`/`deserialize`. Opt-in, not backward-compatible with an existing key. See [Structured mode](#structured-mode-blobs-and-rich-values). |
 | `version` | `number` | `1` | Schema version stored in the envelope. Triggers `migrate` when it differs from the stored value. |
 | `migrate` | `(stored: unknown, fromVersion: number) => unknown` | — | Transform stored data when the version changes. Return the migrated value, or `null`/`undefined` to discard storage and keep the declared default. |
 | `serialize` | `(value: unknown) => string` | `JSON.stringify` | Serialize the envelope to a string before writing. |
@@ -564,10 +593,10 @@ Hook variant. Sets up persist inside a React Provider; tears down subscriptions 
 ```ts
 import { indexedDBStorage } from 'react-refsignal/persist';
 
-function indexedDBStorage(options?: IDBStorageOptions): PersistStorage
+function indexedDBStorage(options?: IDBStorageOptions): PersistStorage<unknown>
 ```
 
-Creates a `PersistStorage` adapter backed by IndexedDB. The database is opened lazily on first access.
+Creates a `PersistStorage` adapter backed by IndexedDB. The database is opened lazily on first access. With `{ structured: true }` the returned adapter stores values via structured clone (see [Structured mode](#structured-mode-blobs-and-rich-values)).
 
 ### `IDBStorageOptions`
 
@@ -576,16 +605,19 @@ Creates a `PersistStorage` adapter backed by IndexedDB. The database is opened l
 | `dbName` | `Parameters<IDBFactory['open']>[0]` | `'refsignal'` | Database name. |
 | `dbVersion` | `Parameters<IDBFactory['open']>[1]` | `1` | Database schema version. |
 | `storeName` | `string` | `'persist'` | Object store name. |
+| `structured` | `boolean` | `false` | Store values via structured clone (native `Blob`/`ArrayBuffer`/`Date`/`Map`/`Set`) instead of JSON. See [Structured mode](#structured-mode-blobs-and-rich-values). |
 
 ### `PersistStorage`
 
-The interface every storage adapter implements.
+The interface every storage adapter implements. The value type defaults to `string`; a structured adapter is `PersistStorage<unknown>` and sets the optional `structured` marker so persist skips serialization.
 
 ```ts
-interface PersistStorage {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<void>;
+interface PersistStorage<V = string> {
+  get(key: string): Promise<V | null>;
+  set(key: string, value: V): Promise<void>;
   remove(key: string): Promise<void>;
+  /** When true, persist stores values untouched (structured clone). */
+  readonly structured?: boolean;
 }
 ```
 

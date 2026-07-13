@@ -12,9 +12,26 @@ import type { StoreSnapshot } from '../store/useRefSignalStore';
 import { resolveStorage } from './storage';
 import { applyTimingOptions, type TimingOptions } from '../timing';
 
+const IS_PROD =
+  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
+
 // ─── Stored envelope ──────────────────────────────────────────────────────────
 
 type Envelope = { v: number; data: unknown };
+
+/** Structured backends bypass serialization, so a custom codec is dead config. */
+function warnStructuredCodecIgnored(options: {
+  serialize?: unknown;
+  deserialize?: unknown;
+}): void {
+  if (IS_PROD) return;
+  if (options.serialize !== undefined || options.deserialize !== undefined) {
+    console.warn(
+      '[refsignal] `serialize`/`deserialize` are ignored with a structured storage backend — ' +
+        'values are stored via structured clone, not JSON. Remove the custom codec or drop `structured`.',
+    );
+  }
+}
 
 /**
  * Structural guard for deserialized payloads. Any storage value that does not
@@ -50,6 +67,8 @@ function setupSignalPersist(
   } = options;
 
   const storage = resolveStorage(options);
+  const structured = storage.structured === true;
+  if (structured) warnStructuredCodecIgnored(options);
 
   // ── Hydrate ────────────────────────────────────────────────────────────────
 
@@ -62,7 +81,8 @@ function setupSignalPersist(
   void storage.get(key).then((raw) => {
     if (raw !== null && signal.lastUpdated === counterAtSetup) {
       try {
-        const envelope: unknown = deserialize(raw);
+        // Structured backends hand back the envelope object as-is.
+        const envelope: unknown = structured ? raw : deserialize(raw as string);
         if (!isEnvelope(envelope)) throw new Error('corrupt');
         if (migrate && envelope.v !== version) {
           const migrated = migrate(envelope.data, envelope.v);
@@ -92,14 +112,10 @@ function setupSignalPersist(
 
   const save = () => {
     if (filter && !filter()) return;
-    storage
-      .set(
-        key,
-        serialize({ v: version, data: signal.current } satisfies Envelope),
-      )
-      .catch(() => {
-        // write failed — silently skip
-      });
+    const envelope: Envelope = { v: version, data: signal.current };
+    storage.set(key, structured ? envelope : serialize(envelope)).catch(() => {
+      // write failed — silently skip
+    });
     getDevToolsAdapter()?.emit({
       kind: 'persist:write',
       key,
@@ -140,6 +156,8 @@ export function setupPersist<TStore extends object>(
   } = options;
 
   const storage = resolveStorage(options);
+  const structured = storage.structured === true;
+  if (structured) warnStructuredCodecIgnored(options);
 
   const signalKeys = (
     keys ?? (Object.keys(store) as Array<keyof TStore>)
@@ -158,7 +176,7 @@ export function setupPersist<TStore extends object>(
   void storage.get(key).then((raw) => {
     if (raw !== null) {
       try {
-        const envelope: unknown = deserialize(raw);
+        const envelope: unknown = structured ? raw : deserialize(raw as string);
         if (!isEnvelope(envelope)) throw new Error('corrupt');
         if (typeof envelope.data !== 'object' || envelope.data === null) {
           throw new Error('corrupt');
@@ -230,21 +248,21 @@ export function setupPersist<TStore extends object>(
   // manual `flush()` calls are user intent and should write as asked. If a
   // caller flushes mid-`await clear()`, the clear's final `storage.remove`
   // still lands after, leaving storage empty as expected.
+  const encode = (data: Record<string, unknown>): unknown => {
+    const envelope: Envelope = { v: version, data };
+    return structured ? envelope : serialize(envelope);
+  };
+
   const doFlush = (): Promise<void> =>
-    storage.set(
-      key,
-      serialize({ v: version, data: buildSnapshot() } satisfies Envelope),
-    );
+    storage.set(key, encode(buildSnapshot()));
 
   const save = () => {
     if (suppressed) return;
     const snapshot = buildSnapshot();
     if (filter && !filter(snapshot as StoreSnapshot<TStore>)) return;
-    storage
-      .set(key, serialize({ v: version, data: snapshot } satisfies Envelope))
-      .catch(() => {
-        // write failed — silently skip
-      });
+    storage.set(key, encode(snapshot)).catch(() => {
+      // write failed — silently skip
+    });
     getDevToolsAdapter()?.emit({
       kind: 'persist:write',
       key,
