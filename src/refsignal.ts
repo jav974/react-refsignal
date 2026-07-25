@@ -158,7 +158,7 @@ export type SignalOptions<T> = {
 };
 // Using object instead of RefSignal to avoid variance issues with generic T
 export const listenersMap = new WeakMap<object, Set<Listener>>();
-export const batchStack: RefSignal[][] = [];
+const batchStack: RefSignal[][] = [];
 let batchedSignals: Set<RefSignal> | null = null;
 let updateCounter = 0;
 
@@ -192,7 +192,7 @@ export function isRefSignal<T = unknown>(obj: unknown): obj is RefSignal<T> {
   );
 }
 
-export function subscribe<T>(
+function subscribe<T>(
   signal: ReadonlyRefSignal<T>,
   listener: Listener<T>,
 ): void {
@@ -208,7 +208,7 @@ export function subscribe<T>(
  * cleanup closures returned by `watch()`/`subscribe()` no-op safely after
  * dispose.
  */
-export function unsubscribe<T>(
+function unsubscribe<T>(
   signal: ReadonlyRefSignal<T>,
   listener: Listener<T>,
 ): void {
@@ -222,7 +222,7 @@ export function unsubscribe<T>(
   }
 }
 
-export function notify<T>(signal: RefSignal<T>): void {
+function notify<T>(signal: RefSignal<T>): void {
   const inBatch =
     batchStack[batchStack.length - 1]?.some((s) => s === signal) ||
     (batchedSignals && batchedSignals.has(signal as RefSignal));
@@ -242,12 +242,12 @@ export function notify<T>(signal: RefSignal<T>): void {
   }
 }
 
-export function notifyUpdate<T>(signal: RefSignal<T>): void {
+function notifyUpdate<T>(signal: RefSignal<T>): void {
   signal.lastUpdated = ++updateCounter;
   notify(signal);
 }
 
-export function update<T>(signal: RefSignal<T>, value: T) {
+function update<T>(signal: RefSignal<T>, value: T) {
   if (signal.current !== value) {
     const oldValue = signal.current;
     signal.current = value;
@@ -468,20 +468,16 @@ export function watch<T>(
     }
   };
 
-  if (!options) {
-    signal.subscribe(runListener);
-    return () => {
-      signal.unsubscribe(runListener);
-    };
-  }
-
-  const { filter } = options;
+  const { filter } = options ?? {};
   let latest = signal.current;
 
   // Cast to TimingOptions — applyTimingOptions only reads timing fields, not filter
-  const wrapper = applyTimingOptions(() => {
-    if (!filter || filter()) runListener(latest);
-  }, options as TimingOptions);
+  const wrapper = applyTimingOptions(
+    () => {
+      if (!filter || filter()) runListener(latest);
+    },
+    (options ?? {}) as TimingOptions,
+  );
 
   const adapter: Listener<T> = (value) => {
     latest = value;

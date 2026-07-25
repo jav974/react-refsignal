@@ -64,10 +64,10 @@ describe('formatValue', () => {
     expect(formatValue([undefined, 1])).toBe('[null,1]');
   });
 
-  it('breaks circular references without crashing (renders cycle as null)', () => {
+  it('handles circular references without crashing', () => {
     const obj: Record<string, unknown> = {};
     obj.self = obj;
-    expect(formatValue(obj)).toBe('{"self":null}');
+    expect(formatValue(obj)).toBe('[unstringifiable]');
   });
 
   it('handles strings via JSON.stringify quoting', () => {
@@ -76,9 +76,8 @@ describe('formatValue', () => {
 
   it('catches JSON.stringify throws inside nested values (BigInt in array)', () => {
     // BigInt at top level has its own short-circuit, but a BigInt inside an
-    // array hits the JSON.stringify branch in the recursive walker which
-    // throws — exercises the catch arm.
-    expect(formatValue([BigInt(1)])).toBe('[null]');
+    // array makes JSON.stringify throw — exercises the catch arm.
+    expect(formatValue([BigInt(1)])).toBe('[unstringifiable]');
   });
 });
 

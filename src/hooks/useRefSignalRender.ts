@@ -102,15 +102,10 @@ export function useRefSignalRender(
     return sum;
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps -- deps array is the dependency: new array identity recomputes snapshot
 
-  // Server snapshot function for SSR compatibility
-  // Returns the same snapshot on server as initial client render
-  // This prevents hydration mismatches in SSR environments (Next.js, Remix, etc.)
-  // noinspection UnnecessaryLocalVariableJS
-  const getServerSnapshot = getSnapshot;
-
-  // Use React 18's useSyncExternalStore for concurrent-safe subscriptions
-  // This ensures consistent state across all components during concurrent renders
-  useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // Use React 18's useSyncExternalStore for concurrent-safe subscriptions.
+  // getSnapshot doubles as the server snapshot: same value on server and
+  // initial client render prevents hydration mismatches (Next.js, Remix, etc.)
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   // Return forceUpdate for manual re-renders
   return forceUpdate;

@@ -7,13 +7,15 @@ import {
   SignalPersistInput,
   watch,
 } from '../refsignal';
-import type { PersistOptions, PersistSignalOptions } from './types';
+import type {
+  PersistOptions,
+  PersistSignalOptions,
+  StorageConfig,
+} from './types';
 import type { StoreSnapshot } from '../store/useRefSignalStore';
 import { resolveStorage } from './storage';
 import { applyTimingOptions, type TimingOptions } from '../timing';
-
-const IS_PROD =
-  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
+import { isProd } from '../env';
 
 // ─── Stored envelope ──────────────────────────────────────────────────────────
 
@@ -24,7 +26,7 @@ function warnStructuredCodecIgnored(options: {
   serialize?: unknown;
   deserialize?: unknown;
 }): void {
-  if (IS_PROD) return;
+  if (isProd()) return;
   if (options.serialize !== undefined || options.deserialize !== undefined) {
     console.warn(
       '[refsignal] `serialize`/`deserialize` are ignored with a structured storage backend — ' +
@@ -49,6 +51,42 @@ function isEnvelope(x: unknown): x is Envelope {
   );
 }
 
+/**
+ * Resolves the storage backend and the matching envelope codec — the one
+ * place that knows structured backends bypass serialize/deserialize.
+ * `decode` throws on anything that fails the envelope guard (corrupt data).
+ */
+function resolvePersistCodec(
+  options: StorageConfig & {
+    serialize?: (value: unknown) => string;
+    deserialize?: (raw: string) => unknown;
+    version?: number;
+  },
+) {
+  const {
+    serialize = JSON.stringify,
+    deserialize = JSON.parse,
+    version = 1,
+  } = options;
+  const storage = resolveStorage(options);
+  const structured = storage.structured === true;
+  if (structured) warnStructuredCodecIgnored(options);
+
+  return {
+    storage,
+    decode: (raw: unknown): Envelope => {
+      // Structured backends hand back the envelope object as-is.
+      const envelope: unknown = structured ? raw : deserialize(raw as string);
+      if (!isEnvelope(envelope)) throw new Error('corrupt');
+      return envelope;
+    },
+    encode: (data: unknown): unknown => {
+      const envelope: Envelope = { v: version, data };
+      return structured ? envelope : serialize(envelope);
+    },
+  };
+}
+
 // ─── Signal-level setup ───────────────────────────────────────────────────────
 
 function setupSignalPersist(
@@ -56,19 +94,9 @@ function setupSignalPersist(
   signal: RefSignal<any>,
   options: PersistSignalOptions,
 ): () => void {
-  const {
-    key,
-    filter,
-    serialize = JSON.stringify,
-    deserialize = JSON.parse,
-    version = 1,
-    migrate,
-    onHydrated,
-  } = options;
+  const { key, filter, version = 1, migrate, onHydrated } = options;
 
-  const storage = resolveStorage(options);
-  const structured = storage.structured === true;
-  if (structured) warnStructuredCodecIgnored(options);
+  const { storage, decode, encode } = resolvePersistCodec(options);
 
   // ── Hydrate ────────────────────────────────────────────────────────────────
 
@@ -81,9 +109,7 @@ function setupSignalPersist(
   void storage.get(key).then((raw) => {
     if (raw !== null && signal.lastUpdated === counterAtSetup) {
       try {
-        // Structured backends hand back the envelope object as-is.
-        const envelope: unknown = structured ? raw : deserialize(raw as string);
-        if (!isEnvelope(envelope)) throw new Error('corrupt');
+        const envelope = decode(raw);
         if (migrate && envelope.v !== version) {
           const migrated = migrate(envelope.data, envelope.v);
           // null/undefined is the "discard storage, keep declared default" sentinel.
@@ -112,8 +138,7 @@ function setupSignalPersist(
 
   const save = () => {
     if (filter && !filter()) return;
-    const envelope: Envelope = { v: version, data: signal.current };
-    storage.set(key, structured ? envelope : serialize(envelope)).catch(() => {
+    storage.set(key, encode(signal.current)).catch(() => {
       // write failed — silently skip
     });
     getDevToolsAdapter()?.emit({
@@ -147,17 +172,13 @@ export function setupPersist<TStore extends object>(
     key,
     keys,
     filter,
-    serialize = JSON.stringify,
-    deserialize = JSON.parse,
     version = 1,
     migrate,
     onHydrated,
     onUnmount,
   } = options;
 
-  const storage = resolveStorage(options);
-  const structured = storage.structured === true;
-  if (structured) warnStructuredCodecIgnored(options);
+  const { storage, decode, encode } = resolvePersistCodec(options);
 
   const signalKeys = (
     keys ?? (Object.keys(store) as Array<keyof TStore>)
@@ -176,8 +197,7 @@ export function setupPersist<TStore extends object>(
   void storage.get(key).then((raw) => {
     if (raw !== null) {
       try {
-        const envelope: unknown = structured ? raw : deserialize(raw as string);
-        if (!isEnvelope(envelope)) throw new Error('corrupt');
+        const envelope = decode(raw);
         if (typeof envelope.data !== 'object' || envelope.data === null) {
           throw new Error('corrupt');
         }
@@ -248,11 +268,6 @@ export function setupPersist<TStore extends object>(
   // manual `flush()` calls are user intent and should write as asked. If a
   // caller flushes mid-`await clear()`, the clear's final `storage.remove`
   // still lands after, leaving storage empty as expected.
-  const encode = (data: Record<string, unknown>): unknown => {
-    const envelope: Envelope = { v: version, data };
-    return structured ? envelope : serialize(envelope);
-  };
-
   const doFlush = (): Promise<void> =>
     storage.set(key, encode(buildSnapshot()));
 

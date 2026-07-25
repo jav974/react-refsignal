@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { DevToolsOverlay } from './overlay/DevToolsOverlay';
+import { isProd } from '../env';
 
 export {
   configureDevTools,
@@ -19,9 +20,6 @@ export interface MountOptions {
   /** Container element. Defaults to a fresh `<div>` appended to `document.body`. */
   container?: HTMLElement;
 }
-
-const isProd = (): boolean =>
-  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
 
 let mountedRoot: Root | null = null;
 let mountedContainer: HTMLElement | null = null;

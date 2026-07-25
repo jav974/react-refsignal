@@ -8,6 +8,7 @@ import {
 } from '../refsignal';
 import type { PulseRefSignal } from '../pulse';
 import { currentEffect, popEffect, pushEffect } from './effect-stack';
+import { isProd } from '../env';
 
 export interface DevToolsConfig {
   /** Log signal updates to console (also includes stack traces in history). */
@@ -84,7 +85,6 @@ class RefSignalDevTools implements DevToolsAdapter {
   };
 
   private signals = new WeakMap<object, string>();
-  private signalsByName = new Map<string, RefSignal>();
   private signalEntries = new Map<string, SignalEntry>();
   private signalIdCounter = 0;
   private storeNames = new Set<string>();
@@ -161,9 +161,6 @@ class RefSignalDevTools implements DevToolsAdapter {
     }
     const id = name ?? `signal_${String(this.signalIdCounter++)}`;
     this.signals.set(signal as object, id);
-    if (name) {
-      this.signalsByName.set(name, signal as RefSignal);
-    }
     this.signalEntries.set(id, {
       id,
       name,
@@ -172,7 +169,6 @@ class RefSignalDevTools implements DevToolsAdapter {
     this.emit({ kind: 'signal:register', id, name, t: Date.now() });
 
     return () => {
-      if (name) this.signalsByName.delete(name);
       this.signals.delete(signal as object);
       this.signalEntries.delete(id);
       this.emit({ kind: 'signal:dispose', id, t: Date.now() });
@@ -221,7 +217,6 @@ class RefSignalDevTools implements DevToolsAdapter {
       const id = `${storeName}.${key}`;
       if (existingId !== undefined) this.signalEntries.delete(existingId);
       this.signals.set(value, id);
-      this.signalsByName.set(id, value);
       this.signalEntries.set(id, {
         id,
         name: id,
@@ -381,7 +376,8 @@ class RefSignalDevTools implements DevToolsAdapter {
     this.bus.notifyUpdate();
   }
 
-  private recordPulseTick(event: DevToolsEvent): void {
+  /** Resolve the pulse-state record for an event's signal, creating it on first sight. */
+  private ensurePulse(event: DevToolsEvent): PulseState {
     const sig = event.signal as RefSignal | undefined;
     const id = sig ? (this.signals.get(sig as object) ?? 'pulse?') : 'pulse?';
     let state = this.pulses.get(id);
@@ -395,6 +391,11 @@ class RefSignalDevTools implements DevToolsAdapter {
       };
       this.pulses.set(id, state);
     }
+    return state;
+  }
+
+  private recordPulseTick(event: DevToolsEvent): void {
+    const state = this.ensurePulse(event);
     // A tick means the pulse is live again — clears a prior paused/stopped flag.
     state.state = 'active';
     state.tickCount =
@@ -411,19 +412,7 @@ class RefSignalDevTools implements DevToolsAdapter {
   }
 
   private recordPulseState(event: DevToolsEvent): void {
-    const sig = event.signal as RefSignal | undefined;
-    const id = sig ? (this.signals.get(sig as object) ?? 'pulse?') : 'pulse?';
-    let state = this.pulses.get(id);
-    if (!state) {
-      state = {
-        pulseId: id,
-        tickCount: 0,
-        elapsedMs: 0,
-        recent: [],
-        state: 'active',
-      };
-      this.pulses.set(id, state);
-    }
+    const state = this.ensurePulse(event);
     state.state =
       (event.state as PulseState['state'] | undefined) ?? state.state;
     state.tickCount =
@@ -499,7 +488,9 @@ class RefSignalDevTools implements DevToolsAdapter {
   }
 
   getSignalByName<T = unknown>(name: string): RefSignal<T> | undefined {
-    return this.signalsByName.get(name) as RefSignal<T> | undefined;
+    // Only named signals resolve — auto-generated `signal_N` ids stay private.
+    const entry = this.signalEntries.get(name);
+    return entry?.name ? (entry.signal as RefSignal<T>) : undefined;
   }
 
   getAllSignals(): SignalEntry[] {
@@ -509,7 +500,6 @@ class RefSignalDevTools implements DevToolsAdapter {
   reset(): void {
     this.updateHistory = [];
     this.events = [];
-    this.signalsByName.clear();
     this.signalEntries.clear();
     this.edges.clear();
     this.pulses.clear();
@@ -526,11 +516,6 @@ export function configureDevTools(config: Partial<DevToolsConfig>): void {
   devtools.configure(config);
 }
 
-const isProd =
-  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
-
-if (!isProd) {
+if (!isProd()) {
   setDevToolsAdapter(devtools);
 }
-
-export type { DevToolsAdapter, DevToolsEvent };

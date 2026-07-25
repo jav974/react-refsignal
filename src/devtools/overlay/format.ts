@@ -14,30 +14,18 @@ const formatNumber = (v: number): string => {
   return v.toFixed(FLOAT_DECIMALS);
 };
 
-const stringifyWithPrecisionCap = (
-  v: unknown,
-  seen: WeakSet<object> = new WeakSet(),
-): string | undefined => {
+const stringifyWithPrecisionCap = (v: unknown): string | undefined => {
+  // Top-level numbers keep non-finite rendering ("Infinity", "NaN") — nested
+  // ones go through JSON.stringify's native handling (null).
   if (typeof v === 'number') return formatNumber(v);
-  // Walk arrays/objects to apply the cap recursively. Other types fall back
-  // to JSON.stringify's native handling via the caller.
-  if (Array.isArray(v)) {
-    if (seen.has(v)) return undefined;
-    seen.add(v);
-    return `[${v.map((x) => stringifyWithPrecisionCap(x, seen) ?? 'null').join(',')}]`;
-  }
-  if (v !== null && typeof v === 'object') {
-    if (seen.has(v)) return undefined;
-    seen.add(v);
-    const entries = Object.entries(v as Record<string, unknown>).map(
-      ([k, val]) =>
-        `${JSON.stringify(k)}:${stringifyWithPrecisionCap(val, seen) ?? 'null'}`,
-    );
-    return `{${entries.join(',')}}`;
-  }
   try {
-    return (JSON.stringify(v) as string | undefined) ?? undefined;
+    return JSON.stringify(v, (_key, val: unknown) =>
+      typeof val === 'number' && Number.isFinite(val)
+        ? Number(formatNumber(val))
+        : val,
+    ) as string | undefined;
   } catch {
+    // Cyclic or otherwise unstringifiable (e.g. nested BigInt).
     return undefined;
   }
 };
