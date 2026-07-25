@@ -66,75 +66,73 @@ export type RateId = (typeof RATE_PRESETS)[number]['id'];
 
 const DEFAULT_RATE: RateId = '10hz';
 
-const readHeight = (): number => {
-  if (typeof localStorage === 'undefined') return 320;
-  const raw = localStorage.getItem(HEIGHT_KEY);
-  const n = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(n) && n > 80 ? n : 320;
+/**
+ * Internal signal with localStorage write-through. `parse` validates the
+ * stored raw string and returns undefined to fall back to the default.
+ */
+const persistedInternal = <T>(
+  key: string,
+  parse: (raw: string) => T | undefined,
+  serialize: (value: T) => string,
+  fallback: T,
+) => {
+  let initial = fallback;
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem(key);
+    if (raw !== null) initial = parse(raw) ?? fallback;
+  }
+  const signal = devtools.createInternal(initial);
+  if (typeof window !== 'undefined') {
+    signal.subscribe((value) => {
+      try {
+        localStorage.setItem(key, serialize(value));
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+  return signal;
 };
 
-const readCollapsed = (): boolean => {
-  if (typeof localStorage === 'undefined') return false;
-  return localStorage.getItem(COLLAPSED_KEY) === '1';
-};
+const TABS: readonly TabId[] = [
+  'signals',
+  'timeline',
+  'broadcast',
+  'persist',
+  'pulse',
+  'cascade',
+];
 
-const readTab = (): TabId => {
-  if (typeof localStorage === 'undefined') return 'signals';
-  const raw = localStorage.getItem(TAB_KEY) as TabId | null;
-  const allowed: TabId[] = [
-    'signals',
-    'timeline',
-    'broadcast',
-    'persist',
-    'pulse',
-    'cascade',
-  ];
-  return raw && allowed.includes(raw) ? raw : 'signals';
-};
-
-const readRate = (): RateId => {
-  if (typeof localStorage === 'undefined') return DEFAULT_RATE;
-  const raw = localStorage.getItem(RATE_KEY) as RateId | null;
-  return raw && RATE_PRESETS.some((p) => p.id === raw) ? raw : DEFAULT_RATE;
-};
-
-export const dockHeight = devtools.createInternal(readHeight());
-export const collapsed = devtools.createInternal(readCollapsed());
-export const activeTab = devtools.createInternal<TabId>(readTab());
-export const renderRate = devtools.createInternal<RateId>(readRate());
+export const dockHeight = persistedInternal(
+  HEIGHT_KEY,
+  (raw) => {
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 80 ? n : undefined;
+  },
+  String,
+  320,
+);
+export const collapsed = persistedInternal(
+  COLLAPSED_KEY,
+  (raw) => raw === '1',
+  (c) => (c ? '1' : '0'),
+  false,
+);
+export const activeTab = persistedInternal(
+  TAB_KEY,
+  (raw) => (TABS.includes(raw as TabId) ? (raw as TabId) : undefined),
+  (t) => t,
+  'signals',
+);
+export const renderRate = persistedInternal<RateId>(
+  RATE_KEY,
+  (raw) =>
+    RATE_PRESETS.some((p) => p.id === raw) ? (raw as RateId) : undefined,
+  (r) => r,
+  DEFAULT_RATE,
+);
 
 export const rateOptionsFor = (id: RateId): WatchOptions => {
   const preset = RATE_PRESETS.find((p) => p.id === id);
   return preset ? preset.options : { throttle: 100 };
 };
-
-if (typeof window !== 'undefined') {
-  dockHeight.subscribe((h) => {
-    try {
-      localStorage.setItem(HEIGHT_KEY, String(h));
-    } catch {
-      /* ignore */
-    }
-  });
-  collapsed.subscribe((c) => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, c ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  });
-  activeTab.subscribe((t) => {
-    try {
-      localStorage.setItem(TAB_KEY, t);
-    } catch {
-      /* ignore */
-    }
-  });
-  renderRate.subscribe((r) => {
-    try {
-      localStorage.setItem(RATE_KEY, r);
-    } catch {
-      /* ignore */
-    }
-  });
-}

@@ -95,6 +95,17 @@ export function setupBroadcast<TStore extends object>(
       stableTimer = null;
     }
 
+    const setStable = (stable: boolean) => {
+      isStable = stable;
+      onStableBroadcasterChange?.(stable);
+      getDevToolsAdapter()?.emit({
+        kind: 'broadcast:stable',
+        channel,
+        stable,
+        t: Date.now(),
+      });
+    };
+
     if (active) {
       lostBroadcasterAt = null;
       const isAlone = tabsLastSeen.size <= 1;
@@ -102,35 +113,14 @@ export function setupBroadcast<TStore extends object>(
         isStable = false;
         stableTimer = setTimeout(() => {
           stableTimer = null;
-          isStable = true;
-          onStableBroadcasterChange?.(true);
-          getDevToolsAdapter()?.emit({
-            kind: 'broadcast:stable',
-            channel,
-            stable: true,
-            t: Date.now(),
-          });
+          setStable(true);
         }, gracePeriod);
       } else {
-        isStable = true;
-        onStableBroadcasterChange?.(true);
-        getDevToolsAdapter()?.emit({
-          kind: 'broadcast:stable',
-          channel,
-          stable: true,
-          t: Date.now(),
-        });
+        setStable(true);
       }
     } else {
       lostBroadcasterAt = Date.now();
-      isStable = false;
-      onStableBroadcasterChange?.(false);
-      getDevToolsAdapter()?.emit({
-        kind: 'broadcast:stable',
-        channel,
-        stable: false,
-        t: Date.now(),
-      });
+      setStable(false);
     }
   };
 

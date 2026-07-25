@@ -5,6 +5,7 @@ import type {
   PersistStorageShorthand,
   StorageConfig,
 } from './types';
+import { isProd } from '../env';
 
 function syncStorageAdapter(getStorage: () => Storage): PersistStorage {
   return {
@@ -43,9 +44,6 @@ export const sessionStorageAdapter: PersistStorage = syncStorageAdapter(
   () => window.sessionStorage,
 );
 
-const IS_PROD =
-  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
-
 export function resolveStorage(config: StorageConfig): PersistStorage<unknown> {
   const { storage, structured } = config as {
     storage?: unknown;
@@ -53,7 +51,7 @@ export function resolveStorage(config: StorageConfig): PersistStorage<unknown> {
   };
 
   if (!storage || storage === 'local' || storage === 'session') {
-    if (!IS_PROD && structured) {
+    if (!isProd() && structured) {
       console.warn(
         `[refsignal] \`structured: true\` has no effect on ${
           storage === 'session' ? 'sessionStorage' : 'localStorage'

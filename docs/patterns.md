@@ -817,41 +817,7 @@ function VolumeChart() {
 
 ## Shared pulse via provider — one timer, many components
 
-This is the pattern that makes [`PulseRefSignal`](pulse.md) more than syntactic sugar over `setInterval`. It eliminates a real architectural cost: when many components need the same time-driven update, the naive solution is one `setInterval` per component — N timers, each with its own drift, each cleaning up on unmount, each re-rendering its component on a slightly different wall-clock instant. Cumulative cascade: cells flip from "5 minutes ago" to "6 minutes ago" at staggered moments; the eye notices.
-
-A pulse signal provided once, consumed many times, gives you **one** timer (lazily started when the first consumer mounts), perfectly synchronized fires, zero drift between consumers.
-
-```tsx
-import { createContext, useContext, type ReactNode } from 'react';
-import {
-  usePulseRefSignal,
-  useRefSignalRender,
-  type PulseRefSignal,
-} from 'react-refsignal';
-
-const NowContext = createContext<PulseRefSignal | null>(null);
-
-export function NowProvider({ children }: { children: ReactNode }) {
-  const now = usePulseRefSignal('60000ms');
-  return <NowContext.Provider value={now}>{children}</NowContext.Provider>;
-}
-
-export function useNow(): PulseRefSignal {
-  const now = useContext(NowContext);
-  if (!now) throw new Error('useNow must be used inside NowProvider');
-  return now;
-}
-
-function RelativeTime({ at }: { at: number }) {
-  const now = useNow();
-  useRefSignalRender([now]);
-  return <time>{formatAgo(at, now.current)}</time>;
-}
-```
-
-Mount fifty `<RelativeTime />` cells inside a `<NowProvider>`; you get fifty subscribers on **one** timer. Unmount them all and the timer stops automatically — no orchestration, no cleanup to forget. Re-mount any of them and the timer restarts from a fresh session.
-
-The same shape composes at any cadence: a `<TickProvider rate="60fps">` for animation work, a `<HeartbeatProvider rate="30000ms">` for connection pings, a `<NowProvider rate="60000ms">` for relative timestamps. One timer per cadence, regardless of how many consumers attach.
+When many components need the same time-driven update, provide one pulse signal via context and let every consumer subscribe to it: **one** timer (lazily started when the first consumer mounts), perfectly synchronized fires, zero drift between consumers — instead of one `setInterval` per component. The full `NowProvider`/`useNow` recipe lives in [pulse.md → Shared tick via provider](pulse.md#shared-tick-via-provider--one-timer-many-components).
 
 > **Don't put the pulse signal inside a persisted or broadcasted store.** The pulse value is `performance.now()` — bound to this document's `performance.timeOrigin` and meaningless to serialize or transport. Provide it adjacent to such stores instead. See [pulse.md → What pulse can't compose with](pulse.md#what-pulse-cant-compose-with).
 

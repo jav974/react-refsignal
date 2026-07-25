@@ -201,12 +201,6 @@ export function createDebounce(
 }
 
 /**
- * requestAnimationFrame-based scheduler.
- * - Schedules fn on the next animation frame.
- * - Multiple calls within the same frame are collapsed into one.
- * - cancel() prevents the scheduled frame from firing.
- */
-/**
  * Wraps a callback with the timing strategy described by `options`.
  * When no timing option is set, returns a passthrough wrapper so callers
  * can always call `wrapper.call()` / `wrapper.cancel()` unconditionally.
@@ -233,6 +227,12 @@ export function applyTimingOptions(
   return { call: fn, cancel: () => {} };
 }
 
+/**
+ * requestAnimationFrame-based scheduler.
+ * - Schedules fn on the next animation frame.
+ * - Multiple calls within the same frame are collapsed into one.
+ * - cancel() prevents the scheduled frame from firing.
+ */
 export function createRAF(fn: () => void): TimingWrapper {
   let rafId: number | null = null;
 

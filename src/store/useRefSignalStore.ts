@@ -3,6 +3,7 @@ import { isRefSignal, RefSignal, type ReadonlyRefSignal } from '../refsignal';
 import { useRefSignalRender } from '../hooks/useRefSignalRender';
 import type { EffectOptions } from '../hooks/useRefSignalEffect';
 import type { TimingOptions } from '../timing';
+import { isProd } from '../env';
 
 // ─── Shared store types ────────────────────────────────────────────────────────
 
@@ -59,9 +60,6 @@ export type StoreSnapshot<TStore> = {
 type BaseStoreOptions<TStore> = TimingOptions & {
   filter?: (store: StoreSnapshot<TStore>) => boolean;
 };
-
-const IS_PRODUCTION =
-  typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
 
 // Dev-warning dedupe — a component re-rendering at frame rate must not flood
 // the console with the same diagnostic. Keyed globally; good enough for dev.
@@ -162,7 +160,7 @@ export function useRefSignalStore<TStore extends object>(
     | { unwrap?: boolean; renderOn?: unknown }
     | undefined;
   if (
-    !IS_PRODUCTION &&
+    !isProd() &&
     uncheckedOptions?.unwrap &&
     uncheckedOptions.renderOn === undefined
   ) {
@@ -185,7 +183,7 @@ export function useRefSignalStore<TStore extends object>(
       const value = (store as Record<PropertyKey, unknown>)[key];
       if (isRefSignal(value)) {
         signals.push(value);
-      } else if (!IS_PRODUCTION && !warnedRenderOnKeys.has(key)) {
+      } else if (!isProd() && !warnedRenderOnKeys.has(key)) {
         warnedRenderOnKeys.add(key);
         console.warn(
           `[react-refsignal] renderOn key "${String(key)}" does not resolve to a signal on the store — updates will never trigger a re-render. Check for a typo or a non-signal value.`,
