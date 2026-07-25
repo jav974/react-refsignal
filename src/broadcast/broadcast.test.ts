@@ -3,7 +3,12 @@
  */
 import { act } from 'react';
 import { renderHook } from '../test-utils/renderHook';
-import { CANCEL, createRefSignal, type RefSignal } from '../refsignal';
+import {
+  CANCEL,
+  createRefSignal,
+  setDevToolsAdapter,
+  type RefSignal,
+} from '../refsignal';
 import { broadcast, localStorageTransport, useBroadcast } from './index';
 import { setupBroadcast } from './broadcast';
 import { useRefSignal } from '../hooks/useRefSignal';
@@ -596,6 +601,52 @@ describe('localStorage transport', () => {
     });
 
     expect(storeB.score.current).toBe(33);
+  });
+
+  it('writes outgoing updates to localStorage (post path)', () => {
+    const store = { score: createRefSignal(0) };
+    renderHook(() => {
+      useBroadcast(store, {
+        channel: 'ls-post',
+        transport: localStorageTransport('ls-post'),
+      });
+    });
+
+    act(() => {
+      store.score.update(21);
+    });
+
+    const raw = localStorage.getItem('__bc__ls-post');
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw as string)).toMatchObject({
+      type: 'update',
+      payload: { score: 21 },
+    });
+  });
+
+  it('swallows storage write failures (quota / unavailable)', () => {
+    const setItem = jest
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+    try {
+      const store = { score: createRefSignal(0) };
+      renderHook(() => {
+        useBroadcast(store, {
+          channel: 'ls-quota',
+          transport: localStorageTransport('ls-quota'),
+        });
+      });
+
+      expect(() => {
+        act(() => {
+          store.score.update(1);
+        });
+      }).not.toThrow();
+    } finally {
+      setItem.mockRestore();
+    }
   });
 
   it('ignores storage events for other keys', () => {
@@ -1652,6 +1703,62 @@ describe('echo suppression — applied snapshots are not re-broadcast', () => {
     );
 
     cleanup();
+  });
+});
+
+// ─── devtools peers event ─────────────────────────────────────────────────────
+
+describe('devtools broadcast:peers event', () => {
+  it('includes heard peers with lastSeen in the peers payload', () => {
+    const emit = jest.fn();
+    // Only `emit` matters here; every other adapter method is a no-op.
+    const adapter = new Proxy(
+      {},
+      { get: (_t, prop) => (prop === 'emit' ? emit : () => undefined) },
+    ) as import('../refsignal').DevToolsAdapter;
+    setDevToolsAdapter(adapter);
+
+    try {
+      const store = { score: createRefSignal(0) };
+      const cleanup = setupBroadcast(store, {
+        channel: 'peers-dt',
+        mode: 'one-to-many',
+      });
+
+      // A peer announces itself — lands in tabsLastSeen, emitPeers fires.
+      deliverFromOtherTab('peers-dt', {
+        type: 'hello',
+        tabId: 'peer-1',
+        ts: Date.now(),
+      });
+
+      const peersEvents = emit.mock.calls
+        .map(([e]: [{ kind: string; peers?: { id: string }[] }]) => e)
+        .filter((e) => e.kind === 'broadcast:peers');
+      expect(peersEvents.length).toBeGreaterThan(0);
+      const last = peersEvents[peersEvents.length - 1];
+      expect(last.peers).toContainEqual(
+        expect.objectContaining({ id: 'peer-1' }),
+      );
+
+      // A bye from a tab we never heard of is harmless — the election tick
+      // still emits peers, but the ghost never appears and peer-1 remains.
+      deliverFromOtherTab('peers-dt', { type: 'bye', tabId: 'ghost' });
+      const afterBye = emit.mock.calls
+        .map(([e]: [{ kind: string; peers?: { id: string }[] }]) => e)
+        .filter((e) => e.kind === 'broadcast:peers')
+        .pop();
+      expect(afterBye?.peers).not.toContainEqual(
+        expect.objectContaining({ id: 'ghost' }),
+      );
+      expect(afterBye?.peers).toContainEqual(
+        expect.objectContaining({ id: 'peer-1' }),
+      );
+
+      cleanup();
+    } finally {
+      setDevToolsAdapter(null);
+    }
   });
 });
 
