@@ -8,7 +8,8 @@ import {
 import { StoreSnapshot } from '../store/useRefSignalStore';
 import { applyTimingOptions } from '../timing';
 import type { BroadcastOptions, BroadcastSignalOptions } from './types';
-import { resolveTransport, Transport } from './transport';
+import { nativeTransport, Transport } from './transport';
+import { isProd } from '../env';
 import { takeSnapshot, applySnapshot } from './snapshot';
 
 // ─── Message protocol ──────────────────────────────────────────────────────────
@@ -28,9 +29,21 @@ export function setupBroadcast<TStore extends object>(
   store: TStore,
   options: BroadcastOptions<TStore>,
 ): () => void {
-  // SSR guard — BroadcastChannel and cross-tab sync are browser-only.
-  // Also requires `document` for the visibility API used in one-to-many mode.
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
+  // Environment guard — only applies to the default transport. A custom
+  // transport implies the environment is intentional (e.g. a Web Worker,
+  // which has neither `window` nor `document`).
+  if (
+    !options.transport &&
+    (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined')
+  ) {
+    // SSR: silent no-op, as before. A real browser without BroadcastChannel
+    // (pre-2022) is a silent sync failure far from its cause — warn in dev.
+    if (typeof window !== 'undefined' && !isProd()) {
+      console.warn(
+        '[refsignal] broadcast: BroadcastChannel is unavailable and no `transport` was provided — ' +
+          'sync is disabled. Pass `transport: localStorageTransport(channel)` to support legacy browsers.',
+      );
+    }
     return () => {};
   }
 
@@ -48,7 +61,7 @@ export function setupBroadcast<TStore extends object>(
     gracePeriod,
   } = options;
 
-  const transport: Transport = resolveTransport(channel);
+  const transport: Transport = options.transport ?? nativeTransport(channel);
 
   // In many-to-many every tab is always a broadcaster; in one-to-many election decides.
   let isBroadcaster = mode === 'many-to-many';
@@ -163,9 +176,20 @@ export function setupBroadcast<TStore extends object>(
 
   const wrapper = applyTimingOptions(sendSnapshot, options);
 
+  // Applying a received snapshot fires these same subscriptions. Guard at the
+  // subscription level — not inside sendSnapshot — so an applied update never
+  // even *schedules* a send: with throttle/debounce a scheduled send would
+  // fire after any flag around the apply has been cleared. Without this,
+  // object-valued signals ping-pong between peers forever (every hop is a
+  // fresh clone, so the `current !== value` dedupe never terminates it).
+  let applyingSnapshot = false;
+  const sendOnLocalUpdate = () => {
+    if (!applyingSnapshot) wrapper.call();
+  };
+
   const signals = Object.values(store).filter(isRefSignal);
   signals.forEach((s) => {
-    s.subscribe(wrapper.call);
+    s.subscribe(sendOnLocalUpdate);
   });
 
   // ── Election helpers (one-to-many only) ─────────────────────────────────────
@@ -226,7 +250,14 @@ export function setupBroadcast<TStore extends object>(
 
     switch (msg.type) {
       case 'update':
-        applySnapshot(store, msg.payload);
+        // batch() inside applySnapshot notifies synchronously at commit, so
+        // the flag covers every subscription fire triggered by the apply.
+        applyingSnapshot = true;
+        try {
+          applySnapshot(store, msg.payload);
+        } finally {
+          applyingSnapshot = false;
+        }
         break;
       case 'hello':
         if (mode === 'one-to-many') {
@@ -340,18 +371,24 @@ export function setupBroadcast<TStore extends object>(
       transport.post({ type: 'bye', tabId: TAB_ID } satisfies Msg<never>);
     };
 
-    if (document.visibilityState === 'visible') {
+    // No `document` (Web Worker via custom transport) — a worker is never
+    // "hidden", so the heartbeat just runs unconditionally.
+    if (typeof document === 'undefined') {
       startHeartbeat();
-    }
-
-    onVisibilityChange = () => {
+    } else {
       if (document.visibilityState === 'visible') {
         startHeartbeat();
-      } else {
-        yieldRole();
       }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
+
+      onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          startHeartbeat();
+        } else {
+          yieldRole();
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
   }
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────
@@ -359,7 +396,7 @@ export function setupBroadcast<TStore extends object>(
   return () => {
     wrapper.cancel();
     signals.forEach((s) => {
-      s.unsubscribe(wrapper.call);
+      s.unsubscribe(sendOnLocalUpdate);
     });
     if (stableTimer !== null) {
       clearTimeout(stableTimer);

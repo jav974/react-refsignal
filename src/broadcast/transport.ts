@@ -4,7 +4,9 @@ export interface Transport {
   listen(callback: (message: unknown) => void): () => void;
 }
 
-function nativeTransport(channel: string): Transport {
+/** Default wire — structured clone semantics, delivered to every same-origin
+ * context listening on `channel` except the posting one. */
+export function nativeTransport(channel: string): Transport {
   const bc = new BroadcastChannel(channel);
   return {
     post: (msg) => {
@@ -21,7 +23,15 @@ function nativeTransport(channel: string): Transport {
   };
 }
 
-function localStorageTransport(channel: string): Transport {
+/**
+ * Legacy fallback transport for environments without `BroadcastChannel`
+ * (browsers older than ~2022). Pass it explicitly via the `transport` option.
+ *
+ * Wire format is JSON — unlike the default transport it does NOT structured
+ * clone, so `Blob`/`Map`/`Set`/`Date` values will not survive. Same-origin,
+ * window contexts only (workers have no `localStorage`).
+ */
+export function localStorageTransport(channel: string): Transport {
   const key = `__bc__${channel}`;
   return {
     post: (msg) => {
@@ -46,10 +56,4 @@ function localStorageTransport(channel: string): Transport {
       };
     },
   };
-}
-
-export function resolveTransport(channel: string): Transport {
-  return typeof BroadcastChannel !== 'undefined'
-    ? nativeTransport(channel)
-    : localStorageTransport(channel);
 }

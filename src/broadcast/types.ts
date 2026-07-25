@@ -1,11 +1,21 @@
 import type { TimingOptions, WatchOptions } from '../timing';
 import type { StoreSnapshot } from '../store/useRefSignalStore';
+import type { Transport } from './transport';
 
 export type BroadcastMode = 'many-to-many' | 'one-to-many';
 
 type BroadcastCommonOptions = {
   /** Channel name — all tabs using the same channel share state. */
   channel: string;
+  /**
+   * Bring your own wire — Worker, iframe bridge, tests. Default:
+   * `BroadcastChannel(channel)`, which structured-clones messages.
+   *
+   * A transport must deliver posted messages to peers but NOT back to the
+   * posting side (BroadcastChannel semantics). Providing one also skips the
+   * browser-environment guard, enabling broadcast inside Web Workers.
+   */
+  transport?: Transport;
   /** `'many-to-many'` (default) — any tab broadcasts. `'one-to-many'` — only the elected tab broadcasts. */
   mode?: BroadcastMode;
   /** Called when this tab gains or loses broadcaster status (`mode: 'one-to-many'` only). */

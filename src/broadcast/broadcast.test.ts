@@ -3,12 +3,19 @@
  */
 import { act } from 'react';
 import { renderHook } from '../test-utils/renderHook';
-import { CANCEL, createRefSignal, type RefSignal } from '../refsignal';
-import { broadcast, useBroadcast } from './index';
+import {
+  CANCEL,
+  createRefSignal,
+  setDevToolsAdapter,
+  type RefSignal,
+} from '../refsignal';
+import { broadcast, localStorageTransport, useBroadcast } from './index';
 import { setupBroadcast } from './broadcast';
 import { useRefSignal } from '../hooks/useRefSignal';
 import { setupRafMock } from '../test-utils/raf';
 import type { BroadcastOptions } from './types';
+import type { Transport } from './transport';
+import * as v8 from 'node:v8';
 
 type ScoreStore = { score: RefSignal<number> };
 
@@ -555,9 +562,10 @@ describe('useBroadcast()', () => {
   });
 });
 
-// ─── localStorage fallback ────────────────────────────────────────────────────
+// ─── localStorage transport (explicit opt-in) ─────────────────────────────────
 
-describe('localStorage fallback transport', () => {
+describe('localStorage transport', () => {
+  // Prove the explicit transport needs no BroadcastChannel at all.
   beforeEach(() => {
     delete (globalThis as any).BroadcastChannel;
   });
@@ -567,10 +575,16 @@ describe('localStorage fallback transport', () => {
     const storeB = { score: createRefSignal(0) };
 
     renderHook(() => {
-      useBroadcast(storeA, { channel: 'ls-test' });
+      useBroadcast(storeA, {
+        channel: 'ls-test',
+        transport: localStorageTransport('ls-test'),
+      });
     });
     renderHook(() => {
-      useBroadcast(storeB, { channel: 'ls-test' });
+      useBroadcast(storeB, {
+        channel: 'ls-test',
+        transport: localStorageTransport('ls-test'),
+      });
     });
 
     // Simulate a storage event (as if another tab wrote)
@@ -589,10 +603,59 @@ describe('localStorage fallback transport', () => {
     expect(storeB.score.current).toBe(33);
   });
 
+  it('writes outgoing updates to localStorage (post path)', () => {
+    const store = { score: createRefSignal(0) };
+    renderHook(() => {
+      useBroadcast(store, {
+        channel: 'ls-post',
+        transport: localStorageTransport('ls-post'),
+      });
+    });
+
+    act(() => {
+      store.score.update(21);
+    });
+
+    const raw = localStorage.getItem('__bc__ls-post');
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw as string)).toMatchObject({
+      type: 'update',
+      payload: { score: 21 },
+    });
+  });
+
+  it('swallows storage write failures (quota / unavailable)', () => {
+    const setItem = jest
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+    try {
+      const store = { score: createRefSignal(0) };
+      renderHook(() => {
+        useBroadcast(store, {
+          channel: 'ls-quota',
+          transport: localStorageTransport('ls-quota'),
+        });
+      });
+
+      expect(() => {
+        act(() => {
+          store.score.update(1);
+        });
+      }).not.toThrow();
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
   it('ignores storage events for other keys', () => {
     const store = { score: createRefSignal(0) };
     renderHook(() => {
-      useBroadcast(store, { channel: 'ls-test2' });
+      useBroadcast(store, {
+        channel: 'ls-test2',
+        transport: localStorageTransport('ls-test2'),
+      });
     });
 
     act(() => {
@@ -614,7 +677,10 @@ describe('localStorage fallback transport', () => {
   it('handles corrupt JSON gracefully', () => {
     const store = { score: createRefSignal(0) };
     renderHook(() => {
-      useBroadcast(store, { channel: 'ls-corrupt' });
+      useBroadcast(store, {
+        channel: 'ls-corrupt',
+        transport: localStorageTransport('ls-corrupt'),
+      });
     });
 
     expect(() => {
@@ -634,7 +700,10 @@ describe('localStorage fallback transport', () => {
   it('ignores storage event with null newValue', () => {
     const store = { score: createRefSignal(0) };
     renderHook(() => {
-      useBroadcast(store, { channel: 'ls-null' });
+      useBroadcast(store, {
+        channel: 'ls-null',
+        transport: localStorageTransport('ls-null'),
+      });
     });
 
     expect(() => {
@@ -1467,15 +1536,229 @@ describe('branch coverage', () => {
 // ─── edge cases — BroadcastChannel absent at runtime ─────────────────────────
 
 describe('edge cases — BroadcastChannel absent at runtime', () => {
-  it('falls back to localStorage transport without throwing when BroadcastChannel is unavailable', () => {
-    // window exists but BroadcastChannel is not available (older Safari, some workers)
+  it('no-ops with a dev warning when BroadcastChannel is unavailable and no transport is given', () => {
+    // window exists but BroadcastChannel is not available (pre-2022 browsers)
+    delete (globalThis as any).BroadcastChannel;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const store = { score: createRefSignal(0) };
+      expect(() => {
+        const cleanup = setupBroadcast(store, { channel: 'no-bc' });
+        cleanup();
+      }).not.toThrow();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('localStorageTransport'),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+// ─── custom transport ─────────────────────────────────────────────────────────
+
+// NOTE: two live setupBroadcast instances can't talk to each other inside one
+// test process — they share the module-scope TAB_ID and drop each other's
+// messages as self-echoes (real tabs/workers are separate realms). So these
+// tests use one live instance: spy on outgoing `post`, inject incoming
+// messages through the captured `listen` callback.
+
+/** Recording transport — captures posts, exposes the listener for injection. */
+function recordingTransport() {
+  const posted: unknown[] = [];
+  let deliver: ((msg: unknown) => void) | null = null;
+  const transport: Transport = {
+    post: (msg) => {
+      posted.push(msg);
+    },
+    listen: (cb) => {
+      deliver = cb;
+      return () => {
+        deliver = null;
+      };
+    },
+  };
+  return {
+    transport,
+    posted,
+    receive: (msg: unknown) => deliver?.(msg),
+  };
+}
+
+describe('custom transport', () => {
+  it('routes outgoing and incoming updates through the injected transport, no BroadcastChannel needed', () => {
+    // Prove full independence from the global — no BC constructor available.
     delete (globalThis as any).BroadcastChannel;
 
+    const { transport, posted, receive } = recordingTransport();
     const store = { score: createRefSignal(0) };
-    expect(() => {
-      const cleanup = setupBroadcast(store, { channel: 'no-bc' });
+    const cleanup = setupBroadcast(store, { channel: 'x', transport });
+
+    store.score.update(42);
+    expect(posted).toContainEqual(
+      expect.objectContaining({ type: 'update', payload: { score: 42 } }),
+    );
+
+    receive({ type: 'update', tabId: 'other', payload: { score: 7 } });
+    expect(store.score.current).toBe(7);
+
+    cleanup();
+  });
+
+  it('structured-clone wire carries Map and Date intact (no JSON degradation)', () => {
+    const { transport, posted, receive } = recordingTransport();
+    const store = {
+      tags: createRefSignal(new Map<string, number>()),
+      seenAt: createRefSignal(new Date(0)),
+    };
+    const cleanup = setupBroadcast(store, { channel: 's', transport });
+
+    // Incoming: simulate a peer's snapshot crossing a structured-clone wire.
+    // (jsdom lacks structuredClone; v8 serialize/deserialize is the same
+    // HTML structured clone algorithm.)
+    const structuredClone = <T>(v: T): T =>
+      v8.deserialize(v8.serialize(v)) as T;
+    receive(
+      structuredClone({
+        type: 'update',
+        tabId: 'other',
+        payload: {
+          tags: new Map([['hp', 100]]),
+          seenAt: new Date('2026-07-25T00:00:00Z'),
+        },
+      }),
+    );
+
+    // instanceof fails across realms (v8.deserialize creates node-realm
+    // objects in a jsdom test) — assert Map/Date behavior instead, which
+    // JSON on the wire would have destroyed.
+    expect(store.tags.current.get('hp')).toBe(100);
+    expect(store.seenAt.current.toISOString()).toBe('2026-07-25T00:00:00.000Z');
+
+    // Outgoing: the snapshot posts the live Map itself — the transport owns
+    // serialization, the library never JSON-degrades it.
+    store.tags.update(new Map([['mp', 50]]));
+    const last = posted[posted.length - 1] as {
+      payload: { tags: Map<string, number> };
+    };
+    expect(last.payload.tags).toBeInstanceOf(Map);
+    expect(last.payload.tags.get('mp')).toBe(50);
+
+    cleanup();
+  });
+});
+
+// ─── echo suppression ─────────────────────────────────────────────────────────
+
+// Applying a received snapshot must never re-broadcast it. Before the fix,
+// the apply fired the store's own outgoing subscription: primitives were
+// saved by the `current !== value` dedupe, but object values are a fresh
+// clone on every hop, so two peers ping-ponged a single Map/object update
+// forever at wire-latency rate.
+describe('echo suppression — applied snapshots are not re-broadcast', () => {
+  it('does not echo an incoming object update back out', () => {
+    const { transport, posted, receive } = recordingTransport();
+    const store = { pos: createRefSignal({ x: 0 }) };
+    const cleanup = setupBroadcast(store, { channel: 'echo', transport });
+
+    receive({ type: 'update', tabId: 'other', payload: { pos: { x: 1 } } });
+
+    expect(store.pos.current).toEqual({ x: 1 }); // applied…
+    expect(posted).toHaveLength(0); // …but never sent back
+
+    cleanup();
+  });
+
+  it('does not echo through a throttle timer (scheduled sends stay suppressed)', () => {
+    const { transport, posted, receive } = recordingTransport();
+    const store = { pos: createRefSignal({ x: 0 }) };
+    const cleanup = setupBroadcast(store, {
+      channel: 'echo-throttled',
+      transport,
+      throttle: 50,
+    });
+
+    receive({ type: 'update', tabId: 'other', payload: { pos: { x: 1 } } });
+    // A flag around the apply alone would miss this: the throttle's trailing
+    // edge fires long after the apply returned.
+    jest.advanceTimersByTime(200);
+
+    expect(posted).toHaveLength(0);
+
+    cleanup();
+  });
+
+  it('local updates still broadcast normally after an applied snapshot', () => {
+    const { transport, posted, receive } = recordingTransport();
+    const store = { pos: createRefSignal({ x: 0 }) };
+    const cleanup = setupBroadcast(store, { channel: 'echo-local', transport });
+
+    receive({ type: 'update', tabId: 'other', payload: { pos: { x: 1 } } });
+    expect(posted).toHaveLength(0);
+
+    store.pos.update({ x: 2 }); // genuine local write — guard must be released
+    expect(posted).toContainEqual(
+      expect.objectContaining({ type: 'update', payload: { pos: { x: 2 } } }),
+    );
+
+    cleanup();
+  });
+});
+
+// ─── devtools peers event ─────────────────────────────────────────────────────
+
+describe('devtools broadcast:peers event', () => {
+  it('includes heard peers with lastSeen in the peers payload', () => {
+    const emit = jest.fn();
+    // Only `emit` matters here; every other adapter method is a no-op.
+    const adapter = new Proxy(
+      {},
+      { get: (_t, prop) => (prop === 'emit' ? emit : () => undefined) },
+    ) as import('../refsignal').DevToolsAdapter;
+    setDevToolsAdapter(adapter);
+
+    try {
+      const store = { score: createRefSignal(0) };
+      const cleanup = setupBroadcast(store, {
+        channel: 'peers-dt',
+        mode: 'one-to-many',
+      });
+
+      // A peer announces itself — lands in tabsLastSeen, emitPeers fires.
+      deliverFromOtherTab('peers-dt', {
+        type: 'hello',
+        tabId: 'peer-1',
+        ts: Date.now(),
+      });
+
+      const peersEvents = emit.mock.calls
+        .map(([e]: [{ kind: string; peers?: { id: string }[] }]) => e)
+        .filter((e) => e.kind === 'broadcast:peers');
+      expect(peersEvents.length).toBeGreaterThan(0);
+      const last = peersEvents[peersEvents.length - 1];
+      expect(last.peers).toContainEqual(
+        expect.objectContaining({ id: 'peer-1' }),
+      );
+
+      // A bye from a tab we never heard of is harmless — the election tick
+      // still emits peers, but the ghost never appears and peer-1 remains.
+      deliverFromOtherTab('peers-dt', { type: 'bye', tabId: 'ghost' });
+      const afterBye = emit.mock.calls
+        .map(([e]: [{ kind: string; peers?: { id: string }[] }]) => e)
+        .filter((e) => e.kind === 'broadcast:peers')
+        .pop();
+      expect(afterBye?.peers).not.toContainEqual(
+        expect.objectContaining({ id: 'ghost' }),
+      );
+      expect(afterBye?.peers).toContainEqual(
+        expect.objectContaining({ id: 'peer-1' }),
+      );
+
       cleanup();
-    }).not.toThrow();
+    } finally {
+      setDevToolsAdapter(null);
+    }
   });
 });
 

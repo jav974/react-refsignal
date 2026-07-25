@@ -982,7 +982,7 @@ const { GameProvider, useGameContext } = createRefSignalContext(
 useBroadcast(store, { channel: 'game', throttle: 100 });
 ```
 
-`BroadcastOptions` and `BroadcastSignalOptions` accept the same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `frame`) plus broadcast-specific fields. See the [full reference](broadcast.md#api-reference).
+`BroadcastOptions` and `BroadcastSignalOptions` accept the same timing fields as `EffectOptions` (`throttle`, `debounce`, `maxWait`, `frame`) plus broadcast-specific fields — including `transport` to bring your own wire (Web Worker, iframe bridge, tests) instead of the default `BroadcastChannel`. See the [full reference](broadcast.md#api-reference) and [Custom transports](broadcast.md#custom-transports).
 
 `useBroadcast` returns `{ isBroadcaster, isStableBroadcaster }` (both `ReadonlyRefSignal<boolean>`). With the opt-in `gracePeriod` option, `isStableBroadcaster` flips `true` only after the grace window elapses since gaining leadership — useful for gating work that shouldn't fire during election ambiguity, e.g. `skip: !isStableBroadcaster.current` on a query hook. The same option also extends emit privileges for a former broadcaster within the window so in-flight work propagates instead of being silently dropped. See [Smoothing leadership transitions](broadcast.md#smoothing-leadership-transitions--graceperiod).
 
