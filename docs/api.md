@@ -904,7 +904,7 @@ const store = useUserContext({ renderOn: ALL });
 
 DevTools are a separate subpath — import from `react-refsignal/devtools` to keep them out of your main bundle. Importing the subpath is sufficient to activate them; no explicit enable call is required.
 
-DevTools track every signal update — recording old value, new value, and timestamp — and can surface them in the Redux DevTools Extension for time-travel debugging. They are always active once the subpath is imported — no enable flag needed.
+DevTools track every signal update — recording old value, new value, and timestamp — and surface them in the built-in overlay (`mountDevTools`) or your own UI via the adapter. They are always active once the subpath is imported — no enable flag needed.
 
 `configureDevTools` is optional. Call it to adjust defaults:
 
@@ -912,9 +912,9 @@ DevTools track every signal update — recording old value, new value, and times
 import { configureDevTools } from 'react-refsignal/devtools';
 
 configureDevTools({
-  logUpdates: true,    // log every update to console
-  reduxDevTools: true, // integrate with Redux DevTools Extension
-  maxHistory: 100,     // max entries in update history (default: 100)
+  logUpdates: true, // log every update to console
+  maxHistory: 100,  // max entries in update history (default: 100)
+  maxEvents: 500,   // max entries in the event ring buffer (default: 500)
 });
 ```
 
