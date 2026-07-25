@@ -7,9 +7,7 @@
 // raster primitives that match the SVG node visuals.
 
 import React, { useCallback, useEffect, useRef } from 'react';
-
-export type Pos = { x: number; y: number };
-export type Edge = [number, number];
+import { barW, type Pos, type Edge } from './bench/shared';
 
 export const canvasStyle: React.CSSProperties = {
   display: 'block',
@@ -18,10 +16,6 @@ export const canvasStyle: React.CSSProperties = {
   touchAction: 'none',
   cursor: 'grab',
 };
-
-export function barW(id: number) {
-  return ((id * 7 + 3) % 29) + 3;
-}
 
 function roundRectPath(
   ctx: CanvasRenderingContext2D,

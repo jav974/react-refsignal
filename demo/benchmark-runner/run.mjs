@@ -61,8 +61,6 @@ function parseArgs(argv) {
     else if (a === '--warmup') args.warmup = +next();
     else if (a === '--rate') args.rate = next().split(',').map(Number);
     else if (a === '--escape') args.escapeBatching = parseBoolList(next());
-    else if (a === '--no-escape-batching') args.escapeBatching = [false];
-    else if (a === '--escape-batching') args.escapeBatching = [true];
     else if (a === '--drive-mode') args.driveMode = next().split(',');
     else if (a === '--interval-ms') args.intervalMs = +next();
     else if (a === '--renderer') args.renderer = next().split(',');
@@ -81,8 +79,6 @@ function parseArgs(argv) {
           '  --warmup 1500                         (ms, default 1500)',
           '  --rate 1,8,16,32                      (drives per rAF, default [1]; comma-list expands matrix)',
           '  --escape 0,1                          (flushSync on/off, default [1]; comma-list expands matrix)',
-          '  --no-escape-batching                  (= --escape 0)',
-          '  --escape-batching                     (= --escape 1)',
           '  --drive-mode raf,interval             (default [raf]; interval decouples drives from rAF — closer to real pointer hardware)',
           '  --interval-ms 4                       (interval-mode period; default 4 ms = 250 events/sec)',
           '  --renderer svg,canvas                 (default [svg]; canvas swaps the per-node React tree for one imperative draw loop)',
