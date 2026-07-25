@@ -4,4 +4,5 @@ export type {
   BroadcastOptions,
   BroadcastSignalOptions,
 } from './types';
+export { localStorageTransport, type Transport } from './transport';
 export { useBroadcast } from './useBroadcast';
