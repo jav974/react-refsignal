@@ -209,6 +209,16 @@ flowchart TD
 
 > Activation: add `import 'react-refsignal/persist'` to your entry point. Safe to import in SSR environments.
 
+**Pick the pipe before the backend.** Persist and broadcast are both pluggable (custom `PersistStorage`, custom `Transport`) and either could technically speak to a server — the separator is the conversation shape, not the wire. Litmus test: **can data arrive without you asking?**
+
+| The data… | Pipe |
+|---|---|
+| loads once at setup, is saved on your writes — nothing arrives unbidden | **persist** (state ↔ storage; carries `version`/`migrate` because storage outlives your code) |
+| arrives live from peers — other tabs, a worker, a relay | **broadcast** (state ↔ peers, present-tense only; see [§10](#10-cross-tab-broadcast)) |
+| is the *server's* data — cached, refetched, subscribed | a query layer (e.g. react-refsignal-query), not either of these |
+
+If you're writing a `PersistStorage` and thinking "…and the server could push updates back through it," that's the tell you want broadcast: a storage adapter's `get` runs once at hydration, and you'd be rebuilding broadcast's echo suppression and apply-batching by hand. The two compose on one store — persist for reload-survival, broadcast for liveness — and the hydration/state-handoff race is already handled.
+
 ```mermaid
 flowchart TD
     Q1{"What scope?"}
@@ -263,6 +273,8 @@ flowchart TD
 > Activation: add `import 'react-refsignal/broadcast'` to your entry point. Safe to import in SSR environments.
 >
 > Not limited to tabs: the `transport` option swaps the wire, syncing signals with a Web Worker or an iframe instead. See [Custom transports](broadcast.md#custom-transports).
+>
+> Unsure whether you want broadcast, persist, or a query layer? See [Pick the pipe](#9-persistence) at the top of §9.
 
 ```mermaid
 flowchart TD
