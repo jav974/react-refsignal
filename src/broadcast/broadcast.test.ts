@@ -1598,6 +1598,63 @@ describe('custom transport', () => {
   });
 });
 
+// ─── echo suppression ─────────────────────────────────────────────────────────
+
+// Applying a received snapshot must never re-broadcast it. Before the fix,
+// the apply fired the store's own outgoing subscription: primitives were
+// saved by the `current !== value` dedupe, but object values are a fresh
+// clone on every hop, so two peers ping-ponged a single Map/object update
+// forever at wire-latency rate.
+describe('echo suppression — applied snapshots are not re-broadcast', () => {
+  it('does not echo an incoming object update back out', () => {
+    const { transport, posted, receive } = recordingTransport();
+    const store = { pos: createRefSignal({ x: 0 }) };
+    const cleanup = setupBroadcast(store, { channel: 'echo', transport });
+
+    receive({ type: 'update', tabId: 'other', payload: { pos: { x: 1 } } });
+
+    expect(store.pos.current).toEqual({ x: 1 }); // applied…
+    expect(posted).toHaveLength(0); // …but never sent back
+
+    cleanup();
+  });
+
+  it('does not echo through a throttle timer (scheduled sends stay suppressed)', () => {
+    const { transport, posted, receive } = recordingTransport();
+    const store = { pos: createRefSignal({ x: 0 }) };
+    const cleanup = setupBroadcast(store, {
+      channel: 'echo-throttled',
+      transport,
+      throttle: 50,
+    });
+
+    receive({ type: 'update', tabId: 'other', payload: { pos: { x: 1 } } });
+    // A flag around the apply alone would miss this: the throttle's trailing
+    // edge fires long after the apply returned.
+    jest.advanceTimersByTime(200);
+
+    expect(posted).toHaveLength(0);
+
+    cleanup();
+  });
+
+  it('local updates still broadcast normally after an applied snapshot', () => {
+    const { transport, posted, receive } = recordingTransport();
+    const store = { pos: createRefSignal({ x: 0 }) };
+    const cleanup = setupBroadcast(store, { channel: 'echo-local', transport });
+
+    receive({ type: 'update', tabId: 'other', payload: { pos: { x: 1 } } });
+    expect(posted).toHaveLength(0);
+
+    store.pos.update({ x: 2 }); // genuine local write — guard must be released
+    expect(posted).toContainEqual(
+      expect.objectContaining({ type: 'update', payload: { pos: { x: 2 } } }),
+    );
+
+    cleanup();
+  });
+});
+
 // ─── edge cases — interceptor + broadcast ────────────────────────────────────
 
 describe('edge cases — interceptor + broadcast', () => {

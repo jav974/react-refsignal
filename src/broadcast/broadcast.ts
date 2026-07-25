@@ -176,9 +176,20 @@ export function setupBroadcast<TStore extends object>(
 
   const wrapper = applyTimingOptions(sendSnapshot, options);
 
+  // Applying a received snapshot fires these same subscriptions. Guard at the
+  // subscription level — not inside sendSnapshot — so an applied update never
+  // even *schedules* a send: with throttle/debounce a scheduled send would
+  // fire after any flag around the apply has been cleared. Without this,
+  // object-valued signals ping-pong between peers forever (every hop is a
+  // fresh clone, so the `current !== value` dedupe never terminates it).
+  let applyingSnapshot = false;
+  const sendOnLocalUpdate = () => {
+    if (!applyingSnapshot) wrapper.call();
+  };
+
   const signals = Object.values(store).filter(isRefSignal);
   signals.forEach((s) => {
-    s.subscribe(wrapper.call);
+    s.subscribe(sendOnLocalUpdate);
   });
 
   // ── Election helpers (one-to-many only) ─────────────────────────────────────
@@ -239,7 +250,14 @@ export function setupBroadcast<TStore extends object>(
 
     switch (msg.type) {
       case 'update':
-        applySnapshot(store, msg.payload);
+        // batch() inside applySnapshot notifies synchronously at commit, so
+        // the flag covers every subscription fire triggered by the apply.
+        applyingSnapshot = true;
+        try {
+          applySnapshot(store, msg.payload);
+        } finally {
+          applyingSnapshot = false;
+        }
         break;
       case 'hello':
         if (mode === 'one-to-many') {
@@ -378,7 +396,7 @@ export function setupBroadcast<TStore extends object>(
   return () => {
     wrapper.cancel();
     signals.forEach((s) => {
-      s.unsubscribe(wrapper.call);
+      s.unsubscribe(sendOnLocalUpdate);
     });
     if (stableTimer !== null) {
       clearTimeout(stableTimer);
