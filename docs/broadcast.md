@@ -17,7 +17,7 @@ Sync signal values across browser tabs and windows in real time. The broadcast f
 - [Filtering outgoing updates](#filtering-outgoing-updates)
 - [Rate-limiting with timing options](#rate-limiting-with-timing-options)
 - [API reference](#api-reference)
-- [Transport selection](#transport-selection)
+- [Custom transports](#custom-transports)
 - [Caveats](#caveats)
 
 ---
@@ -451,6 +451,7 @@ Options for the `broadcast` field on `createRefSignal` / `useRefSignal`.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `channel` | `string` | — | Channel name. All tabs using the same name share this signal's value. |
+| `transport` | `Transport` | `BroadcastChannel(channel)` | Bring your own wire — Worker, iframe bridge, tests. See [Custom transports](#custom-transports). |
 | `mode` | `'many-to-many' \| 'one-to-many'` | `'many-to-many'` | Topology. See [Topology modes](#topology-modes). |
 | `filter` | `() => boolean` | — | Skip the outgoing broadcast when this returns `false`. Incoming updates are always applied. |
 | `throttle` | `number` | — | At most one send per N ms (leading + trailing). |
@@ -509,22 +510,69 @@ Hook variant. Sets up broadcast inside a React Provider; tears down on unmount.
 
 ---
 
-## Transport selection
+## Custom transports
 
-The transport is selected automatically:
+By default, messages travel over `BroadcastChannel(channel)` — efficient, same-origin, structured-clone semantics. The `transport` option replaces the wire while keeping everything else (topology, election, timing, filtering):
 
-| Environment | Transport |
-|---|---|
-| `BroadcastChannel` available (modern browsers) | Native `BroadcastChannel` — efficient, no storage writes |
-| `BroadcastChannel` unavailable (older Safari, some workers) | `localStorage` + `storage` event — same-origin only |
+```ts
+interface Transport {
+  post(message: unknown): void;
+  /** Returns a cleanup function. */
+  listen(callback: (message: unknown) => void): () => void;
+}
+```
 
-No configuration needed. The fallback is transparent.
+A transport must deliver posted messages to peers but **not back to the posting side** (`BroadcastChannel` semantics). Providing one also skips the browser-environment guard, so broadcast runs inside **Web Workers**.
+
+**Signals across a Worker** — run simulation state in a worker, observe it on the main thread (or vice versa). `postMessage` already structured-clones, so `Map`/`Date`/`Blob` values ride intact:
+
+```ts
+// main thread
+const workerTransport = (worker: Worker): Transport => ({
+  post: (msg) => worker.postMessage(msg),
+  listen: (cb) => {
+    const handler = (e: MessageEvent) => cb(e.data);
+    worker.addEventListener('message', handler);
+    return () => worker.removeEventListener('message', handler);
+  },
+});
+
+useBroadcast(store, { channel: 'sim', transport: workerTransport(worker) });
+```
+
+```ts
+// worker side — same store shape, mirrored transport over `self`
+const selfTransport: Transport = {
+  post: (msg) => self.postMessage(msg),
+  listen: (cb) => {
+    const handler = (e: MessageEvent) => cb(e.data);
+    self.addEventListener('message', handler);
+    return () => self.removeEventListener('message', handler);
+  },
+};
+
+setupBroadcast(store, { channel: 'sim', transport: selfTransport });
+```
+
+Visibility-based leadership yielding is inert in workers (no `document`) — a worker in `one-to-many` mode heartbeats unconditionally.
+
+**Legacy browsers** — `BroadcastChannel` has been universal since 2022 (Safari 15.4). If you must support older browsers, pass the exported `localStorageTransport`:
+
+```ts
+import { localStorageTransport } from 'react-refsignal/broadcast';
+
+useBroadcast(store, { channel: 'game', transport: localStorageTransport('game') });
+```
+
+Its wire is JSON — no structured clone, so `Blob`/`Map`/`Set`/`Date` do not survive it.
+
+> **Migration note:** before 2.5, the localStorage transport was an automatic fallback when `BroadcastChannel` was missing. It is now explicit — without it, broadcast no-ops (with a dev-mode warning) in such environments.
 
 ---
 
 ## Caveats
 
-**Values must be serializable.** Updates are sent as JSON. Signals containing functions, class instances, or circular references will not sync correctly.
+**Values must be structured-cloneable.** The default transport sends messages through `BroadcastChannel`, which uses the [structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm): `Blob`, `Map`, `Set`, `Date`, `TypedArray`, and plain nested data all sync intact. Functions, DOM nodes, and class instances (beyond the cloneable built-ins) do not. Custom transports define their own wire format — `localStorageTransport` is JSON, which additionally drops `Blob`/`Map`/`Set`/`Date`.
 
 **Same origin only.** Both `BroadcastChannel` and `localStorage` are restricted to the same origin. Cross-origin sync is not possible.
 
@@ -532,7 +580,7 @@ No configuration needed. The fallback is transparent.
 
 **`one-to-many` and page reload.** If the broadcaster tab reloads, the remaining tabs re-elect within one `heartbeatTimeout`. During this window, no outgoing updates are sent. Size `heartbeatTimeout` accordingly for your use case.
 
-**Persist + broadcast composition.** When `persist` and `broadcast` are composed on the same store, hydration and state-handoff are safe to use together. Persist snapshots each signal's update counter at setup time — if a `state-handoff` (or any other update) arrives before the storage read resolves, hydration is skipped for that signal and the in-memory state is preserved.
+**Persist + broadcast composition.** When `persist` and `broadcast` are composed on the same store, hydration and state-handoff are safe to use together. Persist snapshots each signal's update counter at setup time — if a `state-handoff` (or any other update) arrives before the storage read resolves, hydration is skipped for that signal and the in-memory state is preserved. Both layers speak structured clone (broadcast natively; persist via [`structured: true`](persist.md) on the IndexedDB backend), so a `Blob` or `Map` in a signal can be durable *and* live across tabs — no base64, no JSON conversion.
 
 **Interceptors run on incoming broadcast updates.** Remote values are applied via `signal.update()`, which passes through the signal's `interceptor` (if any) — exactly as if the value came from local code. Two consequences:
 
@@ -543,7 +591,7 @@ Usually the right behavior — validation policy should apply equally to all inp
 
 ## Threat model
 
-Broadcast's trust boundary is the browser origin. `BroadcastChannel` and the `localStorage` fallback transport are both same-origin-only, and the library does not authenticate or sign messages — any same-origin script can emit a message and have it applied.
+Broadcast's trust boundary is the browser origin. `BroadcastChannel` and the opt-in `localStorageTransport` are both same-origin-only, and the library does not authenticate or sign messages — any same-origin script can emit a message and have it applied. A custom transport sets its own boundary: whatever contexts it bridges (a worker, an iframe, a server relay) can emit messages that will be applied.
 
 **In practice this means:**
 

@@ -261,6 +261,8 @@ flowchart TD
 ## 10. Cross-tab Broadcast
 
 > Activation: add `import 'react-refsignal/broadcast'` to your entry point. Safe to import in SSR environments.
+>
+> Not limited to tabs: the `transport` option swaps the wire, syncing signals with a Web Worker or an iframe instead. See [Custom transports](broadcast.md#custom-transports).
 
 ```mermaid
 flowchart TD
